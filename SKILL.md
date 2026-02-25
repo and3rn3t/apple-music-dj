@@ -4,16 +4,22 @@ description: >
   Ultimate personalization engine for Apple Music. Analyzes listening history, Apple Music Replay
   stats, library data, and taste patterns to create intelligent playlists directly in the user's
   Apple Music library via the MusicKit API. Supports deep cuts discovery, mood/activity playlists,
-  trend scouting, constellation discovery ("surprise me"), playlist refresh/evolution, and
-  automated weekly curation via cron. Use this skill whenever the user mentions Apple Music,
+  trend scouting, constellation discovery ("surprise me"), playlist refresh/evolution,
+  automated weekly curation via cron, taste DNA cards, compatibility scoring, listening insights,
+  catalog gap analysis, album deep dives, artist rabbit holes, daily song drops, concert prep,
+  and personalized new release radar. Use this skill whenever the user mentions Apple Music,
   playlists, music recommendations, listening habits, music taste, "what should I listen to",
   discovering new music, mood playlists, workout playlists, deep cuts, hidden gems, trending music,
   "surprise me", refreshing a playlist, or anything related to curating their music experience.
   Also trigger on: "DJ", "mix", "playlist for", "music for", "songs like", "similar to",
-  "what's hot", "new releases for me", or OpenClaw in the context of music.
-version: 2.0.0
+  "what's hot", "new releases for me", "taste DNA", "taste card", "compatibility", "how compatible",
+  "year in review", "listening stats", "what have I missed", "album deep dive", "rabbit hole",
+  "concert prep", "seeing [artist] live", "daily song", "what should I listen to right now",
+  or OpenClaw in the context of music.
+version: 3.0.0
 emoji: 🎧
-homepage: https://github.com/yourusername/apple-music-dj
+author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
+homepage: https://github.com/and3rn3t/apple-music-dj
 metadata:
   openclaw:
     requires:
@@ -31,7 +37,10 @@ metadata:
 
 An intelligent Apple Music personalization engine for OpenClaw. Reads your listening history,
 Replay stats, ratings, and library to build a deep taste profile — then generates playlists
-using five strategies and writes them directly to your Apple Music library.
+using five strategies, surfaces insights about your listening, and writes everything directly
+to your Apple Music library. Also includes shareable Taste DNA Cards, compatibility scoring,
+catalog gap analysis, album deep dives, artist rabbit holes, daily song drops, concert prep
+playlists, and personalized new release radar.
 
 ## Architecture
 
@@ -77,7 +86,9 @@ Verify with: `scripts/apple_music_api.sh verify`
 
 Before generating any playlist, build (or load from cache) a taste profile.
 
-Run: `python3 scripts/taste_profiler.py [--force-refresh] [--storefront us]`
+Run: `python3 scripts/taste_profiler.py [--cache ~/.apple-music-dj/taste_profile.json] [--max-age 0] [--storefront us]`
+
+Use `--max-age 0` to force a refresh, bypassing any cached profile.
 
 The profiler pulls from **all available data sources**:
 
@@ -91,7 +102,7 @@ The profiler pulls from **all available data sources**:
 | Library artists | `GET /v1/me/library/artists` | ★★★☆☆ Artist affinity |
 | Recommendations | `GET /v1/me/recommendations` | ★★☆☆☆ Apple's inference |
 
-**Output:** Taste DNA profile cached at `~/.apple-music-dj/taste_profile.json` (24h TTL).
+**Output:** Taste DNA profile cached at `~/.apple-music-dj/taste_profile.json` (7-day TTL by default).
 
 The profile includes: top artists (weighted), genre distribution, era profile, energy
 classification, variety score, loved/disliked IDs, library song IDs, and Replay highlights.
@@ -131,16 +142,134 @@ Journey from familiar artists outward to new territory in 3 "rings" of distance.
 Analyzes existing playlist's sonic signature, adds fresh matching tracks, optionally
 prunes overplayed songs.
 
+## Engagement Features
+
+Beyond playlist strategies, these features drive daily engagement and deeper music discovery.
+
+### Taste DNA Card
+**Triggers:** "taste card", "taste DNA", "share my taste", "my music identity", "listener profile"
+Generate a shareable visual card (SVG or text) summarizing the user's taste: archetype label
+(e.g., "Deep Catalog Digger", "Genre Drifter"), top genres with bars, top artists, era mix,
+and stats (energy, variety, mainstream, velocity).
+
+Run: `python3 scripts/taste_card.py <profile.json> [--format svg|text] [--output card.svg]`
+
+Archetype detection is automatic based on profile data. Always present the text version
+in chat; offer to generate the SVG for sharing. The card is designed to be screenshot-friendly.
+
+### Compatibility Score
+**Triggers:** "how compatible am I with [artist]", "compatibility", "do I match [artist]",
+"compare my taste with", "would I like [artist]"
+Score how well the user's taste aligns with an artist's catalog DNA (0-100%).
+Also supports comparing two user profiles if both have run the taste profiler.
+
+Run:
+- `python3 scripts/compatibility.py artist <profile.json> <storefront> <artist_name>`
+- `python3 scripts/compatibility.py profile <profile1.json> <profile2.json>`
+
+Present the percentage, a verdict ("Deeply compatible", "Strong overlap", "Wild card"),
+matching genres, and whether the artist is already in their library.
+
+### Listening Insights
+**Triggers:** "listening timeline", "how has my taste changed", "listening streaks",
+"milestones", "year in review", "my [year] in music", "wrapped", "listening stats"
+
+Three subcommands:
+
+**Timeline:** `python3 scripts/listening_insights.py timeline <profile.json>`
+Shows taste evolution across Replay years — top artist, genre, and listen time per year.
+Present as a narrative: "In 2022 you were deep into shoegaze, by 2024 you shifted to jazz."
+
+**Streaks:** `python3 scripts/listening_insights.py streaks <profile.json>`
+Surfaces milestones (from Replay API) and computed insights: artist loyalty, genre dominance,
+discovery rate, library size, rating activity.
+
+**Year in Review:** `python3 scripts/listening_insights.py year-review <profile.json> [--year 2025]`
+Comprehensive year analysis — deeper than Apple Replay. Includes obscurity score, variety
+analysis, top songs/artists/albums, total listen time, and narrative insights.
+
+### Catalog Gap Analysis
+**Triggers:** "what have I missed", "what am I missing from [artist]", "catalog gaps",
+"albums I haven't heard", "discography check"
+Scans the user's favorite artists' full discographies and identifies albums with zero tracks
+in the user's library. Ranks recommendations by release date.
+
+Run: `python3 scripts/catalog_explorer.py gap-analysis <profile.json> <storefront>`
+
+Present as: "You love Radiohead but you've only heard 3 of their 9 albums. Here's what
+you're missing, ranked by how much you'd probably like each one."
+
+### Album Deep Dive
+**Triggers:** "tell me about [album]", "album deep dive", "what's on [album]",
+"should I listen to [album]", "break down [album]"
+Pull track listing, classify each track as single vs deep cut, show where the album sits
+in the artist's discography, and recommend which deep cuts to try first.
+
+Run: `python3 scripts/catalog_explorer.py album-dive <storefront> <album_name> [--artist <name>]`
+
+### Artist Rabbit Hole
+**Triggers:** "rabbit hole from [artist]", "take me on a journey from [artist]",
+"artist chain", "explore from [artist]", "where does [artist] lead"
+Interactive chain exploration. Starts from one artist, searches for adjacent artists,
+maps outward step by step. Each step tagged as familiar/adjacent/frontier zone.
+Outputs tracks from each artist for a potential journey playlist.
+
+Run: `python3 scripts/catalog_explorer.py rabbit-hole <profile.json> <storefront> <artist_name> [--depth 4]`
+
+Present each step with the artist name, zone, genres, and sample tracks. Ask if the user
+wants to go deeper or turn the exploration into a playlist.
+
+### Daily Song Drop
+**Triggers:** "daily song", "song of the day", "give me one track", "daily pick"
+One track per day with a one-sentence rationale. Uses a date-based seed for consistency
+(same pick all day). Draws from deep cuts and trending tracks scored against the user's taste.
+
+Run: `python3 scripts/daily_pick.py daily <profile.json> <storefront>`
+
+### What Should I Listen To Right Now?
+**Triggers:** "what should I listen to", "what should I play", "recommend something now",
+"I need music", "play something"
+Context-aware instant recommendation. Factors in time of day (morning → gentle indie,
+late night → ambient), maps to genre boosts, and scores candidates accordingly.
+
+Run: `python3 scripts/daily_pick.py now <profile.json> <storefront>`
+
+### Concert Prep Playlist
+**Triggers:** "seeing [artist] live", "concert prep", "going to [artist] show",
+"setlist for [artist]", "get ready for [artist] concert"
+Builds a prep playlist: top songs (likely setlist material) + deep cuts to learn before
+the show. Creates directly in Apple Music library.
+
+Run: `scripts/concert_prep.sh <storefront> <artist_name> [playlist_name]`
+
+### Personalized New Release Radar
+**Triggers:** "new releases", "what's new from my artists", "any new music",
+"release radar", "new albums this week"
+Scans the user's top 20 artists for releases in the last 7 days, plus searches for
+genre-relevant new releases from adjacent artists. Can optionally create a playlist.
+
+Run: `scripts/new_releases.sh <profile.json> <storefront> [--create-playlist]`
+
 ## Quick Commands
 
 | User says | Action |
 |---|---|
 | "Analyze my taste" | Run taste profiler, present Taste DNA report |
+| "Show my taste card" | Generate and display Taste DNA Card |
 | "Make me a playlist" | Ask what kind, then select strategy |
 | "Surprise me" | Constellation Discovery — no questions asked |
 | "More like [artist]" | Deep Cuts + Constellation hybrid seeded from named artist |
 | "Refresh my workout playlist" | Strategy 5 on the named playlist |
 | "What have I been into?" | Present recent listening summary |
+| "How compatible am I with [artist]?" | Run compatibility score |
+| "What have I missed from [artist]?" | Catalog gap analysis |
+| "Tell me about [album]" | Album deep dive |
+| "Take me on a rabbit hole from [artist]" | Artist chain exploration |
+| "Give me one song" | Daily song drop |
+| "What should I listen to right now?" | Context-aware instant pick |
+| "I'm seeing [artist] next week" | Concert prep playlist |
+| "Any new releases for me?" | Personalized new release scan |
+| "My year in review" | Year in review (previous year) |
 | "Set up weekly playlists" | Configure cron (see below) |
 
 ## Cron / Automated Playlists
@@ -163,9 +292,17 @@ Task:
 ```
 Schedule: Daily at 8:00 AM
 Task:
-  1. Get user's top 20 artists from profile
-  2. Search for releases in the last 24h
-  3. If found: notify user with artist + album/single name
+  1. scripts/new_releases.sh <profile> <storefront>
+  2. If found: notify user with artist + album/single name
+  3. Optionally: --create-playlist to auto-create a playlist
+```
+
+**Daily Song Drop:**
+```
+Schedule: Daily at 9:00 AM
+Task:
+  1. python3 scripts/daily_pick.py daily <profile> <storefront>
+  2. Notify user: "🎧 Today's pick: {song} by {artist} — {reason}"
 ```
 
 **Playlist Health Check:**
@@ -193,7 +330,7 @@ After any strategy produces candidate tracks, apply before creating:
 6. Final track: Memorable closer, not filler
 
 **Hard rules:**
-- Min 4 tracks between same-artist repeats
+- Min 5 tracks between same-artist repeats
 - Max 2 tracks from same album
 - No tracks from disliked artists
 - No explicit content unless user's library already has it
@@ -248,6 +385,13 @@ some bands in that orbit" — not "Here's an awesome playlist just for you!"
 | `scripts/taste_profiler.py` | Python | Taste DNA profiler with caching |
 | `scripts/build_playlist.sh` | Bash | Playlist creation & refresh (create or add tracks) |
 | `scripts/generate_dev_token.py` | Python | Developer JWT generator |
+| `scripts/taste_card.py` | Python | Shareable Taste DNA Card (SVG/text) |
+| `scripts/compatibility.py` | Python | Taste compatibility scoring (artist or profile) |
+| `scripts/listening_insights.py` | Python | Timeline, streaks, milestones, year in review |
+| `scripts/catalog_explorer.py` | Python | Gap analysis, album deep dive, artist rabbit hole |
+| `scripts/daily_pick.py` | Python | Daily song drop & instant recommendation |
+| `scripts/concert_prep.sh` | Bash | Concert prep playlist builder |
+| `scripts/new_releases.sh` | Bash | Personalized new release radar |
 
 ## Example Interactions
 
@@ -271,3 +415,33 @@ some bands in that orbit" — not "Here's an awesome playlist just for you!"
 
 **"Set me up with weekly auto-playlists"**
 → Cron config. Confirm schedule, set up weekly Trend Radar + Constellation mix.
+
+**"Show me my taste card"**
+→ Generate Taste DNA Card. Present text version in chat, offer SVG export.
+
+**"How compatible am I with Tyler, the Creator?"**
+→ Compatibility score. Show percentage, verdict, matching genres.
+
+**"What albums am I missing from Radiohead?"**
+→ Catalog gap analysis. List unheard albums, recommend starting points.
+
+**"Tell me about In Rainbows"**
+→ Album deep dive. Track listing, deep cuts vs singles, discography context.
+
+**"Take me on a rabbit hole from Radiohead"**
+→ Artist chain: Radiohead → Talk Talk → Bark Psychosis → Disco Inferno. Offer playlist.
+
+**"Give me one song for today"**
+→ Daily song drop. One track, one reason, done.
+
+**"What should I listen to right now?"**
+→ Context-aware pick. Time of day + taste → instant recommendation.
+
+**"I'm seeing Phoebe Bridgers next month"**
+→ Concert prep playlist. Top songs + deep cuts, created in Apple Music.
+
+**"Any new releases from my artists?"**
+→ New release radar. Scan top artists + genre discoveries, report findings.
+
+**"How was my 2025 in music?"**
+→ Year in review. Listen time, top artists, obscurity score, narrative insights.

@@ -38,13 +38,18 @@ def log(msg: str, verbose: bool = True):
         print(f"  → {msg}", file=sys.stderr)
 
 
-def call_api(command: str, *args) -> dict | list | None:
-    """Call apple_music_api.sh and parse JSON output."""
+def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None:
+    """Call apple_music_api.sh and parse JSON output.
+
+    If raw=True, return stdout as a stripped string instead of parsing JSON.
+    """
     cmd = [str(API_SCRIPT), command] + list(args)
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             return None
+        if raw:
+            return result.stdout.strip()
         return json.loads(result.stdout)
     except (json.JSONDecodeError, subprocess.TimeoutExpired, FileNotFoundError):
         return None
@@ -78,7 +83,7 @@ def save_cache(profile: dict, path: str):
 
 def detect_storefront() -> str:
     """Auto-detect user's storefront via API."""
-    result = call_api("user-storefront")
+    result = call_api("user-storefront", raw=True)
     if isinstance(result, str) and len(result) == 2:
         return result
     return "us"
@@ -189,11 +194,11 @@ def compute_mainstream_score(top_artists: list[dict], chart_data: dict | None) -
 
 
 def extract_ratings(ratings_data: dict | None) -> tuple[list[str], list[str]]:
-    """Extract loved and disliked song/artist IDs from ratings."""
+    """Extract loved and disliked song IDs from ratings."""
     loved_ids = []
-    disliked_artist_ids = []
+    disliked_song_ids = []
     if not ratings_data or "data" not in ratings_data:
-        return loved_ids, disliked_artist_ids
+        return loved_ids, disliked_song_ids
     for item in ratings_data.get("data", []):
         attrs = item.get("attributes", {})
         value = attrs.get("value", 0)
@@ -201,8 +206,8 @@ def extract_ratings(ratings_data: dict | None) -> tuple[list[str], list[str]]:
         if value == 1 and rid:
             loved_ids.append(rid)
         elif value == -1 and rid:
-            disliked_artist_ids.append(rid)
-    return loved_ids, disliked_artist_ids
+            disliked_song_ids.append(rid)
+    return loved_ids, disliked_song_ids
 
 
 def extract_replay_highlights(summary_data: dict | None, milestones_data: dict | None) -> dict:
@@ -302,10 +307,48 @@ def build_profile(args) -> dict:
     # ── Analyze ───────────────────────────────────────────────────
     log("Analyzing patterns...", verbose)
 
-    # Combine recent tracks + library songs for analysis
+    # Combine all available track data for analysis
     all_tracks = list(recent_tracks)
     if lib_songs and "data" in lib_songs:
         all_tracks.extend(lib_songs["data"])
+
+    # Extract tracks from heavy rotation (albums/playlists contain nested tracks)
+    if heavy_rotation and "data" in heavy_rotation:
+        for item in heavy_rotation["data"]:
+            rels = item.get("relationships", {})
+            for rel_key in ("tracks", "songs"):
+                rel_tracks = rels.get(rel_key, {}).get("data", [])
+                all_tracks.extend(rel_tracks)
+            # If no nested tracks, use the item itself (it has artistName, genreNames, etc.)
+            if not any(rels.get(k, {}).get("data") for k in ("tracks", "songs")):
+                all_tracks.append(item)
+
+    # Extract tracks from recommendation groups
+    if recs and "data" in recs:
+        for group in recs["data"]:
+            rels = group.get("relationships", {})
+            for rel_key in ("contents", "recommendations"):
+                for container in rels.get(rel_key, {}).get("data", []):
+                    container_rels = container.get("relationships", {})
+                    for track_key in ("tracks", "songs"):
+                        rec_tracks = container_rels.get(track_key, {}).get("data", [])
+                        all_tracks.extend(rec_tracks)
+
+    # Extract library song IDs (catalog IDs where available)
+    library_song_ids = []
+    if lib_songs and "data" in lib_songs:
+        for song in lib_songs["data"]:
+            # Prefer catalog ID from the include=catalog relationship
+            catalog_rel = song.get("relationships", {}).get("catalog", {}).get("data", [])
+            if catalog_rel:
+                cat_id = catalog_rel[0].get("id")
+                if cat_id:
+                    library_song_ids.append(cat_id)
+                    continue
+            # Fall back to the song's own ID
+            sid = song.get("id", "")
+            if sid:
+                library_song_ids.append(sid)
 
     genres = extract_genres(all_tracks)
     artists = extract_artists(all_tracks)
@@ -313,7 +356,7 @@ def build_profile(args) -> dict:
     energy = infer_energy_profile(genres)
     variety = compute_variety_score(artists, all_tracks)
     mainstream = compute_mainstream_score(artists, chart_data)
-    loved, disliked = extract_ratings(ratings)
+    loved, disliked_songs = extract_ratings(ratings)
     replay = extract_replay_highlights(replay_summary, replay_milestones)
 
     # Listening velocity — compare library size to recent diversity
@@ -337,16 +380,18 @@ def build_profile(args) -> dict:
         "mainstream_score": mainstream,
         "listening_velocity": velocity,
         "loved_track_ids": loved,
-        "disliked_artist_ids": disliked,
+        "disliked_song_ids": disliked_songs,
+        "library_song_ids": library_song_ids,
         "replay_highlights": replay,
         "data_summary": {
             "recent_tracks": len(recent_tracks),
             "library_artists": la_count,
             "library_songs": ls_count,
+            "library_song_ids_extracted": len(library_song_ids),
             "heavy_rotation_items": hr_count,
             "recommendation_groups": rec_count,
             "loved_count": len(loved),
-            "disliked_count": len(disliked),
+            "disliked_count": len(disliked_songs),
         },
         "storefront": sf,
         "generated_at": datetime.now(timezone.utc).isoformat(),

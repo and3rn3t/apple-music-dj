@@ -3,10 +3,12 @@
 ## Strategy 1: Deep Cuts Explorer
 
 ### Philosophy
+
 Surface tracks the user would love but hasn't found — from artists they already know.
 Be the friend who says "have you heard this album track?"
 
 ### Algorithm
+
 1. Identify seed artists — top 10–15 from taste profile
 2. Fetch full discography for each
 3. Fetch "Top Songs" view to identify the obvious hits
@@ -18,10 +20,12 @@ Be the friend who says "have you heard this album track?"
 6. Sequence for flow
 
 ### Naming
+
 - "Deep Cuts · Radiohead & Björk · Feb 2026"
 - "Hidden Gems · Your Indie Favorites · Feb 2026"
 
 ### Description Template
+
 "Tracks you probably haven't heard from the artists you love. No singles, no greatest hits — just the good stuff hiding in the deep end."
 
 ---
@@ -29,6 +33,7 @@ Be the friend who says "have you heard this album track?"
 ## Strategy 2: Mood / Activity Matcher
 
 ### Philosophy
+
 Music is functional. This strategy starts from the use case and filters through the user's
 taste so it doesn't feel like a generic Spotify editorial playlist.
 
@@ -48,16 +53,19 @@ taste so it doesn't feel like a generic Spotify editorial playlist.
 | Anger / Catharsis | 130-180 BPM | Very High | Aggressive | Metal, Punk, Hard rock |
 
 ### Personalization Key
+
 If the user loves indie rock, their "workout" playlist should feature high-energy indie,
 not generic EDM. Always cross-reference the mood attributes with the user's genre preferences.
 
 ### Activity Sequencing
+
 - **Workout**: warm up (3 tracks) → build (5) → peak (10) → cool down (3)
 - **Focus**: steady energy throughout, no jarring transitions
 - **Party**: warm up → peak → wind down
 - **Sleep**: progressively quieter and slower
 
 ### Target Length
+
 25–40 tracks (1.5–2.5 hours) unless specified.
 
 ---
@@ -65,10 +73,12 @@ not generic EDM. Always cross-reference the mood attributes with the user's genr
 ## Strategy 3: Trend Radar
 
 ### Philosophy
+
 Stay current without losing identity. Everyone gets the same trending playlist — Trend Radar
 filters it through the user's unique taste.
 
 ### Algorithm
+
 1. Fetch overall top charts for user's storefront
 2. Fetch genre-specific charts for user's top 3 genres
 3. Score: `taste_match × chart_rank_weight`
@@ -79,16 +89,20 @@ filters it through the user's unique taste.
 6. Target: 15–25 tracks
 
 ### Genre Filtering
+
 ```
 GET /v1/catalog/{sf}/charts?types=songs&genre={id}&limit=25
 ```
+
 Fetch for each top genre, merge, deduplicate.
 
 ### Naming
+
 - "Trending For You · Hip-Hop & R&B · Feb 2026"
 - "Fresh Picks · Rock & Alt · Feb 2026"
 
 ### Description Template
+
 "What's trending right now, filtered through your taste. A few wildcards in there too."
 
 ---
@@ -96,10 +110,12 @@ Fetch for each top genre, merge, deduplicate.
 ## Strategy 4: Constellation Discovery
 
 ### Philosophy
+
 Start from familiar territory and gradually pull the listener into new musical space.
 Named "Constellation" because it maps outward from known stars to discover new ones nearby.
 
 ### Algorithm
+
 1. Take user's top 5 artists from taste profile
 2. For each, search catalog with `artist name + primary genre terms`
    (e.g., "Radiohead alternative experimental rock") to surface adjacent artists
@@ -121,19 +137,22 @@ Tracks 19–25: FRONTIER ZONE — Genre-adjacent, unexpected picks.
                User thinks: "This is different but actually cool."
 ```
 
-7. The key insight: the familiar opening builds trust, so the user keeps listening
+1. The key insight: the familiar opening builds trust, so the user keeps listening
    long enough to reach the discoveries at the end.
 
 ### When to Combine
+
 Constellation works well combined with Deep Cuts: "I love Radiohead but I've heard
 everything" → Deep cuts from Radiohead catalog + constellation discovery of adjacent
 experimental/art-rock artists.
 
 ### Naming
+
 - "New Horizons · Beyond Shoegaze · Feb 2026"
 - "Constellation · From Radiohead Outward · Feb 2026"
 
 ### Description Template
+
 "Starting from the artists you love, this playlist gradually pulls you into new territory.
 Stick with it — the best discoveries are toward the end."
 
@@ -153,9 +172,107 @@ Tracks 29–30: CLOSER — Memorable, leaves listener satisfied.
 ```
 
 ### Hard Rules
+
 - No artist repeat within 5 tracks
 - Max 2 songs from same album
 - Alternate familiar and unfamiliar artists
 - No explicit content unless user's library contains explicit
 - Exclude disliked artists (from ratings data)
 - End on a strong note, never a filler track
+
+---
+
+## Concert Prep Strategy
+
+### Philosophy
+
+Get the listener ready for a live show. They should know the hits (likely setlist material)
+AND have a few deep cuts in their pocket so they appreciate the full performance.
+
+### Algorithm
+
+1. Search for the artist by name
+2. Fetch top songs (15 tracks — these are the probable setlist core)
+3. Fetch discography → extract album tracks NOT in top songs (deep cuts)
+4. Take up to 10 deep cuts
+5. Sequence: top songs first (what they'll hear live), deep cuts after (context)
+6. Create playlist with descriptive name: "Concert Prep · {Artist} · {Mon YYYY}"
+
+### Sequencing
+
+- Tracks 1–15: Top songs / setlist material (high confidence)
+- Tracks 16–25: Deep cuts to build familiarity with the full catalog
+- Opener should be the artist's most recognizable track
+
+### Naming
+
+- "Concert Prep · Phoebe Bridgers · Feb 2026"
+
+### Description Template
+
+"Get ready for {artist} live. {N} essential tracks + {M} deep cuts to know before the show."
+
+---
+
+## Daily Song Drop Strategy
+
+### Philosophy
+
+One song, one reason, zero friction. The best daily engagement is the simplest.
+The user opens their day with a single track that feels hand-picked.
+
+### Algorithm
+
+1. Use date-based seed for deterministic daily selection
+2. Source candidates from:
+   - Deep cuts from top artists (tracks NOT in library)
+   - Trending tracks matching user's genre preferences
+3. Score each candidate:
+   - Deep cuts get a slight boost (more interesting picks)
+   - Time-of-day genre matching (morning → gentle, evening → energetic)
+   - Random factor for variety
+4. Select from top-scoring tier
+
+### What Should I Listen To Right Now? (instant variant)
+
+Same algorithm but adds strong time-of-day weighting:
+
+| Time | Period | Energy | Genre Boost |
+|---|---|---|---|
+| 5–9 AM | Morning | Medium | Indie Pop, Folk, Acoustic |
+| 9–12 PM | Mid-morning | Med-High | Alternative, Indie, Electronic |
+| 12–2 PM | Midday | Medium | Pop, R&B/Soul, Jazz |
+| 2–5 PM | Afternoon | Med-High | Rock, Indie, Hip-Hop |
+| 5–8 PM | Evening | High | Pop, Dance, Rock, Hip-Hop |
+| 8–11 PM | Night | Med-Low | Ambient, Jazz, Singer/Songwriter |
+| 11 PM–5 AM | Late Night | Low | Ambient, Classical, Lo-fi |
+
+### Naming
+
+Daily drop has no playlist — it's a single track recommendation.
+The "now" variant also returns just one track with context.
+
+---
+
+## New Release Radar Strategy
+
+### Philosophy
+
+Stay current without losing identity. Go beyond just "your artists" — also surface
+genre-adjacent new releases the user would never find on their own.
+
+### Algorithm
+
+1. Extract top 20 artists from taste profile
+2. For each, fetch recent albums (last 7 days)
+3. Also search for new releases in user's top 3 genres
+4. Deduplicate by album ID
+5. Optionally: create a playlist with one track from each new release
+
+### Naming
+
+- "New Releases · Feb 24, 2026"
+
+### Description Template
+
+"Fresh releases from your artists and genre discoveries. {N} tracks."

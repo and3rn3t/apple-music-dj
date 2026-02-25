@@ -8,13 +8,23 @@ playlists directly in your Apple Music library.
 
 - **Taste DNA Analysis** — Profiles your listening from recently played, heavy rotation, library,
   ratings, recommendations, and Apple Music Replay annual stats
-- **4 Playlist Strategies:**
+- **5 Playlist Strategies:**
   - **Deep Cuts** — Hidden gems from artists you already love
   - **Mood/Activity** — Playlists for any vibe, filtered through your taste
   - **Trend Radar** — What's charting, filtered for what you'd actually like
   - **Constellation Discovery** — Gradually expands from familiar artists into new territory
-- **Playlist Refresh** — Evolve existing playlists by swapping stale tracks for fresh ones
-- **Cron Auto-Playlists** — Weekly discovery, trending, or workout refresh on a schedule
+  - **Playlist Refresh** — Evolve existing playlists by swapping stale tracks for fresh ones
+- **Taste DNA Card** — Shareable visual summary of your listener identity and archetype
+- **Compatibility Score** — How well does your taste match an artist (or another user)?
+- **Listening Insights** — Timeline, streaks, milestones, and deep year-in-review
+- **Catalog Gap Analysis** — Find albums you're missing from artists you love
+- **Album Deep Dive** — Track-by-track breakdown: singles vs deep cuts, discography context
+- **Artist Rabbit Hole** — Chain exploration from one artist outward into new territory
+- **Daily Song Drop** — One perfect track per day with a reason why
+- **What Should I Listen To Right Now?** — Context-aware instant pick based on time of day
+- **Concert Prep** — Top songs + deep cuts playlist for upcoming shows
+- **New Release Radar** — Personalized scan of new releases from your artists and genres
+- **Cron Auto-Playlists** — Weekly discovery, daily song drops, new release watch on a schedule
 - **Direct Integration** — Playlists appear instantly in Apple Music on all your devices
 
 ## Quick Start
@@ -39,12 +49,23 @@ scripts/apple_music_api.sh verify
 ### 3. Use It
 
 Talk naturally:
+
 - "Analyze my Apple Music taste"
+- "Show me my taste card"
 - "Make me a workout playlist"
 - "Find deep cuts from my favorite artists"
 - "What's trending that I'd actually like?"
 - "Surprise me with something new"
 - "Refresh my focus playlist"
+- "How compatible am I with Tyler, the Creator?"
+- "What albums am I missing from Radiohead?"
+- "Tell me about In Rainbows"
+- "Take me on a rabbit hole from Björk"
+- "Give me one song for today"
+- "What should I listen to right now?"
+- "I'm seeing Phoebe Bridgers next week"
+- "Any new releases from my artists?"
+- "How was my 2025 in music?"
 - "Set up a weekly discovery playlist every Monday"
 
 ## File Structure
@@ -56,12 +77,19 @@ apple-music-dj/
 ├── references/
 │   ├── auth-setup.md                  # Token setup walkthrough
 │   ├── api-reference.md               # Apple Music API endpoint reference
-│   └── playlist-strategies.md         # Deep playbook for all 4 strategies
+│   └── playlist-strategies.md         # Deep playbook for all strategies
 └── scripts/
-    ├── apple_music_api.sh             # Bash API wrapper (20 commands)
+    ├── apple_music_api.sh             # Bash API wrapper (25+ commands, retry logic)
     ├── taste_profiler.py              # Python taste analysis with caching & Replay
     ├── build_playlist.sh              # Playlist creation & refresh
-    └── generate_dev_token.py          # JWT generator
+    ├── generate_dev_token.py          # JWT generator
+    ├── taste_card.py                  # Shareable Taste DNA Card (SVG/text)
+    ├── compatibility.py               # Taste compatibility scoring
+    ├── listening_insights.py          # Timeline, streaks, year in review
+    ├── catalog_explorer.py            # Gap analysis, album dive, rabbit hole
+    ├── daily_pick.py                  # Daily song drop & instant recommendation
+    ├── concert_prep.sh                # Concert prep playlist builder
+    └── new_releases.sh                # Personalized new release radar
 ```
 
 ## Architecture
@@ -78,12 +106,18 @@ Taste Analysis (Python)
     │  ├─ Recommendations
     │  └─ Replay summaries (annual stats)
     │
-    ▼
-Strategy Selection
-    │  ├─ Deep Cuts Explorer
-    │  ├─ Mood / Activity Matcher
-    │  ├─ Trend Radar
-    │  └─ Constellation Discovery
+    ├──────────────────────────────┐
+    ▼                              ▼
+Strategy Selection            Engagement Features
+    │  ├─ Deep Cuts Explorer       ├─ Taste DNA Card
+    │  ├─ Mood / Activity          ├─ Compatibility Score
+    │  ├─ Trend Radar              ├─ Listening Insights
+    │  └─ Constellation Discovery  ├─ Catalog Gap Analysis
+    │                              ├─ Album Deep Dive
+    │                              ├─ Artist Rabbit Hole
+    │                              ├─ Daily Song Drop
+    │                              ├─ Concert Prep
+    │                              └─ New Release Radar
     │
     ▼
 Playlist Assembly (sequencing, dedup, quality gates)
@@ -107,6 +141,10 @@ Playlist live on all user's devices
 - Music User Token expires ~6 months, no refresh flow
 - Replay data not available in all regions
 - Rate limits undocumented (~20 req/s safe)
+
+## Author
+
+**Andernet** (Matthew Anderson) — <and3rn3t@icloud.com>
 
 ## License
 

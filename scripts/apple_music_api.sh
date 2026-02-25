@@ -19,10 +19,41 @@ require_user_token() {
 }
 
 # ── HTTP helpers ──────────────────────────────────────────────────
+_retry() {
+  # Retry a curl command with exponential backoff on 429 responses.
+  # Usage: _retry curl_args...
+  local max_retries=3
+  local delay=1
+  local attempt=0
+  local tmpfile
+  tmpfile=$(mktemp /tmp/am_api_XXXXXX)
+
+  while (( attempt <= max_retries )); do
+    local http_code
+    http_code=$(curl -sS -o "$tmpfile" -w '%{http_code}' "$@") || true
+    if [[ "$http_code" == "429" && attempt -lt max_retries ]]; then
+      (( attempt++ ))
+      echo "WARN: Rate limited (429). Retrying in ${delay}s (attempt ${attempt}/${max_retries})..." >&2
+      sleep "$delay"
+      (( delay *= 2 ))
+    else
+      cat "$tmpfile"
+      rm -f "$tmpfile"
+      if [[ "$http_code" =~ ^[45] ]]; then
+        return 1
+      fi
+      return 0
+    fi
+  done
+  cat "$tmpfile"
+  rm -f "$tmpfile"
+  return 1
+}
+
 _get() {
   # Personalized request (both tokens)
   require_user_token
-  curl -sS --fail-with-body \
+  _retry \
     -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
     -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
     "${BASE}${1}"
@@ -31,14 +62,14 @@ _get() {
 _get_catalog() {
   # Catalog-only request (dev token only)
   require_dev_token
-  curl -sS --fail-with-body \
+  _retry \
     -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
     "${BASE}${1}"
 }
 
 _post() {
   require_user_token
-  curl -sS --fail-with-body -X POST \
+  _retry -X POST \
     -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
     -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
     -H "Content-Type: application/json" \
@@ -48,7 +79,7 @@ _post() {
 
 _post_file() {
   require_user_token
-  curl -sS --fail-with-body -X POST \
+  _retry -X POST \
     -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
     -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
     -H "Content-Type: application/json" \
@@ -178,6 +209,29 @@ cmd_artist_top() {
   _get_catalog "/v1/catalog/${sf}/artists/${id}?views=top-songs" | jq .
 }
 
+cmd_artist_detail() {
+  local sf="${1:?Usage: artist-detail <storefront> <artist_id>}"
+  local id="${2:?Usage: artist-detail <storefront> <artist_id>}"
+  _get_catalog "/v1/catalog/${sf}/artists/${id}?include=albums,genres" | jq .
+}
+
+cmd_album_tracks() {
+  local sf="${1:?Usage: album-tracks <storefront> <album_id>}"
+  local id="${2:?Usage: album-tracks <storefront> <album_id>}"
+  _get_catalog "/v1/catalog/${sf}/albums/${id}?include=tracks" | jq .
+}
+
+cmd_song_detail() {
+  local sf="${1:?Usage: song-detail <storefront> <song_id>}"
+  local id="${2:?Usage: song-detail <storefront> <song_id>}"
+  _get_catalog "/v1/catalog/${sf}/songs/${id}?include=artists,albums" | jq .
+}
+
+cmd_library_playlists() {
+  local limit="${1:-25}"
+  _get "/v1/me/library/playlists?limit=${limit}" | jq .
+}
+
 cmd_playlist_tracks() {
   local pid="${1:?Usage: playlist-tracks <playlist_library_id>}"
   _get "/v1/me/library/playlists/${pid}/tracks?limit=100" | jq .
@@ -223,6 +277,10 @@ case "$cmd" in
   charts)            cmd_charts "$@" ;;
   artist-albums)     cmd_artist_albums "$@" ;;
   artist-top)        cmd_artist_top "$@" ;;
+  artist-detail)     cmd_artist_detail "$@" ;;
+  album-tracks)      cmd_album_tracks "$@" ;;
+  song-detail)       cmd_song_detail "$@" ;;
+  library-playlists) cmd_library_playlists "$@" ;;
   playlist-tracks)   cmd_playlist_tracks "$@" ;;
   create-playlist)   cmd_create_playlist "$@" ;;
   add-to-playlist)   cmd_add_to_playlist "$@" ;;
@@ -241,6 +299,7 @@ Personalized (require both tokens):
   ratings [type]                      Loved/disliked (songs|albums|playlists)
   library-artists [limit]             Library artists
   library-songs [limit]               Library songs (with catalog IDs)
+  library-playlists [limit]           Library playlists
   recommendations                     Personalized recommendations
   replay-summary [year]               Replay / Music Summaries
   replay-milestones [year]            Replay milestones
@@ -253,6 +312,9 @@ Catalog (require dev token only):
   charts <storefront> [genre_id]      Top charts
   artist-albums <storefront> <id>     Artist discography
   artist-top <storefront> <id>        Artist top songs
+  artist-detail <storefront> <id>     Artist info with albums & genres
+  album-tracks <storefront> <id>      Album with track listing
+  song-detail <storefront> <id>       Song with artist & album info
 EOF
     ;;
 esac

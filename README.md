@@ -77,7 +77,8 @@ apple-music-dj/
 ├── references/
 │   ├── auth-setup.md                  # Token setup walkthrough
 │   ├── api-reference.md               # Apple Music API endpoint reference
-│   └── playlist-strategies.md         # Deep playbook for all strategies
+│   ├── playlist-strategies.md         # Deep playbook for all strategies
+│   └── troubleshooting.md             # Step-by-step fixes for common issues
 └── scripts/
     ├── apple_music_api.sh             # Bash API wrapper (25+ commands, retry logic)
     ├── taste_profiler.py              # Python taste analysis with caching & Replay
@@ -161,6 +162,9 @@ stored or logged by the skill.
 - Music User Token expires ~6 months, no refresh flow
 - Replay data not available in all regions
 - Rate limits undocumented (~20 req/s safe)
+
+See [references/troubleshooting.md](references/troubleshooting.md) for step-by-step fixes
+to common issues.
 
 ## Contributing
 

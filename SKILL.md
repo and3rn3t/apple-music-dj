@@ -393,6 +393,7 @@ some bands in that orbit" — not "Here's an awesome playlist just for you!"
 | `references/auth-setup.md` | User needs token setup help |
 | `references/api-reference.md` | Need endpoint details, formats, genre IDs |
 | `references/playlist-strategies.md` | Before executing any playlist strategy |
+| `references/troubleshooting.md` | User hits errors, things aren't working |
 
 ## Privacy & Data Disclosure
 

@@ -27,6 +27,7 @@ _retry() {
   local attempt=0
   local tmpfile
   tmpfile=$(mktemp /tmp/am_api_XXXXXX)
+  trap 'rm -f "$tmpfile"' RETURN
 
   while (( attempt <= max_retries )); do
     local http_code
@@ -38,16 +39,12 @@ _retry() {
       (( delay *= 2 ))
     else
       cat "$tmpfile"
-      rm -f "$tmpfile"
       if [[ "$http_code" =~ ^[45] ]]; then
         return 1
       fi
       return 0
     fi
   done
-  cat "$tmpfile"
-  rm -f "$tmpfile"
-  return 1
 }
 
 _get() {
@@ -88,7 +85,7 @@ _post_file() {
 }
 
 _urlencode() {
-  python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$1"
+  jq -sRr @uri <<< "$1"
 }
 
 # ── Commands ──────────────────────────────────────────────────────
@@ -150,6 +147,10 @@ cmd_heavy_rotation() {
 
 cmd_ratings() {
   local rtype="${1:-songs}"  # songs, albums, playlists, music-videos
+  case "$rtype" in
+    songs|albums|playlists|music-videos) ;;
+    *) echo "ERROR: Invalid rating type: $rtype (allowed: songs, albums, playlists, music-videos)" >&2; return 1 ;;
+  esac
   _get "/v1/me/ratings/${rtype}?limit=100" | jq .
 }
 

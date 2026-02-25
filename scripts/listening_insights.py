@@ -17,30 +17,14 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 
 import argparse
 import json
-import subprocess
 import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _common import call_api, load_profile
+
 SCRIPT_DIR = Path(__file__).parent
-API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
-
-
-def call_api(command: str, *args) -> dict | list | None:
-    cmd = [str(API_SCRIPT), command] + list(args)
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            return None
-        return json.loads(result.stdout)
-    except (json.JSONDecodeError, subprocess.TimeoutExpired, FileNotFoundError):
-        return None
-
-
-def load_profile(path: str) -> dict:
-    with open(path) as f:
-        return json.load(f)
 
 
 # ── Listening Timeline ───────────────────────────────────────────

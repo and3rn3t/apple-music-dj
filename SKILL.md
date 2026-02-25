@@ -434,6 +434,7 @@ stores, and transmits.
 
 | Script | Lang | Purpose |
 |---|---|---|
+| `scripts/_common.py` | Python | Shared utilities (API calls, profile loading, search) |
 | `scripts/apple_music_api.sh` | Bash | API wrapper — all endpoints, retry logic |
 | `scripts/taste_profiler.py` | Python | Taste DNA profiler with caching |
 | `scripts/build_playlist.sh` | Bash | Playlist creation & refresh (create or add tracks) |

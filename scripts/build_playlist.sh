@@ -8,7 +8,7 @@
 # song_ids_file: one Apple Music catalog song ID per line
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 MODE="${1:?Usage: build_playlist.sh <create|refresh> ...}"
 

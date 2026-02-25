@@ -80,6 +80,7 @@ apple-music-dj/
 │   ├── playlist-strategies.md         # Deep playbook for all strategies
 │   └── troubleshooting.md             # Step-by-step fixes for common issues
 └── scripts/
+    ├── _common.py                     # Shared Python utilities (API, profile, search)
     ├── apple_music_api.sh             # Bash API wrapper (25+ commands, retry logic)
     ├── taste_profiler.py              # Python taste analysis with caching & Replay
     ├── build_playlist.sh              # Playlist creation & refresh

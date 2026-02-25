@@ -172,7 +172,7 @@ echo "Checking cache..."
 cache_file="${HOME}/.apple-music-dj/taste_profile.json"
 if [[ -f "$cache_file" ]]; then
     cache_size=$(wc -c < "$cache_file" | tr -d ' ')
-    cache_mod=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$cache_file" 2>/dev/null || stat -c "%y" "$cache_file" 2>/dev/null | cut -d. -f1)
+    cache_mod=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$cache_file" 2>/dev/null || { stat -c "%y" "$cache_file" 2>/dev/null | cut -d. -f1; })
     echo "  $PASS Taste profile cached ($cache_size bytes, last modified: $cache_mod)"
 else
     echo "  $WARN No cached taste profile yet"

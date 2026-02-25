@@ -21,38 +21,20 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 
 import argparse
 import json
-import os
-import subprocess
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _common import call_api
+
 SCRIPT_DIR = Path(__file__).parent
-API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
 
 
 def log(msg: str, verbose: bool = True):
     if verbose:
         print(f"  → {msg}", file=sys.stderr)
-
-
-def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None:
-    """Call apple_music_api.sh and parse JSON output.
-
-    If raw=True, return stdout as a stripped string instead of parsing JSON.
-    """
-    cmd = [str(API_SCRIPT), command] + list(args)
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            return None
-        if raw:
-            return result.stdout.strip()
-        return json.loads(result.stdout)
-    except (json.JSONDecodeError, subprocess.TimeoutExpired, FileNotFoundError):
-        return None
 
 
 def load_cache(path: str, max_age_hours: int) -> dict | None:
@@ -226,8 +208,13 @@ def extract_replay_highlights(summary_data: dict | None, milestones_data: dict |
     for s in summaries:
         attrs = s.get("attributes", {})
         year = attrs.get("year", "")
-        top_genre = None
-        # Try to extract top genre from summary
+        # Extract top genre from summary
+        top_genres_list = attrs.get("topGenres", [])
+        top_genre = top_genres_list[0].get("name") if top_genres_list else None
+        # Fall back to genreNames if topGenres not available
+        if not top_genre:
+            genre_names = attrs.get("genreNames", [])
+            top_genre = genre_names[0] if genre_names else None
         top_artists = attrs.get("topArtists", [])
         if top_artists:
             highlights["top_artist_all_time"] = top_artists[0].get("name")

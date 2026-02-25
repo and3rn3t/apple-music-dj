@@ -15,28 +15,12 @@ Requires: APPLE_MUSIC_DEV_TOKEN (for artist mode).
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
 
+from _common import call_api, load_profile
+
 SCRIPT_DIR = Path(__file__).parent
-API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
-
-
-def call_api(command: str, *args) -> dict | list | None:
-    cmd = [str(API_SCRIPT), command] + list(args)
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            return None
-        return json.loads(result.stdout)
-    except (json.JSONDecodeError, subprocess.TimeoutExpired, FileNotFoundError):
-        return None
-
-
-def load_profile(path: str) -> dict:
-    with open(path) as f:
-        return json.load(f)
 
 
 # ── Genre Similarity ─────────────────────────────────────────────
@@ -84,19 +68,16 @@ def genre_overlap_score(genres_a: list[dict], genres_b: list[dict]) -> float:
 
 def resolve_artist(sf: str, query: str) -> dict | None:
     """Search for an artist by name and return their catalog data."""
-    result = call_api("search", sf, query, "artists")
-    if not result:
+    from _common import search_artist
+    found = search_artist(sf, query)
+    if not found:
         return None
-    artists = result.get("results", {}).get("artists", {}).get("data", [])
-    if not artists:
-        return None
-    artist = artists[0]
-    artist_id = artist.get("id", "")
+    artist_id = found.get("id", "")
     # Fetch full detail
     detail = call_api("artist-detail", sf, artist_id)
     if detail and "data" in detail:
         return detail["data"][0]
-    return artist
+    return found
 
 
 def get_artist_genre_profile(artist: dict) -> list[dict]:

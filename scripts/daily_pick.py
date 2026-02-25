@@ -3,8 +3,8 @@
 daily_pick.py — Daily Song Drop & "What Should I Listen To Right Now?"
 
 Modes:
-  daily     Select one track for today's daily song drop with rationale.
-  now       Context-aware instant recommendation (time of day, recent patterns).
+  daily     Select one track for today's daily song drop with rationale
+  now       Context-aware instant recommendation (time of day, recent patterns)
 
 Usage:
   python3 daily_pick.py daily <profile.json> <storefront>
@@ -18,29 +18,13 @@ import argparse
 import hashlib
 import json
 import random
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _common import call_api, load_profile
+
 SCRIPT_DIR = Path(__file__).parent
-API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
-
-
-def call_api(command: str, *args) -> dict | list | None:
-    cmd = [str(API_SCRIPT), command] + list(args)
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            return None
-        return json.loads(result.stdout)
-    except (json.JSONDecodeError, subprocess.TimeoutExpired, FileNotFoundError):
-        return None
-
-
-def load_profile(path: str) -> dict:
-    with open(path) as f:
-        return json.load(f)
 
 
 # ── Seeded Random (deterministic per day) ────────────────────────
@@ -204,8 +188,9 @@ def cmd_now(profile: dict, sf: str) -> dict:
         return {"error": "No candidates found.", "context": context}
 
     # Score with time context
+    rng = random.Random()  # fresh RNG for "now" mode
     for c in candidates:
-        c["_score"] = score_candidate(c, profile, context)
+        c["_score"] = score_candidate(c, profile, context, rng=rng)
 
     candidates.sort(key=lambda c: c["_score"], reverse=True)
     pick = candidates[0]

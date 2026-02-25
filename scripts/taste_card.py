@@ -77,14 +77,6 @@ def _escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _stat_label(key: str) -> str:
-    labels = {
-        "variety_score": "Variety",
-        "mainstream_score": "Mainstream",
-    }
-    return labels.get(key, key.replace("_", " ").title())
-
-
 def generate_svg(profile: dict) -> str:
     archetype, arch_desc = detect_archetype(profile)
     top_genres = profile.get("genre_distribution", [])[:6]

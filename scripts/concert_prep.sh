@@ -10,7 +10,7 @@
 # Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 API="$SCRIPT_DIR/apple_music_api.sh"
 
 SF="${1:?Usage: concert_prep.sh <storefront> <artist_name> [playlist_name]}"
@@ -46,27 +46,29 @@ albums_result=$("$API" artist-albums "$SF" "$artist_id")
 album_ids=$(echo "$albums_result" | jq -r '.data[].id' 2>/dev/null | head -5)
 
 deep_cut_ids=""
-for album_id in $album_ids; do
+while IFS= read -r album_id; do
+  [[ -z "$album_id" ]] && continue
   album_detail=$("$API" album-tracks "$SF" "$album_id" 2>/dev/null) || continue
   # Get tracks that are NOT in the top songs
-  album_tracks=$(echo "$album_detail" | jq -r '
-    .data[0].relationships.tracks.data[].id // empty
-  ' 2>/dev/null)
-  for tid in $album_tracks; do
+  while IFS= read -r tid; do
+    [[ -z "$tid" ]] && continue
     # Check if this track is already in top songs
-    if ! echo "$top_ids" | grep -q "^${tid}$"; then
-      deep_cut_ids="${deep_cut_ids}${tid}\n"
+    if ! printf '%s\n' "$top_ids" | grep -q "^${tid}$"; then
+      deep_cut_ids+="${tid}"$'\n'
     fi
-  done
-done
+  done <<< "$(echo "$album_detail" | jq -r '
+    .data[0].relationships.tracks.data[].id // empty
+  ' 2>/dev/null)"
+done <<< "$album_ids"
 
-# Take up to 10 deep cuts
-deep_cut_ids=$(echo -e "$deep_cut_ids" | grep -v '^\s*$' | head -10)
+# Take up to 10 deep cuts (deduplicated)
+deep_cut_ids=$(printf '%s\n' "$deep_cut_ids" | awk 'NF && !seen[$0]++' | head -10)
 deep_count=$(echo "$deep_cut_ids" | grep -c -v '^\s*$' 2>/dev/null || echo 0)
 echo "  Got ${deep_count} deep cuts" >&2
 
 # ── Combine: top songs first, then deep cuts ─────────────────────
 TMPIDS=$(mktemp /tmp/concert_ids_XXXXXX.txt)
+trap 'rm -f "$TMPIDS"' EXIT
 {
   echo "$top_ids"
   echo "$deep_cut_ids"
@@ -86,7 +88,6 @@ DESC="Get ready for ${artist_name} live. ${top_count} essential tracks + ${deep_
 
 # ── Build and create ─────────────────────────────────────────────
 "$SCRIPT_DIR/build_playlist.sh" create "$PLAYLIST_NAME" "$DESC" "$TMPIDS"
-rm -f "$TMPIDS"
 
 echo "" >&2
 echo "✅ Concert prep playlist created!" >&2

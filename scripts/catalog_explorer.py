@@ -17,44 +17,12 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
 
+from _common import call_api, load_profile, search_artist, search_album, get_album_tracks
+
 SCRIPT_DIR = Path(__file__).parent
-API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
-
-
-def call_api(command: str, *args) -> dict | list | None:
-    cmd = [str(API_SCRIPT), command] + list(args)
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            return None
-        return json.loads(result.stdout)
-    except (json.JSONDecodeError, subprocess.TimeoutExpired, FileNotFoundError):
-        return None
-
-
-def load_profile(path: str) -> dict:
-    with open(path) as f:
-        return json.load(f)
-
-
-def search_artist(sf: str, name: str) -> dict | None:
-    result = call_api("search", sf, name, "artists")
-    if not result:
-        return None
-    artists = result.get("results", {}).get("artists", {}).get("data", [])
-    return artists[0] if artists else None
-
-
-def search_album(sf: str, query: str) -> dict | None:
-    result = call_api("search", sf, query, "albums")
-    if not result:
-        return None
-    albums = result.get("results", {}).get("albums", {}).get("data", [])
-    return albums[0] if albums else None
 
 
 # ── Catalog Gap Analysis ─────────────────────────────────────────
@@ -103,12 +71,7 @@ def cmd_gap_analysis(profile: dict, sf: str) -> dict:
                 continue
 
             # Check if user has any tracks from this album
-            album_detail = call_api("album-tracks", sf, album_id)
-            album_tracks = []
-            if album_detail and "data" in album_detail:
-                for ad in album_detail["data"]:
-                    track_rel = ad.get("relationships", {}).get("tracks", {}).get("data", [])
-                    album_tracks = track_rel
+            album_tracks = get_album_tracks(sf, album_id)
 
             owned_count = 0
             for track in album_tracks:
@@ -160,22 +123,19 @@ def cmd_album_dive(sf: str, album_query: str, artist_hint: str | None = None) ->
     attrs = album.get("attributes", {})
 
     # Fetch full album with tracks
-    full = call_api("album-tracks", sf, album_id)
+    track_data = get_album_tracks(sf, album_id)
     tracks = []
-    if full and "data" in full:
-        for ad in full["data"]:
-            track_rel = ad.get("relationships", {}).get("tracks", {}).get("data", [])
-            for t in track_rel:
-                ta = t.get("attributes", {})
-                tracks.append({
-                    "number": ta.get("trackNumber"),
-                    "name": ta.get("name", "Unknown"),
-                    "duration_ms": ta.get("durationInMillis"),
-                    "id": t.get("id"),
-                    "artist": ta.get("artistName", ""),
-                    "has_features": " feat" in ta.get("name", "").lower() or
-                                   "&" in ta.get("artistName", ""),
-                })
+    for t in track_data:
+        ta = t.get("attributes", {})
+        tracks.append({
+            "number": ta.get("trackNumber"),
+            "name": ta.get("name", "Unknown"),
+            "duration_ms": ta.get("durationInMillis"),
+            "id": t.get("id"),
+            "artist": ta.get("artistName", ""),
+            "has_features": " feat" in ta.get("name", "").lower() or
+                           "&" in ta.get("artistName", ""),
+        })
 
     # Get artist's top songs to identify which are "hits" vs "deep cuts"
     artist_name = attrs.get("artistName", "")

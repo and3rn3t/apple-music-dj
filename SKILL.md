@@ -20,6 +20,16 @@ version: 3.0.0
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
+license: MIT
+tags:
+  - music
+  - apple-music
+  - playlists
+  - personalization
+  - musickit
+  - discovery
+category: music
+icon: assets/icon.png
 metadata:
   openclaw:
     requires:
@@ -31,6 +41,13 @@ metadata:
         - jq
         - python3
     primaryEnv: APPLE_MUSIC_DEV_TOKEN
+    platforms:
+      - macos
+      - linux
+    minVersion: "1.0.0"
+    permissions:
+      - network
+      - filesystem
 ---
 
 # Apple Music DJ 🎧
@@ -377,6 +394,41 @@ some bands in that orbit" — not "Here's an awesome playlist just for you!"
 | `references/api-reference.md` | Need endpoint details, formats, genre IDs |
 | `references/playlist-strategies.md` | Before executing any playlist strategy |
 
+## Privacy & Data Disclosure
+
+This skill accesses user data through the Apple Music API. Here's exactly what it reads,
+stores, and transmits.
+
+**Data read (via Apple Music API):**
+
+| Data | Endpoint | Purpose |
+|---|---|---|
+| Recently played tracks | `/v1/me/recent/played/tracks` | Current taste signal |
+| Heavy rotation | `/v1/me/history/heavy-rotation` | Repeated listening signal |
+| Library songs & artists | `/v1/me/library/songs`, `/artists` | Broad taste mapping |
+| Ratings (loved/disliked) | `/v1/me/ratings/songs` | Explicit preferences |
+| Recommendations | `/v1/me/recommendations` | Apple's inference data |
+| Replay summaries | `/v1/me/music-summaries` | Annual listening stats |
+| Storefront | `/v1/me/storefront` | Region detection |
+
+**Data stored locally:**
+
+| File | Contents | Location |
+|---|---|---|
+| Taste profile cache | Aggregated taste data (JSON) | `~/.apple-music-dj/taste_profile.json` |
+| Taste DNA Card | Generated SVG image | User-specified output path |
+
+**Data NOT collected:**
+- No data is sent to any third-party service
+- No analytics or telemetry
+- No data leaves the user's machine (all API calls go directly to Apple)
+- Tokens are never logged or stored by the skill (env vars only)
+
+**Cache management:**
+- Taste profile cache has a 7-day TTL by default
+- Cache can be cleared: `rm -rf ~/.apple-music-dj/`
+- Use `--max-age 0` to bypass cache and fetch fresh data
+
 ## Scripts
 
 | Script | Lang | Purpose |
@@ -392,6 +444,7 @@ some bands in that orbit" — not "Here's an awesome playlist just for you!"
 | `scripts/daily_pick.py` | Python | Daily song drop & instant recommendation |
 | `scripts/concert_prep.sh` | Bash | Concert prep playlist builder |
 | `scripts/new_releases.sh` | Bash | Personalized new release radar |
+| `scripts/verify_setup.sh` | Bash | Setup verification (prereqs, tokens, API) |
 
 ## Example Interactions
 

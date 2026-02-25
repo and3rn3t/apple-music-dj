@@ -89,7 +89,8 @@ apple-music-dj/
     ├── catalog_explorer.py            # Gap analysis, album dive, rabbit hole
     ├── daily_pick.py                  # Daily song drop & instant recommendation
     ├── concert_prep.sh                # Concert prep playlist builder
-    └── new_releases.sh                # Personalized new release radar
+    ├── new_releases.sh                # Personalized new release radar
+    └── verify_setup.sh                # Setup verification checker
 ```
 
 ## Architecture
@@ -129,11 +130,30 @@ Apple Music API → POST /v1/me/library/playlists
 Playlist live on all user's devices
 ```
 
+## Setup Verification
+
+After installing, run the setup checker to verify everything is ready:
+
+```bash
+scripts/verify_setup.sh
+```
+
+This checks: required tools (`curl`, `jq`, `python3`), Python version, environment
+variables, script presence, API connectivity, and cache status.
+
 ## Requirements
 
 - Apple Developer Program ($99/year)
 - `curl`, `jq`, `python3` (no pip packages for core — `PyJWT` only for token generation)
 - Active Apple Music subscription
+
+## Privacy
+
+This skill reads your Apple Music listening data (recently played, library, ratings, Replay)
+via the official Apple Music API. All data stays on your machine — nothing is sent to
+third-party services. The only local cache is `~/.apple-music-dj/taste_profile.json`
+(7-day TTL, deletable anytime). Tokens are read from environment variables and never
+stored or logged by the skill.
 
 ## API Limitations
 
@@ -141,6 +161,10 @@ Playlist live on all user's devices
 - Music User Token expires ~6 months, no refresh flow
 - Replay data not available in all regions
 - Rate limits undocumented (~20 req/s safe)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## Author
 

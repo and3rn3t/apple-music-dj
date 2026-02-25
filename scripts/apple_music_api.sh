@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# apple_music_api.sh — Complete Apple Music API wrapper
+# Every endpoint referenced in SKILL.md is implemented here.
+set -euo pipefail
+
+BASE="https://api.music.apple.com"
+
+# ── Token check ───────────────────────────────────────────────────
+require_dev_token() {
+  if [[ -z "${APPLE_MUSIC_DEV_TOKEN:-}" ]]; then
+    echo "ERROR: APPLE_MUSIC_DEV_TOKEN not set. See references/auth-setup.md" >&2; exit 1
+  fi
+}
+require_user_token() {
+  require_dev_token
+  if [[ -z "${APPLE_MUSIC_USER_TOKEN:-}" ]]; then
+    echo "ERROR: APPLE_MUSIC_USER_TOKEN not set. See references/auth-setup.md" >&2; exit 1
+  fi
+}
+
+# ── HTTP helpers ──────────────────────────────────────────────────
+_get() {
+  # Personalized request (both tokens)
+  require_user_token
+  curl -sS --fail-with-body \
+    -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
+    -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
+    "${BASE}${1}"
+}
+
+_get_catalog() {
+  # Catalog-only request (dev token only)
+  require_dev_token
+  curl -sS --fail-with-body \
+    -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
+    "${BASE}${1}"
+}
+
+_post() {
+  require_user_token
+  curl -sS --fail-with-body -X POST \
+    -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
+    -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "${2}" \
+    "${BASE}${1}"
+}
+
+_post_file() {
+  require_user_token
+  curl -sS --fail-with-body -X POST \
+    -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
+    -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d @"${2}" \
+    "${BASE}${1}"
+}
+
+_urlencode() {
+  python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$1"
+}
+
+# ── Commands ──────────────────────────────────────────────────────
+
+cmd_verify() {
+  require_user_token
+  echo "Verifying developer token..." >&2
+  if _get_catalog "/v1/storefronts/us" | jq -e '.data[0].id' >/dev/null 2>&1; then
+    echo "  ✅ Developer token valid" >&2
+  else
+    echo "  ❌ Developer token failed — regenerate JWT" >&2; exit 1
+  fi
+  echo "Verifying user token..." >&2
+  if _get "/v1/me/recent/played/tracks?limit=1" | jq -e '.data' >/dev/null 2>&1; then
+    echo "  ✅ Music User Token valid" >&2
+  else
+    echo "  ❌ Music User Token failed (expired? re-authorize)" >&2; exit 1
+  fi
+  echo "Both tokens verified. 🎧" >&2
+}
+
+cmd_user_storefront() {
+  # Detect storefront from the user's account
+  require_user_token
+  local resp
+  resp=$(_get "/v1/me/storefront" 2>/dev/null) || true
+  local sf
+  sf=$(echo "$resp" | jq -r '.data[0].id // empty' 2>/dev/null)
+  if [[ -n "$sf" ]]; then
+    echo "$sf"
+  else
+    echo "us"  # fallback
+    echo "WARN: Could not detect storefront, defaulting to 'us'" >&2
+  fi
+}
+
+cmd_recent_tracks() {
+  # Paginate through all 50 available recent tracks
+  require_user_token
+  local all="[]"
+  for offset in 0 10 20 30 40; do
+    local page
+    page=$(_get "/v1/me/recent/played/tracks?types=songs&limit=10&offset=${offset}" 2>/dev/null) || break
+    local data
+    data=$(echo "$page" | jq -c '.data // []')
+    [[ "$data" == "[]" ]] && break
+    all=$(echo "$all" "$data" | jq -s '.[0] + .[1]')
+  done
+  echo "$all" | jq .
+}
+
+cmd_recent_played() {
+  _get "/v1/me/recent/played?limit=10" | jq .
+}
+
+cmd_heavy_rotation() {
+  _get "/v1/me/history/heavy-rotation?limit=10" | jq .
+}
+
+cmd_ratings() {
+  local rtype="${1:-songs}"  # songs, albums, playlists, music-videos
+  _get "/v1/me/ratings/${rtype}?limit=100" | jq .
+}
+
+cmd_library_artists() {
+  local limit="${1:-25}"
+  _get "/v1/me/library/artists?limit=${limit}" | jq .
+}
+
+cmd_library_songs() {
+  local limit="${1:-25}"
+  _get "/v1/me/library/songs?limit=${limit}&include=catalog" | jq .
+}
+
+cmd_recommendations() {
+  _get "/v1/me/recommendations?limit=10" | jq .
+}
+
+cmd_replay_summary() {
+  local year="${1:-}"
+  local endpoint="/v1/me/music-summaries"
+  [[ -n "$year" ]] && endpoint="${endpoint}?filter[year]=${year}"
+  _get "$endpoint" | jq .
+}
+
+cmd_replay_milestones() {
+  local year="${1:-}"
+  local endpoint="/v1/me/music-summaries/milestones"
+  [[ -n "$year" ]] && endpoint="${endpoint}?filter[year]=${year}"
+  _get "$endpoint" | jq .
+}
+
+cmd_search() {
+  local sf="${1:?Usage: search <storefront> <query> [types]}"
+  local query="${2:?Usage: search <storefront> <query> [types]}"
+  local types="${3:-songs,artists,albums}"
+  local encoded
+  encoded=$(_urlencode "$query")
+  _get_catalog "/v1/catalog/${sf}/search?term=${encoded}&types=${types}&limit=25" | jq .
+}
+
+cmd_charts() {
+  local sf="${1:?Usage: charts <storefront> [genre_id]}"
+  local genre=""
+  [[ -n "${2:-}" ]] && genre="&genre=${2}"
+  _get_catalog "/v1/catalog/${sf}/charts?types=songs,albums&limit=25${genre}" | jq .
+}
+
+cmd_artist_albums() {
+  local sf="${1:?Usage: artist-albums <storefront> <artist_id>}"
+  local id="${2:?Usage: artist-albums <storefront> <artist_id>}"
+  _get_catalog "/v1/catalog/${sf}/artists/${id}/albums?limit=25" | jq .
+}
+
+cmd_artist_top() {
+  local sf="${1:?Usage: artist-top <storefront> <artist_id>}"
+  local id="${2:?Usage: artist-top <storefront> <artist_id>}"
+  _get_catalog "/v1/catalog/${sf}/artists/${id}?views=top-songs" | jq .
+}
+
+cmd_playlist_tracks() {
+  local pid="${1:?Usage: playlist-tracks <playlist_library_id>}"
+  _get "/v1/me/library/playlists/${pid}/tracks?limit=100" | jq .
+}
+
+cmd_create_playlist() {
+  local json_file="${1:?Usage: create-playlist <json_file>}"
+  [[ ! -f "$json_file" ]] && { echo "ERROR: File not found: ${json_file}" >&2; exit 1; }
+  echo "Creating playlist..." >&2
+  local resp
+  resp=$(_post_file "/v1/me/library/playlists" "$json_file")
+  echo "$resp" | jq .
+  local name
+  name=$(echo "$resp" | jq -r '.data[0].attributes.name // "Unknown"')
+  echo "✅ Playlist '${name}' created in Apple Music!" >&2
+}
+
+cmd_add_to_playlist() {
+  local pid="${1:?Usage: add-to-playlist <playlist_id> <json_file>}"
+  local json_file="${2:?Usage: add-to-playlist <playlist_id> <json_file>}"
+  [[ ! -f "$json_file" ]] && { echo "ERROR: File not found: ${json_file}" >&2; exit 1; }
+  echo "Adding tracks to playlist ${pid}..." >&2
+  _post_file "/v1/me/library/playlists/${pid}/tracks" "$json_file"
+  echo "✅ Tracks added." >&2
+}
+
+# ── Dispatch ──────────────────────────────────────────────────────
+cmd="${1:-help}"; shift 2>/dev/null || true
+
+case "$cmd" in
+  verify)            cmd_verify ;;
+  user-storefront)   cmd_user_storefront ;;
+  recent-tracks)     cmd_recent_tracks ;;
+  recent-played)     cmd_recent_played ;;
+  heavy-rotation)    cmd_heavy_rotation ;;
+  ratings)           cmd_ratings "$@" ;;
+  library-artists)   cmd_library_artists "$@" ;;
+  library-songs)     cmd_library_songs "$@" ;;
+  recommendations)   cmd_recommendations ;;
+  replay-summary)    cmd_replay_summary "$@" ;;
+  replay-milestones) cmd_replay_milestones "$@" ;;
+  search)            cmd_search "$@" ;;
+  charts)            cmd_charts "$@" ;;
+  artist-albums)     cmd_artist_albums "$@" ;;
+  artist-top)        cmd_artist_top "$@" ;;
+  playlist-tracks)   cmd_playlist_tracks "$@" ;;
+  create-playlist)   cmd_create_playlist "$@" ;;
+  add-to-playlist)   cmd_add_to_playlist "$@" ;;
+  help|*)
+    cat <<'EOF'
+Apple Music DJ — API Wrapper
+
+Usage: apple_music_api.sh <command> [args...]
+
+Personalized (require both tokens):
+  verify                              Validate tokens
+  user-storefront                     Detect user's storefront
+  recent-tracks                       Recently played (up to 50 tracks)
+  recent-played                       Recently played resources
+  heavy-rotation                      Heavy rotation albums/playlists
+  ratings [type]                      Loved/disliked (songs|albums|playlists)
+  library-artists [limit]             Library artists
+  library-songs [limit]               Library songs (with catalog IDs)
+  recommendations                     Personalized recommendations
+  replay-summary [year]               Replay / Music Summaries
+  replay-milestones [year]            Replay milestones
+  playlist-tracks <playlist_id>       Tracks in a library playlist
+  create-playlist <json_file>         Create playlist from JSON spec
+  add-to-playlist <id> <json_file>    Add tracks to existing playlist
+
+Catalog (require dev token only):
+  search <storefront> <query> [types] Search catalog
+  charts <storefront> [genre_id]      Top charts
+  artist-albums <storefront> <id>     Artist discography
+  artist-top <storefront> <id>        Artist top songs
+EOF
+    ;;
+esac

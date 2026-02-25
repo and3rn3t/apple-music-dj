@@ -1,0 +1,25 @@
+# Credentials — NEVER commit these
+*.p8
+.env
+.env.*
+
+# Cached data
+taste_profile.json
+/tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

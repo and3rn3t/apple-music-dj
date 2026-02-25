@@ -22,7 +22,7 @@ def main():
         import jwt
     except ImportError:
         print("ERROR: PyJWT not installed.", file=sys.stderr)
-        print("  Install: pip3 install PyJWT cryptography --break-system-packages", file=sys.stderr)
+        print("  Install: python3 -m venv .venv && .venv/bin/pip install PyJWT cryptography", file=sys.stderr)
         sys.exit(1)
 
     key_id = os.environ.get("APPLE_KEY_ID")
@@ -36,25 +36,36 @@ def main():
         sys.exit(1)
 
     if not os.path.isfile(key_path):
-        print(f"ERROR: Key file not found: {key_path}", file=sys.stderr)
+        print(f"ERROR: Key file not found: {os.path.basename(key_path)}", file=sys.stderr)
+        print("  Check that APPLE_PRIVATE_KEY_PATH points to a valid .p8 file.", file=sys.stderr)
         sys.exit(1)
 
-    expiry = int(os.environ.get("APPLE_TOKEN_EXPIRY", 15552000))
+    try:
+        expiry = int(os.environ.get("APPLE_TOKEN_EXPIRY", 15552000))
+    except ValueError:
+        print("ERROR: APPLE_TOKEN_EXPIRY must be a number (seconds)", file=sys.stderr)
+        sys.exit(1)
+
     with open(key_path, "r") as f:
         private_key = f.read()
 
     now = int(time.time())
-    token = jwt.encode(
-        {"iss": team_id, "iat": now, "exp": now + expiry},
-        private_key, algorithm="ES256",
-        headers={"alg": "ES256", "kid": key_id},
-    )
+    try:
+        token = jwt.encode(
+            {"iss": team_id, "iat": now, "exp": now + expiry},
+            private_key, algorithm="ES256",
+            headers={"alg": "ES256", "kid": key_id},
+        )
+    except Exception as e:
+        print(f"ERROR: Failed to sign token: {e}", file=sys.stderr)
+        print("  Verify your .p8 key file is a valid ES256 private key.", file=sys.stderr)
+        sys.exit(1)
     if isinstance(token, bytes):
         token = token.decode("utf-8")
 
     print(token)
     print(f"\n✅ Token generated. Expires in {expiry // 86400} days.", file=sys.stderr)
-    print(f"  export APPLE_MUSIC_DEV_TOKEN=\"{token}\"", file=sys.stderr)
+    print(f"  export APPLE_MUSIC_DEV_TOKEN=\"<token printed to stdout>\"", file=sys.stderr)
 
 if __name__ == "__main__":
     main()

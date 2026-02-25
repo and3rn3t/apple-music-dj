@@ -14,6 +14,20 @@ SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
 
 
+def require_env_tokens():
+    """Verify Apple Music tokens are set. Call before any API usage."""
+    import os
+    missing = []
+    if not os.environ.get("APPLE_MUSIC_DEV_TOKEN"):
+        missing.append("APPLE_MUSIC_DEV_TOKEN")
+    if not os.environ.get("APPLE_MUSIC_USER_TOKEN"):
+        missing.append("APPLE_MUSIC_USER_TOKEN")
+    if missing:
+        print(f"ERROR: Missing env vars: {', '.join(missing)}", file=sys.stderr)
+        print("  See references/auth-setup.md for configuration steps.", file=sys.stderr)
+        sys.exit(1)
+
+
 def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None:
     """Call apple_music_api.sh and parse JSON output.
 
@@ -23,14 +37,22 @@ def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
+            stderr_msg = result.stderr.strip()
+            if stderr_msg:
+                print(f"WARN: API call '{command}' failed: {stderr_msg}", file=sys.stderr)
             return None
         if raw:
             return result.stdout.strip()
         return json.loads(result.stdout)
+    except FileNotFoundError:
+        print(f"ERROR: API script not found: {API_SCRIPT}", file=sys.stderr)
+        print("  Ensure apple_music_api.sh is in the scripts/ directory.", file=sys.stderr)
+        return None
     except subprocess.TimeoutExpired:
         print(f"WARN: API call timed out: {command} {' '.join(args)}", file=sys.stderr)
         return None
-    except (json.JSONDecodeError, FileNotFoundError):
+    except json.JSONDecodeError:
+        print(f"WARN: Malformed JSON from API call: {command}", file=sys.stderr)
         return None
 
 
@@ -45,7 +67,7 @@ def load_profile(path: str) -> dict:
         sys.exit(1)
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON in profile: {path}", file=sys.stderr)
-        print(f"  {e}", file=sys.stderr)
+        print(f"  Parse error at line {e.lineno}, column {e.colno}", file=sys.stderr)
         print("  Try regenerating: python3 scripts/taste_profiler.py --max-age 0", file=sys.stderr)
         sys.exit(1)
 

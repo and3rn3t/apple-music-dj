@@ -27,7 +27,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import call_api
+from _common import call_api, require_env_tokens
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -53,11 +53,13 @@ def load_cache(path: str, max_age_hours: int) -> dict | None:
 
 
 def save_cache(profile: dict, path: str):
-    """Write profile to cache file."""
+    """Write profile to cache file with restrictive permissions."""
+    import os as _os
     try:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "w") as f:
+        fd = _os.open(str(p), _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+        with _os.fdopen(fd, "w") as f:
             json.dump(profile, f, indent=2)
     except OSError as e:
         print(f"WARN: Could not save cache: {e}", file=sys.stderr)
@@ -236,6 +238,7 @@ def extract_replay_highlights(summary_data: dict | None, milestones_data: dict |
 
 def build_profile(args) -> dict:
     """Main profile builder. Fetches all data and assembles the taste DNA."""
+    require_env_tokens()
     verbose = args.verbose
 
     print("🎧 Building your Taste DNA profile...", file=sys.stderr)
@@ -338,6 +341,11 @@ def build_profile(args) -> dict:
                 library_song_ids.append(sid)
 
     genres = extract_genres(all_tracks)
+
+    if not all_tracks:
+        print("ERROR: No track data retrieved from API. Check your tokens and network.", file=sys.stderr)
+        print("  Run: scripts/verify_setup.sh  to diagnose issues.", file=sys.stderr)
+        sys.exit(1)
     artists = extract_artists(all_tracks)
     eras = extract_eras(all_tracks)
     energy = infer_energy_profile(genres)
@@ -421,8 +429,11 @@ def main():
 
     # Output
     if args.output:
+        import os as _os
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.output).write_text(output)
+        fd = _os.open(str(args.output), _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+        with _os.fdopen(fd, "w") as f:
+            f.write(output)
         print(f"Profile written to {args.output}", file=sys.stderr)
     else:
         print(output)

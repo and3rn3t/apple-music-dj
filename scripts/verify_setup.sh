@@ -64,8 +64,7 @@ echo ""
 echo "Checking environment variables..."
 
 if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" ]]; then
-    token_len=${#APPLE_MUSIC_DEV_TOKEN}
-    echo "  $PASS APPLE_MUSIC_DEV_TOKEN — set ($token_len chars)"
+    echo "  $PASS APPLE_MUSIC_DEV_TOKEN — set"
 else
     echo "  $FAIL APPLE_MUSIC_DEV_TOKEN — NOT SET"
     echo "       See references/auth-setup.md for instructions"
@@ -126,11 +125,15 @@ echo ""
 echo "Checking API connectivity..."
 
 if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" && -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; then
+    auth_cfg=$(mktemp "${TMPDIR:-/tmp}/am_verify_XXXXXX")
+    chmod 600 "$auth_cfg"
+    printf -- '-H "Authorization: Bearer %s"\n-H "Music-User-Token: %s"\n' \
+        "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN" > "$auth_cfg"
     http_code=$(curl -s -o /dev/null -w "%{http_code}" \
-        -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
-        -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
+        -K "$auth_cfg" \
         "https://api.music.apple.com/v1/me/recent/played/tracks?limit=1" \
         2>/dev/null || echo "000")
+    rm -f "$auth_cfg"
 
     case "$http_code" in
         200)

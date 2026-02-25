@@ -26,12 +26,17 @@ _retry() {
   local delay=1
   local attempt=0
   local tmpfile
-  tmpfile=$(mktemp /tmp/am_api_XXXXXX)
-  trap 'rm -f "$tmpfile"' RETURN
+  tmpfile=$(mktemp "${TMPDIR:-/tmp}/am_api_XXXXXX")
+  trap 'rm -f "$tmpfile"' RETURN INT TERM EXIT
 
   while (( attempt <= max_retries )); do
     local http_code
-    http_code=$(curl -sS -o "$tmpfile" -w '%{http_code}' "$@") || true
+    local curl_exit=0
+    http_code=$(curl -sS -o "$tmpfile" -w '%{http_code}' "$@") || curl_exit=$?
+    if [[ $curl_exit -ne 0 && "$http_code" != "429" ]]; then
+      echo "ERROR: curl failed (exit $curl_exit). Check network connectivity." >&2
+      return 1
+    fi
     if [[ "$http_code" == "429" && attempt -lt max_retries ]]; then
       (( attempt++ ))
       echo "WARN: Rate limited (429). Retrying in ${delay}s (attempt ${attempt}/${max_retries})..." >&2
@@ -47,28 +52,43 @@ _retry() {
   done
 }
 
+_make_auth_config() {
+  # Write tokens to a curl config file so they don't appear in ps output.
+  local cfgfile
+  cfgfile=$(mktemp "${TMPDIR:-/tmp}/am_auth_XXXXXX")
+  chmod 600 "$cfgfile"
+  if [[ -n "${2:-}" ]]; then
+    printf -- '-H "Authorization: Bearer %s"\n-H "Music-User-Token: %s"\n' "$1" "$2" > "$cfgfile"
+  else
+    printf -- '-H "Authorization: Bearer %s"\n' "$1" > "$cfgfile"
+  fi
+  echo "$cfgfile"
+}
+
 _get() {
   # Personalized request (both tokens)
   require_user_token
-  _retry \
-    -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
-    -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
-    "${BASE}${1}"
+  local _cfg
+  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
+  trap 'rm -f "$_cfg"' RETURN INT TERM
+  _retry -K "$_cfg" "${BASE}${1}"
 }
 
 _get_catalog() {
   # Catalog-only request (dev token only)
   require_dev_token
-  _retry \
-    -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
-    "${BASE}${1}"
+  local _cfg
+  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN")
+  trap 'rm -f "$_cfg"' RETURN INT TERM
+  _retry -K "$_cfg" "${BASE}${1}"
 }
 
 _post() {
   require_user_token
-  _retry -X POST \
-    -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
-    -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
+  local _cfg
+  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
+  trap 'rm -f "$_cfg"' RETURN INT TERM
+  _retry -X POST -K "$_cfg" \
     -H "Content-Type: application/json" \
     -d "${2}" \
     "${BASE}${1}"
@@ -76,9 +96,10 @@ _post() {
 
 _post_file() {
   require_user_token
-  _retry -X POST \
-    -H "Authorization: Bearer ${APPLE_MUSIC_DEV_TOKEN}" \
-    -H "Music-User-Token: ${APPLE_MUSIC_USER_TOKEN}" \
+  local _cfg
+  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
+  trap 'rm -f "$_cfg"' RETURN INT TERM
+  _retry -X POST -K "$_cfg" \
     -H "Content-Type: application/json" \
     -d @"${2}" \
     "${BASE}${1}"
@@ -156,11 +177,13 @@ cmd_ratings() {
 
 cmd_library_artists() {
   local limit="${1:-25}"
+  [[ "$limit" =~ ^[0-9]+$ ]] || { echo "ERROR: limit must be a number" >&2; return 1; }
   _get "/v1/me/library/artists?limit=${limit}" | jq .
 }
 
 cmd_library_songs() {
   local limit="${1:-25}"
+  [[ "$limit" =~ ^[0-9]+$ ]] || { echo "ERROR: limit must be a number" >&2; return 1; }
   _get "/v1/me/library/songs?limit=${limit}&include=catalog" | jq .
 }
 
@@ -186,6 +209,7 @@ cmd_search() {
   local sf="${1:?Usage: search <storefront> <query> [types]}"
   local query="${2:?Usage: search <storefront> <query> [types]}"
   local types="${3:-songs,artists,albums}"
+  [[ "$sf" =~ ^[a-z]{2}$ ]] || { echo "ERROR: Invalid storefront code: $sf" >&2; return 1; }
   local encoded
   encoded=$(_urlencode "$query")
   _get_catalog "/v1/catalog/${sf}/search?term=${encoded}&types=${types}&limit=25" | jq .

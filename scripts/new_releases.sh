@@ -27,6 +27,10 @@ fi
 
 # Compute 7-day-ago cutoff once (macOS → Linux → Python fallback)
 CUTOFF=$(date -v-7d +%Y-%m-%d 2>/dev/null || date -d '7 days ago' +%Y-%m-%d 2>/dev/null || python3 -c "from datetime import datetime,timedelta; print((datetime.now()-timedelta(days=7)).strftime('%Y-%m-%d'))")
+if [[ -z "$CUTOFF" ]]; then
+  echo "ERROR: Could not compute date cutoff. Install GNU date or Python 3." >&2
+  exit 1
+fi
 CURRENT_YEAR=$(date +%Y)
 
 # ── Extract top artists from profile ─────────────────────────────
@@ -96,7 +100,10 @@ while IFS= read -r genre_name; do
 done <<< "$top_genres"
 
 # ── Deduplicate ──────────────────────────────────────────────────
-releases=$(echo "$releases" | jq '[group_by(.album_id) | .[] | .[0]]')
+releases=$(echo "$releases" | jq '[group_by(.album_id) | .[] | .[0]]' 2>/dev/null) || {
+  echo "ERROR: Failed to process release data" >&2
+  exit 1
+}
 total=$(echo "$releases" | jq 'length')
 
 echo "  Checked ${checked} artists, found ${total} new releases" >&2
@@ -121,7 +128,7 @@ if [[ "$CREATE_PLAYLIST" == "--create-playlist" && "$total" -gt 0 ]]; then
   echo "🎧 Creating New Releases playlist..." >&2
 
   # Collect first track from each album
-  TMPIDS=$(mktemp /tmp/new_release_ids_XXXXXX.txt)
+  TMPIDS=$(mktemp "${TMPDIR:-/tmp}/new_release_ids_XXXXXX.txt")
   trap 'rm -f "$TMPIDS"' EXIT
   while IFS= read -r album_id; do
     [[ -z "$album_id" ]] && continue

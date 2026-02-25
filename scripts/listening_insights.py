@@ -38,7 +38,9 @@ def cmd_timeline(profile: dict) -> dict:
 
     # Try to fetch multi-year Replay data
     years_data = []
-    for year in range(2019, datetime.now().year + 1):
+    current_year = datetime.now().year
+    for year in range(2019, current_year + 1):
+        print(f"  Fetching {year}...", file=sys.stderr)
         summary = call_api("replay-summary", str(year))
         if summary and "data" in summary and summary["data"]:
             year_info = {"year": year}
@@ -281,6 +283,10 @@ def main():
     elif args.command == "streaks":
         result = cmd_streaks(profile)
     elif args.command == "year-review":
+        current_year = datetime.now().year
+        if not (2015 <= args.year <= current_year):
+            print(f"ERROR: Year must be between 2015 and {current_year}", file=sys.stderr)
+            sys.exit(1)
         result = cmd_year_review(profile, args.year)
 
     print(json.dumps(result, indent=2))

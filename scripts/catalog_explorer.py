@@ -33,8 +33,11 @@ def cmd_gap_analysis(profile: dict, sf: str) -> dict:
     library_song_ids = set(profile.get("library_song_ids", []))
 
     results = []
-    for artist_entry in top_artists:
-        artist_name = artist_entry["name"]
+    for i, artist_entry in enumerate(top_artists):
+        artist_name = artist_entry.get("name")
+        if not artist_name:
+            continue
+        print(f"  Checking {artist_name} ({i+1}/{len(top_artists)})...", file=sys.stderr)
         artist_id = artist_entry.get("id")
 
         if not artist_id:
@@ -204,6 +207,7 @@ def cmd_rabbit_hole(profile: dict, sf: str, start_artist: str, depth: int = 4) -
     library_artists = {a["name"].lower() for a in profile.get("top_artists", [])}
 
     for step in range(depth):
+        print(f"  Hop {step+1}/{depth}: searching '{current_query}'...", file=sys.stderr)
         artist = search_artist(sf, current_query)
         if not artist:
             break

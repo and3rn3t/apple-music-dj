@@ -21,6 +21,8 @@ import json
 import sys
 from pathlib import Path
 
+from _common import load_profile
+
 # ── Archetype Detection ──────────────────────────────────────────
 
 ARCHETYPES = [
@@ -249,12 +251,7 @@ def main():
                         help="Output format (default: svg)")
     args = parser.parse_args()
 
-    try:
-        with open(args.profile) as f:
-            profile = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
+    profile = load_profile(args.profile)
 
     if args.format == "svg":
         result = generate_svg(profile)
@@ -262,8 +259,11 @@ def main():
         result = generate_text(profile)
 
     if args.output:
+        import os as _os
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.output).write_text(result)
+        fd = _os.open(str(args.output), _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+        with _os.fdopen(fd, "w") as f:
+            f.write(result)
         print(f"✅ Taste DNA Card written to {args.output}", file=sys.stderr)
     else:
         print(result)

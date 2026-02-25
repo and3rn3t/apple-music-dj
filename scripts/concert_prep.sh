@@ -53,7 +53,7 @@ while IFS= read -r album_id; do
   while IFS= read -r tid; do
     [[ -z "$tid" ]] && continue
     # Check if this track is already in top songs
-    if ! printf '%s\n' "$top_ids" | grep -q "^${tid}$"; then
+    if ! printf '%s\n' "$top_ids" | grep -qxF "$tid"; then
       deep_cut_ids+="${tid}"$'\n'
     fi
   done <<< "$(echo "$album_detail" | jq -r '
@@ -67,7 +67,7 @@ deep_count=$(echo "$deep_cut_ids" | grep -c -v '^\s*$' 2>/dev/null || echo 0)
 echo "  Got ${deep_count} deep cuts" >&2
 
 # ── Combine: top songs first, then deep cuts ─────────────────────
-TMPIDS=$(mktemp /tmp/concert_ids_XXXXXX.txt)
+TMPIDS=$(mktemp "${TMPDIR:-/tmp}/concert_ids_XXXXXX.txt")
 trap 'rm -f "$TMPIDS"' EXIT
 {
   echo "$top_ids"
@@ -87,7 +87,10 @@ echo "🎧 Building playlist: ${PLAYLIST_NAME} (${total} tracks)" >&2
 DESC="Get ready for ${artist_name} live. ${top_count} essential tracks + ${deep_count} deep cuts to know before the show."
 
 # ── Build and create ─────────────────────────────────────────────
-"$SCRIPT_DIR/build_playlist.sh" create "$PLAYLIST_NAME" "$DESC" "$TMPIDS"
+if ! "$SCRIPT_DIR/build_playlist.sh" create "$PLAYLIST_NAME" "$DESC" "$TMPIDS"; then
+    echo "ERROR: Failed to create concert prep playlist" >&2
+    exit 1
+fi
 
 echo "" >&2
 echo "✅ Concert prep playlist created!" >&2

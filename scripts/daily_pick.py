@@ -73,7 +73,8 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
     user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:5]]
 
     # Source 1: Deep cuts from top artists (tracks NOT in library)
-    for artist in top_artists[:5]:
+    for i, artist in enumerate(top_artists[:5]):
+        print(f"  Sourcing candidates from artist {i+1}/5...", file=sys.stderr)
         artist_id = artist.get("id")
         if not artist_id:
             continue
@@ -125,8 +126,9 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
     return candidates
 
 
-def score_candidate(candidate: dict, profile: dict, context: dict | None = None) -> float:
+def score_candidate(candidate: dict, profile: dict, context: dict | None = None, rng: random.Random | None = None) -> float:
     """Score a candidate track. Higher = better pick."""
+    _rng = rng or random.Random()
     score = 0.5  # base score
 
     # Boost deep cuts slightly (the interesting picks)
@@ -141,7 +143,7 @@ def score_candidate(candidate: dict, profile: dict, context: dict | None = None)
             score += 0.3
 
     # Add some randomness so picks vary
-    score += random.random() * 0.3
+    score += _rng.random() * 0.3
 
     return score
 
@@ -151,7 +153,6 @@ def score_candidate(candidate: dict, profile: dict, context: dict | None = None)
 def cmd_daily(profile: dict, sf: str) -> dict:
     """Pick one track for today's daily song drop."""
     rng = random.Random(daily_seed())
-    random.seed(daily_seed())
 
     candidates = get_candidates(profile, sf)
     if not candidates:
@@ -159,7 +160,7 @@ def cmd_daily(profile: dict, sf: str) -> dict:
 
     # Score all candidates
     for c in candidates:
-        c["_score"] = score_candidate(c, profile)
+        c["_score"] = score_candidate(c, profile, rng=rng)
 
     # Sort by score and pick from top tier (add deterministic variety)
     candidates.sort(key=lambda c: c["_score"], reverse=True)

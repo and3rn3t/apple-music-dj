@@ -146,8 +146,19 @@ variables, script presence, API connectivity, and cache status.
 ## Requirements
 
 - Apple Developer Program ($99/year)
-- `curl`, `jq`, `python3` (no pip packages for core — `PyJWT` only for token generation)
+- `curl`, `jq`, `python3` (3.10+) — no pip packages for core — `PyJWT` only for token generation
 - Active Apple Music subscription
+
+## Testing
+
+The project includes 156 unit tests covering all pure logic functions:
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+Tests cover: taste profiling, archetype detection, compatibility scoring, daily pick
+seeding, SVG/text card generation, and shared utilities.
 
 ## Privacy
 

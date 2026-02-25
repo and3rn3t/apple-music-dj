@@ -38,6 +38,14 @@ build/
 
 .apple-music-dj/
 
+# Testing & dev
+
+tests/
+.pytest_cache/
+.mypy_cache/
+.venv/
+pyproject.toml
+
 # Dev files
 
 CONTRIBUTING.md

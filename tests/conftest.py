@@ -1,12 +1,6 @@
 """Shared fixtures for apple-music-dj tests."""
 
-import sys
-from pathlib import Path
-
 import pytest
-
-# Add scripts/ to import path so we can import modules directly
-sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 
 # ── Sample Tracks ────────────────────────────────────────────────

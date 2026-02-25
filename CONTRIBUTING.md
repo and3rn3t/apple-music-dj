@@ -35,10 +35,11 @@ Thanks for your interest in contributing! Here's how to get started.
 
 **Python:**
 
-- Python 3.8+ compatible (no type union syntax like `X | Y`)
+- Python 3.10+ (uses `X | Y` union type syntax)
 - No pip dependencies for core scripts (stdlib only)
 - `PyJWT` is the only exception (for token generation)
 - Functions use `snake_case`, classes use `PascalCase`
+- Run tests before submitting: `python3 -m pytest tests/ -v`
 
 ### Testing Changes
 

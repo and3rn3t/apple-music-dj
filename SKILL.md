@@ -29,7 +29,7 @@ tags:
   - musickit
   - discovery
 category: music
-icon: assets/icon.png
+icon: assets/icon.svg
 metadata:
   openclaw:
     requires:

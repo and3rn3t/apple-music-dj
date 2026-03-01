@@ -6,12 +6,59 @@ Provides call_api(), load_profile(), and search helpers used across all scripts.
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
+
+DEFAULT_CONFIG_PATH = Path.home() / ".apple-music-dj" / "config.json"
+
+DEFAULT_CONFIG = {
+    "default_storefront": "auto",
+    "preferred_genres": [],
+    "excluded_artists": [],
+    "playlist_size": 30,
+    "cache_ttl_hours": 168,
+}
+
+
+def load_config(path: str | None = None) -> dict:
+    """Load user configuration from JSON, falling back to defaults.
+
+    If no path is given, looks at ~/.apple-music-dj/config.json.
+    Missing keys are filled with defaults; missing file returns all defaults.
+    """
+    config = dict(DEFAULT_CONFIG)
+    config_path = Path(path) if path else DEFAULT_CONFIG_PATH
+    if not config_path.exists():
+        return config
+    try:
+        with open(config_path) as f:
+            user_config = json.load(f)
+        if not isinstance(user_config, dict):
+            print(f"WARN: Config is not a JSON object: {config_path}", file=sys.stderr)
+            return config
+        config.update(user_config)
+        return config
+    except json.JSONDecodeError as e:
+        print(f"WARN: Invalid JSON in config: {config_path} (line {e.lineno})", file=sys.stderr)
+        return config
+    except OSError as e:
+        print(f"WARN: Could not read config: {e}", file=sys.stderr)
+        return config
+
+
+def save_config(config: dict, path: str | None = None):
+    """Write config to JSON with restrictive permissions."""
+    config_path = Path(path) if path else DEFAULT_CONFIG_PATH
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
 
 
 def require_env_tokens():

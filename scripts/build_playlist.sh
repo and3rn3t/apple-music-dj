@@ -67,10 +67,33 @@ case "$MODE" in
     fi
     ;;
 
+  remove)
+    PID="${2:?Usage: build_playlist.sh remove <playlist_id> <song_ids_file>}"
+    IDS_FILE="${3:?Usage: build_playlist.sh remove <playlist_id> <song_ids_file>}"
+    [[ ! -f "$IDS_FILE" ]] && { echo "ERROR: File not found: ${IDS_FILE}" >&2; exit 1; }
+
+    track_count=$(grep -c -v '^\s*$' "$IDS_FILE" 2>/dev/null || echo 0)
+    [[ "$track_count" -eq 0 ]] && { echo "ERROR: No song IDs in ${IDS_FILE}" >&2; exit 1; }
+
+    echo "🎧 Removing ${track_count} tracks from playlist ${PID}" >&2
+
+    tracks_json=$(grep -v '^\s*$' "$IDS_FILE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | jq -R '{"id": ., "type": "songs"}' | jq -s '.')
+
+    TMPFILE=$(mktemp "${TMPDIR:-/tmp}/playlist_remove_XXXXXX.json")
+    trap 'rm -f "$TMPFILE"' EXIT
+    jq -n --argjson tracks "$tracks_json" '{"data": $tracks}' > "$TMPFILE"
+
+    if ! "$SCRIPT_DIR/apple_music_api.sh" remove-from-playlist "$PID" "$TMPFILE"; then
+      echo "ERROR: Failed to remove tracks from playlist ${PID}" >&2
+      exit 1
+    fi
+    ;;
+
   *)
-    echo "Usage: build_playlist.sh <create|refresh> ..." >&2
+    echo "Usage: build_playlist.sh <create|refresh|remove> ..." >&2
     echo "  create <name> <description> <song_ids_file>" >&2
     echo "  refresh <playlist_id> <song_ids_file>" >&2
+    echo "  remove <playlist_id> <song_ids_file>" >&2
     exit 1
     ;;
 esac

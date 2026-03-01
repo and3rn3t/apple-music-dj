@@ -70,6 +70,11 @@ def detect_storefront() -> str:
     result = call_api("user-storefront", raw=True)
     if isinstance(result, str) and len(result) == 2:
         return result
+    print(
+        "⚠ Could not detect storefront, defaulting to 'us'. "
+        "Set APPLE_MUSIC_STOREFRONT or use --storefront to override.",
+        file=sys.stderr,
+    )
     return "us"
 
 

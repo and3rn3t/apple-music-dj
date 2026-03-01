@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from daily_pick import daily_seed, get_time_context, score_candidate
+from daily_pick import daily_seed, get_time_context, score_candidate, get_candidates, cmd_daily, cmd_now
 
 
 # ── daily_seed ───────────────────────────────────────────────────
@@ -146,3 +146,171 @@ class TestScoreCandidate:
         # This call would have crashed before the fix
         score = score_candidate(base_candidate, sample_profile, context=None, rng=rng)
         assert isinstance(score, float)
+
+
+# ── get_candidates ───────────────────────────────────────────────
+
+class TestGetCandidates:
+    def test_returns_list(self, monkeypatch, sample_profile):
+        # Mock all API calls to return empty/minimal data
+        def mock_api(cmd, *args, **kw):
+            if cmd == "artist-albums":
+                return {"data": []}
+            if cmd == "album-tracks":
+                return {"data": []}
+            if cmd == "charts":
+                return {"results": {}}
+            return None
+
+        monkeypatch.setattr("daily_pick.call_api", mock_api)
+        result = get_candidates(sample_profile, "us")
+        assert isinstance(result, list)
+
+    def test_excludes_library_songs(self, monkeypatch):
+        profile = {
+            "top_artists": [{"name": "Artist", "id": "a1"}],
+            "library_song_ids": ["t1"],
+            "genre_distribution": [{"genre": "Rock", "weight": 1.0}],
+        }
+
+        def mock_api(cmd, *args, **kw):
+            if cmd == "artist-albums":
+                return {"data": [{"id": "alb1", "attributes": {"name": "Album"}}]}
+            if cmd == "album-tracks":
+                return {
+                    "data": [{
+                        "relationships": {
+                            "tracks": {
+                                "data": [
+                                    {"id": "t1", "attributes": {"name": "In Library",
+                                                                 "artistName": "Artist",
+                                                                 "genreNames": ["Rock"]}},
+                                    {"id": "t2", "attributes": {"name": "Not In Library",
+                                                                 "artistName": "Artist",
+                                                                 "genreNames": ["Rock"]}},
+                                ]
+                            }
+                        }
+                    }]
+                }
+            if cmd == "charts":
+                return {"results": {}}
+            return None
+
+        monkeypatch.setattr("daily_pick.call_api", mock_api)
+        candidates = get_candidates(profile, "us")
+        ids = [c["id"] for c in candidates]
+        assert "t1" not in ids
+        assert "t2" in ids
+
+    def test_chart_candidates_filtered_by_genre(self, monkeypatch):
+        profile = {
+            "top_artists": [],
+            "library_song_ids": [],
+            "genre_distribution": [{"genre": "Rock", "weight": 0.5}],
+        }
+
+        def mock_api(cmd, *args, **kw):
+            if cmd == "charts":
+                return {
+                    "results": {
+                        "songs": [{
+                            "data": [
+                                {"id": "s1", "attributes": {"name": "Rock Song",
+                                                             "artistName": "A",
+                                                             "genreNames": ["Rock"]}},
+                                {"id": "s2", "attributes": {"name": "Jazz Song",
+                                                             "artistName": "B",
+                                                             "genreNames": ["Jazz"]}},
+                            ]
+                        }]
+                    }
+                }
+            return {"data": []} if cmd == "artist-albums" else None
+
+        monkeypatch.setattr("daily_pick.call_api", mock_api)
+        candidates = get_candidates(profile, "us")
+        ids = [c["id"] for c in candidates]
+        assert "s1" in ids
+        assert "s2" not in ids
+
+
+# ── cmd_daily ────────────────────────────────────────────────────
+
+class TestCmdDaily:
+    def test_returns_daily_pick(self, monkeypatch, sample_profile):
+        def mock_api(cmd, *args, **kw):
+            if cmd == "artist-albums":
+                return {"data": [{"id": "alb1", "attributes": {"name": "Album"}}]}
+            if cmd == "album-tracks":
+                return {
+                    "data": [{
+                        "relationships": {
+                            "tracks": {
+                                "data": [
+                                    {"id": "t99", "attributes": {
+                                        "name": "Song", "artistName": "Radiohead",
+                                        "genreNames": ["Rock"]
+                                    }}
+                                ]
+                            }
+                        }
+                    }]
+                }
+            if cmd == "charts":
+                return {"results": {}}
+            return None
+
+        monkeypatch.setattr("daily_pick.call_api", mock_api)
+        result = cmd_daily(sample_profile, "us")
+        assert result["type"] == "daily_song_drop"
+        assert "track" in result
+        assert "date" in result
+        assert "message" in result
+
+    def test_error_on_no_candidates(self, monkeypatch, sample_profile):
+        monkeypatch.setattr("daily_pick.call_api", lambda *a, **kw: {"data": []})
+        # Override get_candidates to return empty
+        monkeypatch.setattr("daily_pick.get_candidates", lambda *a, **kw: [])
+        result = cmd_daily(sample_profile, "us")
+        assert "error" in result
+
+
+# ── cmd_now ──────────────────────────────────────────────────────
+
+class TestCmdNow:
+    def test_returns_instant_recommendation(self, monkeypatch, sample_profile):
+        def mock_api(cmd, *args, **kw):
+            if cmd == "artist-albums":
+                return {"data": [{"id": "alb1", "attributes": {"name": "Album"}}]}
+            if cmd == "album-tracks":
+                return {
+                    "data": [{
+                        "relationships": {
+                            "tracks": {
+                                "data": [
+                                    {"id": "t99", "attributes": {
+                                        "name": "Song", "artistName": "Radiohead",
+                                        "album": "Album",
+                                        "genreNames": ["Rock"]
+                                    }}
+                                ]
+                            }
+                        }
+                    }]
+                }
+            if cmd == "charts":
+                return {"results": {}}
+            return None
+
+        monkeypatch.setattr("daily_pick.call_api", mock_api)
+        result = cmd_now(sample_profile, "us")
+        assert result["type"] == "instant_recommendation"
+        assert "context" in result
+        assert "track" in result
+        assert "message" in result
+
+    def test_error_on_no_candidates(self, monkeypatch, sample_profile):
+        monkeypatch.setattr("daily_pick.get_candidates", lambda *a, **kw: [])
+        result = cmd_now(sample_profile, "us")
+        assert "error" in result

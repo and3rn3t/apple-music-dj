@@ -105,6 +105,27 @@ _post_file() {
     "${BASE}${1}"
 }
 
+_delete() {
+  # DELETE request with JSON body (both tokens)
+  require_user_token
+  local _cfg
+  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
+  trap 'rm -f "$_cfg"' RETURN INT TERM
+  _retry -X DELETE -K "$_cfg" \
+    -H "Content-Type: application/json" \
+    -d @"${2}" \
+    "${BASE}${1}"
+}
+
+_delete_no_body() {
+  # DELETE request without body (both tokens)
+  require_user_token
+  local _cfg
+  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
+  trap 'rm -f "$_cfg"' RETURN INT TERM
+  _retry -X DELETE -K "$_cfg" "${BASE}${1}"
+}
+
 _urlencode() {
   jq -sRr @uri <<< "$1"
 }
@@ -178,13 +199,43 @@ cmd_ratings() {
 cmd_library_artists() {
   local limit="${1:-25}"
   [[ "$limit" =~ ^[0-9]+$ ]] || { echo "ERROR: limit must be a number" >&2; return 1; }
-  _get "/v1/me/library/artists?limit=${limit}" | jq .
+  local all="[]"
+  local offset=0
+  while true; do
+    local page
+    page=$(_get "/v1/me/library/artists?limit=${limit}&offset=${offset}" 2>/dev/null) || break
+    local data
+    data=$(echo "$page" | jq -c '.data // []')
+    [[ "$data" == "[]" ]] && break
+    all=$(echo "$all" "$data" | jq -s '.[0] + .[1]')
+    local count
+    count=$(echo "$data" | jq 'length')
+    [[ "$count" -lt "$limit" ]] && break
+    offset=$((offset + limit))
+    [[ $offset -ge 500 ]] && break  # safety cap
+  done
+  echo "$all" | jq '{"data": .}'
 }
 
 cmd_library_songs() {
   local limit="${1:-25}"
   [[ "$limit" =~ ^[0-9]+$ ]] || { echo "ERROR: limit must be a number" >&2; return 1; }
-  _get "/v1/me/library/songs?limit=${limit}&include=catalog" | jq .
+  local all="[]"
+  local offset=0
+  while true; do
+    local page
+    page=$(_get "/v1/me/library/songs?limit=${limit}&offset=${offset}&include=catalog" 2>/dev/null) || break
+    local data
+    data=$(echo "$page" | jq -c '.data // []')
+    [[ "$data" == "[]" ]] && break
+    all=$(echo "$all" "$data" | jq -s '.[0] + .[1]')
+    local count
+    count=$(echo "$data" | jq 'length')
+    [[ "$count" -lt "$limit" ]] && break
+    offset=$((offset + limit))
+    [[ $offset -ge 500 ]] && break  # safety cap
+  done
+  echo "$all" | jq '{"data": .}'
 }
 
 cmd_recommendations() {
@@ -252,6 +303,12 @@ cmd_song_detail() {
   _get_catalog "/v1/catalog/${sf}/songs/${id}?include=artists,albums" | jq .
 }
 
+cmd_genres() {
+  local sf="${1:?Usage: genres <storefront>}"
+  [[ "$sf" =~ ^[a-z]{2}$ ]] || { echo "ERROR: Invalid storefront code: $sf" >&2; return 1; }
+  _get_catalog "/v1/catalog/${sf}/genres" | jq .
+}
+
 cmd_library_playlists() {
   local limit="${1:-25}"
   _get "/v1/me/library/playlists?limit=${limit}" | jq .
@@ -283,6 +340,15 @@ cmd_add_to_playlist() {
   echo "✅ Tracks added." >&2
 }
 
+cmd_remove_from_playlist() {
+  local pid="${1:?Usage: remove-from-playlist <playlist_id> <json_file>}"
+  local json_file="${2:?Usage: remove-from-playlist <playlist_id> <json_file>}"
+  [[ ! -f "$json_file" ]] && { echo "ERROR: File not found: ${json_file}" >&2; exit 1; }
+  echo "Removing tracks from playlist ${pid}..." >&2
+  _delete "/v1/me/library/playlists/${pid}/tracks" "$json_file"
+  echo "✅ Tracks removed." >&2
+}
+
 # ── Dispatch ──────────────────────────────────────────────────────
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -305,10 +371,12 @@ case "$cmd" in
   artist-detail)     cmd_artist_detail "$@" ;;
   album-tracks)      cmd_album_tracks "$@" ;;
   song-detail)       cmd_song_detail "$@" ;;
+  genres)            cmd_genres "$@" ;;
   library-playlists) cmd_library_playlists "$@" ;;
   playlist-tracks)   cmd_playlist_tracks "$@" ;;
   create-playlist)   cmd_create_playlist "$@" ;;
   add-to-playlist)   cmd_add_to_playlist "$@" ;;
+  remove-from-playlist) cmd_remove_from_playlist "$@" ;;
   help|*)
     cat <<'EOF'
 Apple Music DJ — API Wrapper
@@ -331,6 +399,7 @@ Personalized (require both tokens):
   playlist-tracks <playlist_id>       Tracks in a library playlist
   create-playlist <json_file>         Create playlist from JSON spec
   add-to-playlist <id> <json_file>    Add tracks to existing playlist
+  remove-from-playlist <id> <json>    Remove tracks from playlist
 
 Catalog (require dev token only):
   search <storefront> <query> [types] Search catalog
@@ -340,6 +409,7 @@ Catalog (require dev token only):
   artist-detail <storefront> <id>     Artist info with albums & genres
   album-tracks <storefront> <id>      Album with track listing
   song-detail <storefront> <id>       Song with artist & album info
+  genres <storefront>                  List all genre categories
 EOF
     ;;
 esac

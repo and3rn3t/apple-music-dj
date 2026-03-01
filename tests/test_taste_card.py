@@ -8,8 +8,12 @@ from taste_card import (
     _top_era,
     _top_era_weight,
     detect_archetype,
+    generate_compatibility_svg,
+    generate_compatibility_text,
     generate_svg,
     generate_text,
+    generate_year_review_svg,
+    generate_year_review_text,
 )
 
 
@@ -321,4 +325,204 @@ class TestGenerateText:
 
     def test_footer_attribution(self, sample_profile):
         text = generate_text(sample_profile)
+        assert "Apple Music DJ" in text
+
+
+# ── Compatibility Card ───────────────────────────────────────────
+
+@pytest.fixture
+def sample_compat_result():
+    return {
+        "overall_score": 72,
+        "verdict": "Kindred Spirits",
+        "shared_artists": ["Radiohead", "The Weeknd"],
+        "genre_overlap": ["Alternative", "Rock"],
+        "user_a": "Alice",
+        "user_b": "Bob",
+        "unique_to_a": ["Kendrick Lamar", "Queen"],
+        "unique_to_b": ["Taylor Swift", "Drake"],
+    }
+
+
+class TestCompatibilitySvg:
+    def test_valid_svg(self, sample_compat_result):
+        svg = generate_compatibility_svg(sample_compat_result)
+        assert svg.startswith("<svg")
+        assert "</svg>" in svg
+
+    def test_contains_score(self, sample_compat_result):
+        svg = generate_compatibility_svg(sample_compat_result)
+        assert "72%" in svg
+
+    def test_contains_verdict(self, sample_compat_result):
+        svg = generate_compatibility_svg(sample_compat_result)
+        assert "Kindred Spirits" in svg
+
+    def test_contains_user_names(self, sample_compat_result):
+        svg = generate_compatibility_svg(sample_compat_result)
+        assert "Alice" in svg
+        assert "Bob" in svg
+
+    def test_contains_shared_artists(self, sample_compat_result):
+        svg = generate_compatibility_svg(sample_compat_result)
+        assert "Radiohead" in svg
+        assert "The Weeknd" in svg
+
+    def test_contains_shared_genres(self, sample_compat_result):
+        svg = generate_compatibility_svg(sample_compat_result)
+        assert "Alternative" in svg
+        assert "Rock" in svg
+
+    def test_contains_unique_artists(self, sample_compat_result):
+        svg = generate_compatibility_svg(sample_compat_result)
+        assert "Kendrick Lamar" in svg
+        assert "Taylor Swift" in svg
+
+    def test_empty_result(self):
+        svg = generate_compatibility_svg({})
+        assert svg.startswith("<svg")
+        assert "0%" in svg
+
+
+class TestCompatibilityText:
+    def test_contains_header(self, sample_compat_result):
+        text = generate_compatibility_text(sample_compat_result)
+        assert "COMPATIBILITY" in text
+
+    def test_contains_score(self, sample_compat_result):
+        text = generate_compatibility_text(sample_compat_result)
+        assert "72%" in text
+
+    def test_contains_verdict(self, sample_compat_result):
+        text = generate_compatibility_text(sample_compat_result)
+        assert "Kindred Spirits" in text
+
+    def test_contains_user_names(self, sample_compat_result):
+        text = generate_compatibility_text(sample_compat_result)
+        assert "Alice" in text
+        assert "Bob" in text
+
+    def test_shared_artists_section(self, sample_compat_result):
+        text = generate_compatibility_text(sample_compat_result)
+        assert "SHARED ARTISTS" in text
+        assert "Radiohead" in text
+
+    def test_shared_genres_section(self, sample_compat_result):
+        text = generate_compatibility_text(sample_compat_result)
+        assert "SHARED GENRES" in text
+        assert "Alternative" in text
+
+    def test_empty_result(self):
+        text = generate_compatibility_text({})
+        assert "COMPATIBILITY" in text
+        assert "0%" in text
+
+    def test_footer(self, sample_compat_result):
+        text = generate_compatibility_text(sample_compat_result)
+        assert "Apple Music DJ" in text
+
+
+# ── Year In Review Card ──────────────────────────────────────────
+
+@pytest.fixture
+def sample_year_review():
+    return {
+        "year": 2024,
+        "total_minutes": 52000,
+        "top_genre": "Alternative",
+        "top_artist": "Radiohead",
+        "top_songs": [
+            {"name": "Everything In Its Right Place", "artist": "Radiohead"},
+            {"name": "Blinding Lights", "artist": "The Weeknd"},
+            {"name": "HUMBLE.", "artist": "Kendrick Lamar"},
+        ],
+        "milestones": [
+            "Listened to 866 hours of music",
+            "Discovered 42 new artists",
+        ],
+        "insights": [
+            "Your top genre shifted from Rock to Alternative",
+            "You listened 15% more than last year",
+        ],
+    }
+
+
+class TestYearReviewSvg:
+    def test_valid_svg(self, sample_year_review):
+        svg = generate_year_review_svg(sample_year_review)
+        assert svg.startswith("<svg")
+        assert "</svg>" in svg
+
+    def test_contains_year(self, sample_year_review):
+        svg = generate_year_review_svg(sample_year_review)
+        assert "2024" in svg
+
+    def test_contains_hours(self, sample_year_review):
+        svg = generate_year_review_svg(sample_year_review)
+        assert "866" in svg  # 52000 // 60
+
+    def test_contains_top_genre(self, sample_year_review):
+        svg = generate_year_review_svg(sample_year_review)
+        assert "Alternative" in svg
+
+    def test_contains_top_artist(self, sample_year_review):
+        svg = generate_year_review_svg(sample_year_review)
+        assert "Radiohead" in svg
+
+    def test_contains_top_songs(self, sample_year_review):
+        svg = generate_year_review_svg(sample_year_review)
+        assert "Everything In Its Right Place" in svg
+
+    def test_contains_milestones(self, sample_year_review):
+        svg = generate_year_review_svg(sample_year_review)
+        assert "866 hours" in svg
+
+    def test_empty_review(self):
+        svg = generate_year_review_svg({})
+        assert svg.startswith("<svg")
+
+    def test_string_songs(self):
+        """Songs can be plain strings instead of dicts."""
+        review = {"year": 2024, "total_minutes": 1000,
+                  "top_genre": "Pop", "top_artist": "X",
+                  "top_songs": ["Song A", "Song B"]}
+        svg = generate_year_review_svg(review)
+        assert "Song A" in svg
+
+
+class TestYearReviewText:
+    def test_contains_header(self, sample_year_review):
+        text = generate_year_review_text(sample_year_review)
+        assert "YEAR IN REVIEW" in text
+        assert "2024" in text
+
+    def test_contains_hours(self, sample_year_review):
+        text = generate_year_review_text(sample_year_review)
+        assert "866" in text
+
+    def test_contains_top_genre(self, sample_year_review):
+        text = generate_year_review_text(sample_year_review)
+        assert "Alternative" in text
+
+    def test_contains_top_songs(self, sample_year_review):
+        text = generate_year_review_text(sample_year_review)
+        assert "TOP SONGS" in text
+        assert "Everything In Its Right Place" in text
+
+    def test_milestones(self, sample_year_review):
+        text = generate_year_review_text(sample_year_review)
+        assert "MILESTONES" in text
+        assert "866 hours" in text
+
+    def test_insights(self, sample_year_review):
+        text = generate_year_review_text(sample_year_review)
+        assert "INSIGHTS" in text
+        assert "shifted" in text
+
+    def test_empty_review(self):
+        text = generate_year_review_text({})
+        assert "YEAR IN REVIEW" in text
+
+    def test_footer(self, sample_year_review):
+        text = generate_year_review_text(sample_year_review)
         assert "Apple Music DJ" in text

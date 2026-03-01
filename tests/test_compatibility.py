@@ -3,6 +3,7 @@
 import pytest
 
 from compatibility import (
+    artist_compatibility,
     genre_overlap_score,
     genre_similarity,
     get_artist_genre_profile,
@@ -161,3 +162,50 @@ class TestProfileCompatibility:
         result = profile_compatibility(base, base)
         assert isinstance(result["verdict"], str)
         assert len(result["verdict"]) > 0
+
+
+# ── artist_compatibility ─────────────────────────────────────────
+
+class TestArtistCompatibility:
+    def test_existing_artist_in_library(self, monkeypatch, sample_profile):
+        """An artist already in top_artists should score high."""
+        mock_artist = {
+            "id": "a1",
+            "attributes": {"name": "Radiohead", "genreNames": ["Alternative", "Rock"]},
+        }
+
+        def mock_resolve(sf, query):
+            return mock_artist
+
+        monkeypatch.setattr("compatibility.resolve_artist", mock_resolve)
+        result = artist_compatibility(sample_profile, "us", "Radiohead")
+        assert result["compatibility_pct"] >= 85
+        assert result["already_in_library"] is True
+        assert "verdict" in result
+
+    def test_compatible_new_artist(self, monkeypatch, sample_profile):
+        mock_artist = {
+            "id": "new1",
+            "attributes": {"name": "Muse", "genreNames": ["Alternative", "Rock"]},
+        }
+
+        monkeypatch.setattr("compatibility.resolve_artist", lambda sf, q: mock_artist)
+        result = artist_compatibility(sample_profile, "us", "Muse")
+        assert result["compatibility_pct"] > 0
+        assert result["already_in_library"] is False
+        assert len(result["matching_genres"]) > 0
+
+    def test_unknown_artist_returns_error(self, monkeypatch, sample_profile):
+        monkeypatch.setattr("compatibility.resolve_artist", lambda sf, q: None)
+        result = artist_compatibility(sample_profile, "us", "Nobody")
+        assert "error" in result
+
+    def test_distant_artist_low_score(self, monkeypatch, sample_profile):
+        mock_artist = {
+            "id": "far1",
+            "attributes": {"name": "Polka King", "genreNames": ["Polka", "Accordion"]},
+        }
+
+        monkeypatch.setattr("compatibility.resolve_artist", lambda sf, q: mock_artist)
+        result = artist_compatibility(sample_profile, "us", "Polka King")
+        assert result["compatibility_pct"] < 50

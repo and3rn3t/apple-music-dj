@@ -37,10 +37,10 @@ py_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.versi
 py_major=$(echo "$py_version" | cut -d. -f1)
 py_minor=$(echo "$py_version" | cut -d. -f2)
 
-if [[ "$py_major" -ge 3 && "$py_minor" -ge 8 ]]; then
-    echo "  $PASS Python $py_version (≥ 3.8 required)"
+if [[ "$py_major" -ge 3 && "$py_minor" -ge 10 ]]; then
+    echo "  $PASS Python $py_version (≥ 3.10 required)"
 else
-    echo "  $FAIL Python $py_version (≥ 3.8 required)"
+    echo "  $FAIL Python $py_version (≥ 3.10 required)"
     errors=$((errors + 1))
 fi
 
@@ -106,6 +106,9 @@ expected_scripts=(
     "daily_pick.py"
     "concert_prep.sh"
     "new_releases.sh"
+    "playlist_health.py"
+    "strategy_engine.py"
+    "setup_cron.py"
     "verify_setup.sh"
 )
 
@@ -180,6 +183,13 @@ if [[ -f "$cache_file" ]]; then
 else
     echo "  $WARN No cached taste profile yet"
     echo "       Run: python3 scripts/taste_profiler.py"
+fi
+
+config_file="${HOME}/.apple-music-dj/config.json"
+if [[ -f "$config_file" ]]; then
+    echo "  $PASS User config found: $config_file"
+else
+    echo "  $WARN No user config (optional). Create ~/.apple-music-dj/config.json to set defaults."
 fi
 
 echo ""

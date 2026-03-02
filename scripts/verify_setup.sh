@@ -37,10 +37,10 @@ py_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.versi
 py_major=$(echo "$py_version" | cut -d. -f1)
 py_minor=$(echo "$py_version" | cut -d. -f2)
 
-if [[ "$py_major" -ge 3 && "$py_minor" -ge 10 ]]; then
-    echo "  $PASS Python $py_version (≥ 3.10 required)"
+if [[ "$py_major" -ge 3 && "$py_minor" -ge 9 ]]; then
+    echo "  $PASS Python $py_version (≥ 3.9 required)"
 else
-    echo "  $FAIL Python $py_version (≥ 3.10 required)"
+    echo "  $FAIL Python $py_version (≥ 3.9 required)"
     errors=$((errors + 1))
 fi
 
@@ -88,6 +88,45 @@ fi
 
 echo ""
 
+# ── Dev token expiry check ────────────────────────────────
+
+echo "Checking dev token expiry..."
+
+if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" ]]; then
+    # JWT is header.payload.signature — decode the payload (middle segment)
+    jwt_payload=$(echo "$APPLE_MUSIC_DEV_TOKEN" | cut -d. -f2)
+    # Add base64 padding
+    padding=$(( 4 - ${#jwt_payload} % 4 ))
+    [[ "$padding" -lt 4 ]] && jwt_payload="${jwt_payload}$(printf '=%.0s' $(seq 1 $padding))"
+
+    exp_ts=$(echo "$jwt_payload" | base64 -d 2>/dev/null | jq -r '.exp // empty' 2>/dev/null || true)
+
+    if [[ -n "$exp_ts" && "$exp_ts" =~ ^[0-9]+$ ]]; then
+        now_ts=$(date +%s)
+        remaining=$(( exp_ts - now_ts ))
+        days_remaining=$(( remaining / 86400 ))
+
+        if [[ "$remaining" -le 0 ]]; then
+            echo "  $FAIL Dev token has EXPIRED!"
+            echo "       Regenerate with: python3 scripts/generate_dev_token.py"
+            errors=$((errors + 1))
+        elif [[ "$days_remaining" -le 14 ]]; then
+            echo "  $WARN Dev token expires in ${days_remaining} day(s) — consider regenerating soon"
+            echo "       Regenerate with: python3 scripts/generate_dev_token.py"
+            warnings=$((warnings + 1))
+        else
+            echo "  $PASS Dev token valid for ${days_remaining} more day(s)"
+        fi
+    else
+        echo "  $WARN Could not decode token expiry — skipping check"
+        warnings=$((warnings + 1))
+    fi
+else
+    echo "  $WARN Skipped — APPLE_MUSIC_DEV_TOKEN not set"
+fi
+
+echo ""
+
 # ── Script files ──────────────────────────────────────────
 
 echo "Checking scripts..."
@@ -107,6 +146,7 @@ expected_scripts=(
     "concert_prep.sh"
     "new_releases.sh"
     "playlist_health.py"
+    "playlist_history.py"
     "strategy_engine.py"
     "setup_cron.py"
     "verify_setup.sh"
@@ -128,23 +168,50 @@ echo ""
 echo "Checking API connectivity..."
 
 if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" && -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; then
+    # Verify dev token
+    echo "  Verifying dev token against API..." >&2
+    auth_cfg=$(mktemp "${TMPDIR:-/tmp}/am_verify_XXXXXX")
+    chmod 600 "$auth_cfg"
+    printf -- '-H "Authorization: Bearer %s"\n' "$APPLE_MUSIC_DEV_TOKEN" > "$auth_cfg"
+    dev_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -K "$auth_cfg" \
+        "https://api.music.apple.com/v1/storefronts/us" \
+        2>/dev/null || echo "000")
+    rm -f "$auth_cfg"
+
+    case "$dev_code" in
+        200)
+            echo "  $PASS Dev token — valid (HTTP $dev_code)"
+            ;;
+        401)
+            echo "  $FAIL Dev token — invalid or expired (HTTP 401)"
+            echo "       Regenerate with: python3 scripts/generate_dev_token.py"
+            errors=$((errors + 1))
+            ;;
+        *)
+            echo "  $WARN Dev token — unexpected response (HTTP $dev_code)"
+            warnings=$((warnings + 1))
+            ;;
+    esac
+
+    # Verify user token
+    echo "  Verifying user token against API..." >&2
     auth_cfg=$(mktemp "${TMPDIR:-/tmp}/am_verify_XXXXXX")
     chmod 600 "$auth_cfg"
     printf -- '-H "Authorization: Bearer %s"\n-H "Music-User-Token: %s"\n' \
         "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN" > "$auth_cfg"
-    http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    user_code=$(curl -s -o /dev/null -w "%{http_code}" \
         -K "$auth_cfg" \
         "https://api.music.apple.com/v1/me/recent/played/tracks?limit=1" \
         2>/dev/null || echo "000")
     rm -f "$auth_cfg"
 
-    case "$http_code" in
+    case "$user_code" in
         200)
-            echo "  $PASS Apple Music API — connected (HTTP $http_code)"
+            echo "  $PASS User token — valid (HTTP $user_code)"
             ;;
         401)
-            echo "  $FAIL Dev token invalid or expired (HTTP 401)"
-            echo "       Regenerate with: python3 scripts/generate_dev_token.py"
+            echo "  $FAIL Dev token rejected by personalized endpoint (HTTP 401)"
             errors=$((errors + 1))
             ;;
         403)
@@ -161,7 +228,7 @@ if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" && -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; th
             errors=$((errors + 1))
             ;;
         *)
-            echo "  $WARN Unexpected response (HTTP $http_code)"
+            echo "  $WARN Unexpected response (HTTP $user_code)"
             warnings=$((warnings + 1))
             ;;
     esac
@@ -171,7 +238,7 @@ fi
 
 echo ""
 
-# ── Cache status ──────────────────────────────────────────
+# ── Cache & config status ─────────────────────────────────
 
 echo "Checking cache..."
 
@@ -183,6 +250,14 @@ if [[ -f "$cache_file" ]]; then
 else
     echo "  $WARN No cached taste profile yet"
     echo "       Run: python3 scripts/taste_profiler.py"
+fi
+
+sf_cache="${HOME}/.apple-music-dj/storefront.cache"
+if [[ -f "$sf_cache" ]]; then
+    sf_val=$(cat "$sf_cache" | tr -d '[:space:]')
+    echo "  $PASS Storefront cached: $sf_val"
+else
+    echo "  $WARN No storefront cache (will auto-detect on first run)"
 fi
 
 config_file="${HOME}/.apple-music-dj/config.json"

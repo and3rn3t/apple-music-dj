@@ -16,7 +16,7 @@ description: >
   "year in review", "listening stats", "what have I missed", "album deep dive", "rabbit hole",
   "concert prep", "seeing [artist] live", "daily song", "what should I listen to right now",
   or OpenClaw in the context of music.
-version: 3.0.0
+version: 3.1.0
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
@@ -444,6 +444,7 @@ stores, and transmits.
 | `scripts/listening_insights.py` | Python | Timeline, streaks, milestones, year in review |
 | `scripts/catalog_explorer.py` | Python | Gap analysis, album deep dive, artist rabbit hole |
 | `scripts/daily_pick.py` | Python | Daily song drop & instant recommendation |
+| `scripts/playlist_history.py` | Python | Playlist creation history tracking |
 | `scripts/concert_prep.sh` | Bash | Concert prep playlist builder |
 | `scripts/new_releases.sh` | Bash | Personalized new release radar |
 | `scripts/verify_setup.sh` | Bash | Setup verification (prereqs, tokens, API) |

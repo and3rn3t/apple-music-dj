@@ -28,20 +28,30 @@ Common options:
 Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 """
 
+import sys
+
+# Python version guard
+if sys.version_info < (3, 9):
+    sys.exit(
+        f"ERROR: Python 3.9+ is required (you have "
+        f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
+    )
+
 import argparse
 import json
 import random
 import subprocess
-import sys
 import tempfile
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional, Union
 
 from _common import (
-from typing import Optional, Union
     call_api,
+    filter_generic_genres,
     get_album_tracks,
+    get_storefront,
     load_config,
     load_profile,
     require_env_tokens,
@@ -230,7 +240,7 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
                     "name": name,
                     "artist": attrs.get("artistName", artist_name),
                     "album": album_attrs.get("name", ""),
-                    "genre": attrs.get("genreNames", []),
+                    "genre": filter_generic_genres(attrs.get("genreNames", [])),
                     "source": "deep_cut",
                     "reason": f"A deep cut from {artist_name} — album track you haven't heard.",
                     "_score": 0.5 + (track_num / 30),  # later tracks score slightly higher
@@ -289,7 +299,7 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                 for chart in section:
                     for item in chart.get("data", []):
                         attrs = item.get("attributes", {})
-                        item_genres = attrs.get("genreNames", [])
+                        item_genres = filter_generic_genres(attrs.get("genreNames", []))
                         tid = item.get("id", "")
                         if tid in library_ids or tid in disliked:
                             continue
@@ -323,7 +333,7 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                 attrs = track.get("attributes", {})
                 if tid in library_ids or tid in disliked:
                     continue
-                item_genres = attrs.get("genreNames", [])
+                item_genres = filter_generic_genres(attrs.get("genreNames", []))
                 match = best_genre_match(item_genres, personalized_genres)
                 if match > 0:
                     candidates.append({
@@ -375,7 +385,7 @@ def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
                         if not tid or tid in library_ids or tid in disliked or tid in seen_ids:
                             continue
                         seen_ids.add(tid)
-                        item_genres = attrs.get("genreNames", [])
+                        item_genres = filter_generic_genres(attrs.get("genreNames", []))
                         artist_name = attrs.get("artistName", "")
 
                         taste_match = best_genre_match(item_genres, user_genres)
@@ -500,7 +510,7 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
                     "name": attrs.get("name", ""),
                     "artist": disc["artist_name"],
                     "album": "",
-                    "genre": attrs.get("genreNames", []),
+                    "genre": filter_generic_genres(attrs.get("genreNames", [])),
                     "source": "constellation",
                     "zone": disc["zone"],
                     "reason": f"Discovered via {disc['seed_artist']} — {disc['zone']} zone.",
@@ -583,7 +593,7 @@ def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int =
                         if tid in existing_ids or tid in disliked:
                             continue
                         attrs = item.get("attributes", {})
-                        item_genres = attrs.get("genreNames", [])
+                        item_genres = filter_generic_genres(attrs.get("genreNames", []))
                         match = best_genre_match(item_genres, target_genres)
                         if match > 0:
                             candidates.append({
@@ -618,7 +628,7 @@ def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int =
                     "name": attrs.get("name", ""),
                     "artist": attrs.get("artistName", artist_name),
                     "album": album.get("attributes", {}).get("name", ""),
-                    "genre": attrs.get("genreNames", []),
+                    "genre": filter_generic_genres(attrs.get("genreNames", [])),
                     "source": "refresh",
                     "reason": f"New from {artist_name}, matching your playlist.",
                     "_score": 0.7,
@@ -678,11 +688,35 @@ def generate_description(strategy: str, mood: Optional[str] = None,
     return f"{desc} {track_count} tracks."
 
 
+def check_playlist_exists(name: str) -> Optional[str]:
+    """Check if a playlist with this name already exists. Returns playlist ID or None."""
+    try:
+        result = subprocess.run(
+            [str(SCRIPT_DIR / "apple_music_api.sh"), "library-playlists", "100"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            data = json.loads(result.stdout)
+            for pl in data.get("data", []):
+                if pl.get("attributes", {}).get("name") == name:
+                    return pl.get("id")
+    except Exception:
+        pass
+    return None
+
+
 def create_playlist_from_tracks(tracks: list[dict], name: str,
                                 description: str) -> bool:
     """Create a playlist in Apple Music using build_playlist.sh."""
     if not tracks:
         print("ERROR: No tracks to create playlist from.", file=sys.stderr)
+        return False
+
+    # Check for existing playlist with same name
+    existing_id = check_playlist_exists(name)
+    if existing_id:
+        print(f"⚠️  A playlist named '{name}' already exists (ID: {existing_id}).", file=sys.stderr)
+        print("   Skipping creation. Use --strategy refresh to update it.", file=sys.stderr)
         return False
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -734,10 +768,7 @@ def main():
     profile = load_profile(args.profile)
     config = load_config()
 
-    sf = args.storefront or config.get("default_storefront", "us")
-    if sf == "auto":
-        from taste_profiler import detect_storefront
-        sf = detect_storefront()
+    sf = get_storefront(args.storefront or config.get("default_storefront"))
 
     target_size = args.size or config.get("playlist_size", 30)
 
@@ -796,6 +827,14 @@ def main():
         print("Creating playlist in Apple Music...", file=sys.stderr)
         if create_playlist_from_tracks(tracks, name, description):
             print(f"✅ Playlist '{name}' created!", file=sys.stderr)
+            # Log to playlist history
+            try:
+                from playlist_history import log_playlist
+                track_ids = [t["id"] for t in tracks if t.get("id")]
+                log_playlist(name, args.strategy, track_ids)
+                print("📝 Logged to playlist history.", file=sys.stderr)
+            except Exception as e:
+                print(f"⚠️  Could not log to history: {e}", file=sys.stderr)
         else:
             print("❌ Failed to create playlist.", file=sys.stderr)
             sys.exit(1)

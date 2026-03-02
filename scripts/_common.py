@@ -2,15 +2,30 @@
 """
 _common.py — Shared utilities for Apple Music DJ scripts.
 
-Provides call_api(), load_profile(), and search helpers used across all scripts.
+Provides call_api(), load_profile(), search helpers, and token utilities
+used across all scripts.
 """
 
+import base64
 import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional, Union
+
+# ── Python version guard ──────────────────────────────────────────
+_MIN_PYTHON = (3, 9)
+if sys.version_info < _MIN_PYTHON:
+    sys.exit(
+        f"ERROR: Python {_MIN_PYTHON[0]}.{_MIN_PYTHON[1]}+ is required "
+        f"(you have {sys.version_info.major}.{sys.version_info.minor}). "
+        f"Please upgrade Python."
+    )
+
+# Genres that Apple Music puts on everything — filter these out of scoring
+GENERIC_GENRES = {"music"}
 
 SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
@@ -136,6 +151,110 @@ def search_album(sf: str, query: str) -> Optional[dict]:
         return None
     albums = result.get("results", {}).get("albums", {}).get("data", [])
     return albums[0] if albums else None
+
+
+def filter_generic_genres(genres: list[str]) -> list[str]:
+    """Remove generic genres like 'Music' that Apple puts on everything."""
+    return [g for g in genres if g.lower() not in GENERIC_GENRES]
+
+
+def check_token_expiry(warn_days: int = 14) -> Optional[dict]:
+    """Check the dev token JWT exp claim and return status.
+
+    Returns a dict with keys: expired (bool), days_remaining (int|None),
+    warning (bool), message (str). Returns None if token is not set or
+    cannot be decoded.
+    """
+    token = os.environ.get("APPLE_MUSIC_DEV_TOKEN", "")
+    if not token:
+        return None
+
+    try:
+        # JWT is header.payload.signature — decode the payload (middle segment)
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        # Add padding for base64
+        payload_b64 = parts[1]
+        padding = 4 - len(payload_b64) % 4
+        if padding != 4:
+            payload_b64 += "=" * padding
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        exp = payload.get("exp")
+        if exp is None:
+            return None
+
+        now = time.time()
+        remaining_secs = exp - now
+        days_remaining = int(remaining_secs / 86400)
+
+        if remaining_secs <= 0:
+            return {
+                "expired": True,
+                "days_remaining": 0,
+                "warning": True,
+                "message": "⛔ Dev token has EXPIRED. Regenerate with: python3 scripts/generate_dev_token.py",
+            }
+        elif days_remaining <= warn_days:
+            return {
+                "expired": False,
+                "days_remaining": days_remaining,
+                "warning": True,
+                "message": f"⚠️  Dev token expires in {days_remaining} day(s). Consider regenerating soon.",
+            }
+        else:
+            return {
+                "expired": False,
+                "days_remaining": days_remaining,
+                "warning": False,
+                "message": f"✅ Dev token valid for {days_remaining} more day(s).",
+            }
+    except Exception:
+        return None
+
+
+STOREFRONT_CACHE = Path.home() / ".apple-music-dj" / "storefront.cache"
+
+
+def get_storefront(override: Optional[str] = None) -> str:
+    """Get storefront code with auto-detection and caching.
+
+    Priority: explicit override > env var > cache > API detection > 'us' fallback.
+    """
+    if override and override != "auto":
+        return override
+
+    # Check env var
+    env_sf = os.environ.get("APPLE_MUSIC_STOREFRONT", "")
+    if env_sf:
+        return env_sf
+
+    # Check cache
+    try:
+        if STOREFRONT_CACHE.exists():
+            cached = STOREFRONT_CACHE.read_text().strip()
+            if len(cached) == 2 and cached.isalpha():
+                return cached
+    except OSError:
+        pass
+
+    # Auto-detect from API
+    result = call_api("user-storefront", raw=True)
+    if isinstance(result, str) and len(result) == 2 and result.isalpha():
+        # Cache the result
+        try:
+            STOREFRONT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            STOREFRONT_CACHE.write_text(result + "\n")
+        except OSError:
+            pass
+        return result
+
+    print(
+        "⚠ Could not detect storefront, defaulting to 'us'. "
+        "Set APPLE_MUSIC_STOREFRONT or use --storefront to override.",
+        file=sys.stderr,
+    )
+    return "us"
 
 
 def get_album_tracks(sf: str, album_id: str) -> list:

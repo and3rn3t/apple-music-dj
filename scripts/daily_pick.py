@@ -14,15 +14,23 @@ Designed to be called by cron (daily mode) or on-demand (now mode).
 Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 """
 
+import sys
+
+# Python version guard
+if sys.version_info < (3, 9):
+    sys.exit(
+        f"ERROR: Python 3.9+ is required (you have "
+        f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
+    )
+
 import argparse
 import hashlib
 import json
 import random
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import call_api, load_profile
+from _common import call_api, filter_generic_genres, load_profile
 from typing import Optional, Union
 
 SCRIPT_DIR = Path(__file__).parent
@@ -97,7 +105,7 @@ def get_candidates(profile: dict, sf: str, context: Optional[dict] = None) -> li
                             "name": attrs.get("name", ""),
                             "artist": attrs.get("artistName", artist["name"]),
                             "album": album.get("attributes", {}).get("name", ""),
-                            "genre": attrs.get("genreNames", []),
+                            "genre": filter_generic_genres(attrs.get("genreNames", [])),
                             "source": "deep_cut",
                             "reason": f"A deep cut from {artist['name']} you haven't heard yet.",
                         })
@@ -110,7 +118,7 @@ def get_candidates(profile: dict, sf: str, context: Optional[dict] = None) -> li
                 for chart in section:
                     for item in chart.get("data", [])[:10]:
                         attrs = item.get("attributes", {})
-                        item_genres = attrs.get("genreNames", [])
+                        item_genres = filter_generic_genres(attrs.get("genreNames", []))
                         # Only include if genre overlaps with user taste
                         if any(g in user_genres for g in item_genres):
                             tid = item.get("id", "")

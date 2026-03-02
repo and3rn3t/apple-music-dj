@@ -11,7 +11,7 @@ authors = [
 keywords = ["apple-music", "musickit", "playlists", "personalization", "openclaw"]
 
 [project.optional-dependencies]
-token = ["PyJWT>=2.8.0,<3.0", "cryptography>=41.0,<44.0"]
+token = ["PyJWT>=2.8.0,<3.0", "cryptography>=46,<46.1"]
 dev = ["pytest>=8.0"]
 
 [tool.pytest.ini_options]

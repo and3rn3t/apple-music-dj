@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _common import call_api, load_profile
+from typing import Optional, Union
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -65,7 +66,7 @@ def get_time_context() -> dict:
 
 # ── Candidate Sourcing ───────────────────────────────────────────
 
-def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[dict]:
+def get_candidates(profile: dict, sf: str, context: Optional[dict] = None) -> list[dict]:
     """Gather candidate tracks from multiple sources."""
     candidates = []
     top_artists = profile.get("top_artists", [])[:15]
@@ -126,7 +127,7 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
     return candidates
 
 
-def score_candidate(candidate: dict, profile: dict, context: dict | None = None, rng: random.Random | None = None) -> float:
+def score_candidate(candidate: dict, profile: dict, context: Optional[dict] = None, rng: Optional[random.Random] = None) -> float:
     """Score a candidate track. Higher = better pick."""
     _rng = rng or random.Random()
     score = 0.5  # base score

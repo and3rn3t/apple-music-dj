@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from _common import call_api, load_profile
+from typing import Optional, Union
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -66,7 +67,7 @@ def genre_overlap_score(genres_a: list[dict], genres_b: list[dict]) -> float:
 
 # ── Artist Compatibility ─────────────────────────────────────────
 
-def resolve_artist(sf: str, query: str) -> dict | None:
+def resolve_artist(sf: str, query: str) -> Optional[dict]:
     """Search for an artist by name and return their catalog data."""
     from _common import search_artist
     found = search_artist(sf, query)

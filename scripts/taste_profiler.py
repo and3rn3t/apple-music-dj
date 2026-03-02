@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _common import call_api, require_env_tokens
+from typing import Optional, Union
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -37,7 +38,7 @@ def log(msg: str, verbose: bool = True):
         print(f"  → {msg}", file=sys.stderr)
 
 
-def load_cache(path: str, max_age_hours: int) -> dict | None:
+def load_cache(path: str, max_age_hours: int) -> Optional[dict]:
     """Load cached profile if it exists and is fresh enough."""
     try:
         p = Path(path)
@@ -163,7 +164,7 @@ def compute_variety_score(artists: list[dict], tracks: list[dict]) -> float:
     return round(min(ratio * 1.5, 1.0), 2)  # scale up slightly, cap at 1
 
 
-def compute_mainstream_score(top_artists: list[dict], chart_data: dict | None) -> float:
+def compute_mainstream_score(top_artists: list[dict], chart_data: Optional[dict]) -> float:
     """How mainstream is the taste? Compare artists against charts."""
     if not chart_data or not top_artists:
         return 0.5  # unknown
@@ -182,7 +183,7 @@ def compute_mainstream_score(top_artists: list[dict], chart_data: dict | None) -
     return round(overlap / len(user_names), 2) if user_names else 0.5
 
 
-def extract_ratings(ratings_data: dict | None) -> tuple[list[str], list[str]]:
+def extract_ratings(ratings_data: Optional[dict]) -> tuple[list[str], list[str]]:
     """Extract loved and disliked song IDs from ratings."""
     loved_ids = []
     disliked_song_ids = []
@@ -199,7 +200,7 @@ def extract_ratings(ratings_data: dict | None) -> tuple[list[str], list[str]]:
     return loved_ids, disliked_song_ids
 
 
-def extract_replay_highlights(summary_data: dict | None, milestones_data: dict | None) -> dict:
+def extract_replay_highlights(summary_data: Optional[dict], milestones_data: Optional[dict]) -> dict:
     """Extract Replay / Music Summaries highlights."""
     highlights = {
         "available": False,

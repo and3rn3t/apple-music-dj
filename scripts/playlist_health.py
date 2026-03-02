@@ -20,6 +20,7 @@ from collections import Counter
 from pathlib import Path
 
 from _common import call_api, load_config, load_profile, require_env_tokens
+from typing import Optional, Union
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -101,7 +102,7 @@ def check_playlist(playlist_id: str, sf: str) -> dict:
     }
 
 
-def find_replacement(sf: str, name: str, artist: str) -> dict | None:
+def find_replacement(sf: str, name: str, artist: str) -> Optional[dict]:
     """Search catalog for a replacement track (same song, different catalog ID)."""
     query = f"{name} {artist}"
     result = call_api("search", sf, query, "songs")

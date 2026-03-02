@@ -25,9 +25,10 @@ _retry() {
   local max_retries=3
   local delay=1
   local attempt=0
-  local tmpfile
+  local tmpfile=""
   tmpfile=$(mktemp "${TMPDIR:-/tmp}/am_api_XXXXXX")
-  trap 'rm -f "$tmpfile"' RETURN INT TERM EXIT
+  # Only use RETURN trap — EXIT persists globally and outlives the local var
+  trap 'rm -f "$tmpfile"' RETURN
 
   while (( attempt <= max_retries )); do
     local http_code

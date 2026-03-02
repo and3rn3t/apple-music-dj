@@ -22,6 +22,18 @@ case "$MODE" in
     track_count=$(grep -c -v '^\s*$' "$IDS_FILE" 2>/dev/null || echo 0)
     [[ "$track_count" -eq 0 ]] && { echo "ERROR: No song IDs in ${IDS_FILE}" >&2; exit 1; }
 
+    # ── Playlist deduplication: check if a playlist with this name already exists ──
+    existing_playlists=$("$SCRIPT_DIR/apple_music_api.sh" library-playlists 100 2>/dev/null || true)
+    if [[ -n "$existing_playlists" ]]; then
+        existing_id=$(echo "$existing_playlists" | jq -r --arg name "$NAME" \
+            '.data[]? | select(.attributes.name == $name) | .id' 2>/dev/null | head -1)
+        if [[ -n "$existing_id" ]]; then
+            echo "⚠️  A playlist named '${NAME}' already exists (ID: ${existing_id})." >&2
+            echo "   Skipping creation. Use 'refresh' to update it, or choose a different name." >&2
+            exit 0
+        fi
+    fi
+
     echo "🎧 Creating playlist: ${NAME} (${track_count} tracks)" >&2
 
     # Build tracks array (filter blank/whitespace-only lines)
@@ -42,6 +54,11 @@ case "$MODE" in
     if ! "$SCRIPT_DIR/apple_music_api.sh" create-playlist "$TMPFILE"; then
       echo "ERROR: Failed to create playlist '${NAME}'" >&2
       exit 1
+    fi
+
+    # Log to playlist history
+    if command -v python3 &>/dev/null && [[ -f "$SCRIPT_DIR/playlist_history.py" ]]; then
+      (cd "$SCRIPT_DIR" && python3 playlist_history.py log "$NAME" "manual" "$IDS_FILE" 2>/dev/null) || true
     fi
     ;;
 

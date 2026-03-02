@@ -19,15 +19,23 @@ Options:
 Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 """
 
+import sys
+
+# Python version guard (also checked in _common, but be explicit for entry points)
+if sys.version_info < (3, 9):
+    sys.exit(
+        f"ERROR: Python 3.9+ is required (you have "
+        f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
+    )
+
 import argparse
 import json
-import sys
 import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import call_api, require_env_tokens
+from _common import call_api, check_token_expiry, get_storefront, require_env_tokens
 from typing import Optional, Union
 
 SCRIPT_DIR = Path(__file__).parent
@@ -67,16 +75,8 @@ def save_cache(profile: dict, path: str):
 
 
 def detect_storefront() -> str:
-    """Auto-detect user's storefront via API."""
-    result = call_api("user-storefront", raw=True)
-    if isinstance(result, str) and len(result) == 2:
-        return result
-    print(
-        "⚠ Could not detect storefront, defaulting to 'us'. "
-        "Set APPLE_MUSIC_STOREFRONT or use --storefront to override.",
-        file=sys.stderr,
-    )
-    return "us"
+    """Auto-detect user's storefront via API (with caching)."""
+    return get_storefront()
 
 
 def extract_genres(tracks: list[dict]) -> list[dict]:
@@ -247,14 +247,19 @@ def build_profile(args) -> dict:
     require_env_tokens()
     verbose = args.verbose
 
+    # Check token expiry on startup
+    token_status = check_token_expiry()
+    if token_status and token_status["warning"]:
+        print(token_status["message"], file=sys.stderr)
+        if token_status["expired"]:
+            sys.exit(1)
+
     print("🎧 Building your Taste DNA profile...", file=sys.stderr)
 
-    # Detect storefront
-    sf = args.storefront
-    if sf == "auto":
-        log("Detecting storefront...", verbose)
-        sf = detect_storefront()
-        log(f"Storefront: {sf}", verbose)
+    # Detect storefront (with caching)
+    log("Detecting storefront...", verbose)
+    sf = get_storefront(args.storefront)
+    log(f"Storefront: {sf}", verbose)
 
     # ── Fetch all data sources ────────────────────────────────────
     log("Fetching recently played tracks...", verbose)

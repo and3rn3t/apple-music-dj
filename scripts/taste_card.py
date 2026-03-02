@@ -16,9 +16,15 @@ Usage:
 Requires: A taste profile JSON (from taste_profiler.py).
 """
 
+import sys
+if sys.version_info < (3, 9):
+    sys.exit(
+        f"ERROR: Python 3.9+ is required (you have "
+        f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
+    )
+
 import argparse
 import json
-import sys
 from pathlib import Path
 
 from _common import load_profile

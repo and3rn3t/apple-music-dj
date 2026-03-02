@@ -15,9 +15,15 @@ Usage:
 Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 """
 
+import sys
+if sys.version_info < (3, 9):
+    sys.exit(
+        f"ERROR: Python 3.9+ is required (you have "
+        f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
+    )
+
 import argparse
 import json
-import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path

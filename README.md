@@ -1,191 +1,159 @@
 # 🎧 Apple Music DJ
 
-An OpenClaw skill that turns your AI assistant into a personalized Apple Music curator. Analyzes
-your listening history (including Replay stats), understands your taste DNA, and creates smart
-playlists directly in your Apple Music library.
+**Your AI-powered Apple Music curator.** Analyzes your listening history, understands your taste DNA, and creates intelligent playlists directly in your Apple Music library — on all your devices.
 
-## Features
+Built as an [OpenClaw](https://openclaw.dev) skill. Talk naturally, get playlists.
 
-- **Taste DNA Analysis** — Profiles your listening from recently played, heavy rotation, library,
-  ratings, recommendations, and Apple Music Replay annual stats
-- **5 Playlist Strategies:**
-  - **Deep Cuts** — Hidden gems from artists you already love
-  - **Mood/Activity** — Playlists for any vibe, filtered through your taste
-  - **Trend Radar** — What's charting, filtered for what you'd actually like
-  - **Constellation Discovery** — Gradually expands from familiar artists into new territory
-  - **Playlist Refresh** — Evolve existing playlists by swapping stale tracks for fresh ones
-- **Taste DNA Card** — Shareable visual summary of your listener identity and archetype
-- **Compatibility Score** — How well does your taste match an artist (or another user)?
-- **Listening Insights** — Timeline, streaks, milestones, and deep year-in-review
-- **Catalog Gap Analysis** — Find albums you're missing from artists you love
-- **Album Deep Dive** — Track-by-track breakdown: singles vs deep cuts, discography context
-- **Artist Rabbit Hole** — Chain exploration from one artist outward into new territory
-- **Daily Song Drop** — One perfect track per day with a reason why
-- **What Should I Listen To Right Now?** — Context-aware instant pick based on time of day
-- **Concert Prep** — Top songs + deep cuts playlist for upcoming shows
-- **New Release Radar** — Personalized scan of new releases from your artists and genres
-- **Cron Auto-Playlists** — Weekly discovery, daily song drops, new release watch on a schedule
-- **Direct Integration** — Playlists appear instantly in Apple Music on all your devices
+---
 
-## Quick Start
+## ✨ Features
 
-### 1. Install
+- **🧬 Taste DNA Profiling** — Deep analysis of your listening from recently played, heavy rotation, library, ratings, recommendations, and Apple Music Replay
+- **🎵 5 Playlist Strategies** — Deep cuts, mood/activity, trend radar, constellation discovery, playlist refresh
+- **🃏 Taste DNA Card** — Shareable visual summary of your listener identity
+- **🎯 Compatibility Scoring** — How well does your taste match an artist (or another listener)?
+- **📊 Listening Insights** — Timeline, streaks, milestones, year-in-review
+- **🔍 Catalog Gap Analysis** — Find albums you're missing from artists you love
+- **💿 Album Deep Dive** — Track-by-track breakdown with context
+- **🐇 Artist Rabbit Hole** — Chain exploration from familiar artists into new territory
+- **🎧 Daily Song Drop** — One perfect track per day with a reason why
+- **⏰ What Should I Listen To Now?** — Context-aware instant picks
+- **🎤 Concert Prep** — Setlist-ready playlists for upcoming shows
+- **📡 New Release Radar** — Personalized scan of new releases
+- **🤖 Cron Auto-Playlists** — Weekly discovery, daily drops, and new release watch on a schedule
+- **📱 Direct Integration** — Playlists appear instantly in Apple Music on all your devices
+
+## 📋 Requirements
+
+| Requirement | Details |
+|---|---|
+| **Apple Developer Account** | [$99/year](https://developer.apple.com/programs/) — needed for MusicKit API access |
+| **Apple Music subscription** | Active subscription on your Apple ID |
+| **Python** | 3.9+ (no pip packages needed for core features) |
+| **OpenClaw** | [openclaw.dev](https://openclaw.dev) |
+| **CLI tools** | `curl`, `jq` (usually pre-installed on macOS) |
+
+## 🚀 Quick Install
 
 ```bash
+# Via ClawhHub (recommended)
 clawhub install apple-music-dj
-# Or paste the repo URL into your OpenClaw chat
+
+# Or clone directly
+git clone https://github.com/and3rn3t/apple-music-dj.git ~/.openclaw/workspace/skills/apple-music-dj
 ```
 
-### 2. Authenticate
+## ⚡ 5 Minutes to First Playlist
 
-You need an Apple Developer account and two tokens. The skill walks you through setup.
+### 1. Generate your tokens
+
+You need two tokens. The skill walks you through setup — see [`references/auth-setup.md`](references/auth-setup.md) for the full guide.
 
 ```bash
+# Set your tokens
 export APPLE_MUSIC_DEV_TOKEN="your_jwt_here"
 export APPLE_MUSIC_USER_TOKEN="your_user_token_here"
-scripts/apple_music_api.sh verify
 ```
 
-### 3. Use It
-
-Talk naturally:
-
-- "Analyze my Apple Music taste"
-- "Show me my taste card"
-- "Make me a workout playlist"
-- "Find deep cuts from my favorite artists"
-- "What's trending that I'd actually like?"
-- "Surprise me with something new"
-- "Refresh my focus playlist"
-- "How compatible am I with Tyler, the Creator?"
-- "What albums am I missing from Radiohead?"
-- "Tell me about In Rainbows"
-- "Take me on a rabbit hole from Björk"
-- "Give me one song for today"
-- "What should I listen to right now?"
-- "I'm seeing Phoebe Bridgers next week"
-- "Any new releases from my artists?"
-- "How was my 2025 in music?"
-- "Set up a weekly discovery playlist every Monday"
-
-## File Structure
-
-```
-apple-music-dj/
-├── SKILL.md                           # Skill definition (triggers, workflows, phases)
-├── README.md                          # This file
-├── references/
-│   ├── auth-setup.md                  # Token setup walkthrough
-│   ├── api-reference.md               # Apple Music API endpoint reference
-│   ├── playlist-strategies.md         # Deep playbook for all strategies
-│   └── troubleshooting.md             # Step-by-step fixes for common issues
-└── scripts/
-    ├── _common.py                     # Shared Python utilities (API, profile, search)
-    ├── apple_music_api.sh             # Bash API wrapper (25+ commands, retry logic)
-    ├── taste_profiler.py              # Python taste analysis with caching & Replay
-    ├── build_playlist.sh              # Playlist creation & refresh
-    ├── generate_dev_token.py          # JWT generator
-    ├── taste_card.py                  # Shareable Taste DNA Card (SVG/text)
-    ├── compatibility.py               # Taste compatibility scoring
-    ├── listening_insights.py          # Timeline, streaks, year in review
-    ├── catalog_explorer.py            # Gap analysis, album dive, rabbit hole
-    ├── daily_pick.py                  # Daily song drop & instant recommendation
-    ├── concert_prep.sh                # Concert prep playlist builder
-    ├── new_releases.sh                # Personalized new release radar
-    └── verify_setup.sh                # Setup verification checker
-```
-
-## Architecture
-
-```
-User Request
-    │
-    ▼
-Taste Analysis (Python)
-    │  ├─ Recently played (50 tracks)
-    │  ├─ Heavy rotation
-    │  ├─ Library (songs + artists)
-    │  ├─ Ratings (loved / disliked)
-    │  ├─ Recommendations
-    │  └─ Replay summaries (annual stats)
-    │
-    ├──────────────────────────────┐
-    ▼                              ▼
-Strategy Selection            Engagement Features
-    │  ├─ Deep Cuts Explorer       ├─ Taste DNA Card
-    │  ├─ Mood / Activity          ├─ Compatibility Score
-    │  ├─ Trend Radar              ├─ Listening Insights
-    │  └─ Constellation Discovery  ├─ Catalog Gap Analysis
-    │                              ├─ Album Deep Dive
-    │                              ├─ Artist Rabbit Hole
-    │                              ├─ Daily Song Drop
-    │                              ├─ Concert Prep
-    │                              └─ New Release Radar
-    │
-    ▼
-Playlist Assembly (sequencing, dedup, quality gates)
-    │
-    ▼
-Apple Music API → POST /v1/me/library/playlists
-    │
-    ▼
-Playlist live on all user's devices
-```
-
-## Setup Verification
-
-After installing, run the setup checker to verify everything is ready:
+### 2. Verify setup
 
 ```bash
 scripts/verify_setup.sh
 ```
 
-This checks: required tools (`curl`, `jq`, `python3`), Python version, environment
-variables, script presence, API connectivity, and cache status.
+### 3. Talk to your DJ
 
-## Requirements
+Open OpenClaw and say:
 
-- Apple Developer Program ($99/year)
-- `curl`, `jq`, `python3` (3.10+) — no pip packages for core — `PyJWT` only for token generation
-- Active Apple Music subscription
+> "Analyze my Apple Music taste and make me a playlist"
 
-## Testing
+That's it. Your taste profile is built, a playlist is generated, and it appears in Apple Music.
 
-The project includes 156 unit tests covering all pure logic functions:
+## 🎛️ Available Commands
+
+Just talk naturally. Here's what the DJ understands:
+
+| You say... | What happens |
+|---|---|
+| "Analyze my taste" | Builds your Taste DNA profile |
+| "Show my taste card" | Generates a shareable taste identity card |
+| "Make me a workout playlist" | Mood/activity-matched playlist |
+| "Find deep cuts from my favorites" | Hidden gems from artists you love |
+| "What's trending that I'd like?" | Charts filtered through your taste |
+| "Surprise me" | Constellation discovery — familiar → frontier |
+| "Refresh my focus playlist" | Evolves an existing playlist with fresh tracks |
+| "How compatible am I with Radiohead?" | Taste compatibility score |
+| "What albums am I missing from Björk?" | Catalog gap analysis |
+| "Tell me about In Rainbows" | Album deep dive |
+| "Rabbit hole from Radiohead" | Artist chain exploration |
+| "Give me one song for today" | Daily song drop |
+| "What should I listen to right now?" | Context-aware instant pick |
+| "I'm seeing Phoebe Bridgers next week" | Concert prep playlist |
+| "Any new releases for me?" | Personalized new release scan |
+| "How was my 2025 in music?" | Year-in-review analysis |
+| "Set up weekly playlists" | Cron automation |
+
+## 📁 Project Structure
+
+```
+apple-music-dj/
+├── SKILL.md                    # Full skill definition (triggers, workflows, phases)
+├── README.md                   # This file
+├── clawhub.json                # Package metadata
+├── pyproject.toml              # Python project config
+├── references/
+│   ├── auth-setup.md           # Token setup walkthrough
+│   ├── api-reference.md        # Apple Music API endpoint reference
+│   ├── playlist-strategies.md  # Deep playbook for all 5 strategies
+│   └── troubleshooting.md      # Step-by-step fixes for common issues
+└── scripts/
+    ├── _common.py              # Shared utilities (API, profile, token checks)
+    ├── apple_music_api.sh      # Bash API wrapper (25+ commands, retry logic)
+    ├── taste_profiler.py       # Taste DNA profiler with caching & Replay
+    ├── build_playlist.sh       # Playlist creation & refresh with dedup
+    ├── strategy_engine.py      # 5 playlist strategies + sequencing
+    ├── taste_card.py           # Shareable Taste DNA Card (SVG/text)
+    ├── compatibility.py        # Taste compatibility scoring
+    ├── listening_insights.py   # Timeline, streaks, year-in-review
+    ├── catalog_explorer.py     # Gap analysis, album dive, rabbit hole
+    ├── daily_pick.py           # Daily song drop & instant recommendation
+    ├── playlist_history.py     # Playlist creation history tracking
+    ├── playlist_health.py      # Playlist health check & maintenance
+    ├── concert_prep.sh         # Concert prep playlist builder
+    ├── new_releases.sh         # Personalized new release radar
+    ├── generate_dev_token.py   # JWT generator (requires PyJWT)
+    ├── setup_cron.py           # Cron automation setup
+    └── verify_setup.sh         # Setup verification checker
+```
+
+## 📸 Screenshots & Examples
+
+> _Coming soon — taste cards, playlist examples, and compatibility scores._
+
+## 🔒 Privacy
+
+All data stays on your machine. The skill reads your Apple Music listening data via the official API and caches it locally at `~/.apple-music-dj/`. Nothing is sent to third-party services. Tokens are read from environment variables and never stored or logged.
+
+## 🧪 Testing
 
 ```bash
 python3 -m pytest tests/ -v
 ```
 
-Tests cover: taste profiling, archetype detection, compatibility scoring, daily pick
-seeding, SVG/text card generation, and shared utilities.
+156 unit tests covering taste profiling, archetype detection, compatibility scoring, card generation, and shared utilities.
 
-## Privacy
+## 📖 Full Documentation
 
-This skill reads your Apple Music listening data (recently played, library, ratings, Replay)
-via the official Apple Music API. All data stays on your machine — nothing is sent to
-third-party services. The only local cache is `~/.apple-music-dj/taste_profile.json`
-(7-day TTL, deletable anytime). Tokens are read from environment variables and never
-stored or logged by the skill.
+See [**SKILL.md**](SKILL.md) for the complete skill definition — triggers, workflows, all strategies, cron setup, error handling, and presentation guidelines.
 
-## API Limitations
-
-- Recently played: max 50 unique tracks (Apple's hard cap)
-- Music User Token expires ~6 months, no refresh flow
-- Replay data not available in all regions
-- Rate limits undocumented (~20 req/s safe)
-
-See [references/troubleshooting.md](references/troubleshooting.md) for step-by-step fixes
-to common issues.
-
-## Contributing
+## 🤝 Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
-## Author
+## 📄 License
 
-**Andernet** (Matthew Anderson) — <and3rn3t@icloud.com>
+[MIT](LICENSE) — © 2025 Andernet (Matthew Anderson)
 
-## License
+## 👤 Author
 
-MIT
+**Andernet** (Matthew Anderson) — [GitHub](https://github.com/and3rn3t)

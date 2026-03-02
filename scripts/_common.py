@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional, Union
 
 SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
@@ -25,7 +26,7 @@ DEFAULT_CONFIG = {
 }
 
 
-def load_config(path: str | None = None) -> dict:
+def load_config(path: Optional[str] = None) -> dict:
     """Load user configuration from JSON, falling back to defaults.
 
     If no path is given, looks at ~/.apple-music-dj/config.json.
@@ -51,7 +52,7 @@ def load_config(path: str | None = None) -> dict:
         return config
 
 
-def save_config(config: dict, path: str | None = None):
+def save_config(config: dict, path: Optional[str] = None):
     """Write config to JSON with restrictive permissions."""
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +76,7 @@ def require_env_tokens():
         sys.exit(1)
 
 
-def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None:
+def call_api(command: str, *args, raw: bool = False) -> Union[dict, list, str, None]:
     """Call apple_music_api.sh and parse JSON output.
 
     If raw=True, return stdout as a stripped string instead of parsing JSON.
@@ -119,7 +120,7 @@ def load_profile(path: str) -> dict:
         sys.exit(1)
 
 
-def search_artist(sf: str, name: str) -> dict | None:
+def search_artist(sf: str, name: str) -> Optional[dict]:
     """Search for an artist by name and return the top match."""
     result = call_api("search", sf, name, "artists")
     if not result:
@@ -128,7 +129,7 @@ def search_artist(sf: str, name: str) -> dict | None:
     return artists[0] if artists else None
 
 
-def search_album(sf: str, query: str) -> dict | None:
+def search_album(sf: str, query: str) -> Optional[dict]:
     """Search for an album by name and return the top match."""
     result = call_api("search", sf, query, "albums")
     if not result:

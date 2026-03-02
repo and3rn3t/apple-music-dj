@@ -39,6 +39,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _common import (
+from typing import Optional, Union
     call_api,
     get_album_tracks,
     load_config,
@@ -637,8 +638,8 @@ def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int =
 
 # ── Playlist Creation ────────────────────────────────────────────
 
-def generate_name(strategy: str, mood: str | None = None,
-                  profile: dict | None = None) -> str:
+def generate_name(strategy: str, mood: Optional[str] = None,
+                  profile: Optional[dict] = None) -> str:
     """Auto-generate a playlist name."""
     date_str = datetime.now(timezone.utc).strftime("%b %Y")
     if strategy == "deep-cuts":
@@ -659,7 +660,7 @@ def generate_name(strategy: str, mood: str | None = None,
     return f"Apple Music DJ · {date_str}"
 
 
-def generate_description(strategy: str, mood: str | None = None,
+def generate_description(strategy: str, mood: Optional[str] = None,
                          track_count: int = 0) -> str:
     """Auto-generate a playlist description."""
     descriptions = {

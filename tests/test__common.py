@@ -1,15 +1,20 @@
 """Tests for _common.py — load_profile, get_album_tracks, call_api, config, search."""
 
+import base64
 import json
 import os
 import subprocess
 import tempfile
+import time
 
 import pytest
 
 from _common import (
     call_api,
+    check_token_expiry,
+    filter_generic_genres,
     get_album_tracks,
+    get_storefront,
     load_config,
     load_profile,
     require_env_tokens,
@@ -17,6 +22,7 @@ from _common import (
     search_album,
     search_artist,
     DEFAULT_CONFIG,
+    STOREFRONT_CACHE,
 )
 
 
@@ -284,3 +290,130 @@ class TestConfig:
         save_config(DEFAULT_CONFIG, cfg_path)
         mode = os.stat(cfg_path).st_mode & 0o777
         assert mode == 0o600
+
+
+# ── filter_generic_genres ────────────────────────────────────────
+
+class TestFilterGenericGenres:
+    def test_removes_music(self):
+        assert filter_generic_genres(["Rock", "Music", "Pop"]) == ["Rock", "Pop"]
+
+    def test_case_insensitive(self):
+        assert filter_generic_genres(["MUSIC", "music", "Rock"]) == ["Rock"]
+
+    def test_empty_list(self):
+        assert filter_generic_genres([]) == []
+
+    def test_no_generic(self):
+        assert filter_generic_genres(["Rock", "Pop"]) == ["Rock", "Pop"]
+
+    def test_all_generic(self):
+        assert filter_generic_genres(["Music"]) == []
+
+
+# ── check_token_expiry ───────────────────────────────────────────
+
+class TestCheckTokenExpiry:
+    def _make_token(self, exp_offset_secs):
+        """Create a fake JWT with given expiry offset from now."""
+        header = base64.urlsafe_b64encode(b'{"alg":"ES256"}').rstrip(b"=").decode()
+        payload_dict = {"iss": "team", "iat": int(time.time()), "exp": int(time.time()) + exp_offset_secs}
+        payload = base64.urlsafe_b64encode(json.dumps(payload_dict).encode()).rstrip(b"=").decode()
+        return f"{header}.{payload}.fakesig"
+
+    def test_returns_none_when_no_token(self, monkeypatch):
+        monkeypatch.delenv("APPLE_MUSIC_DEV_TOKEN", raising=False)
+        assert check_token_expiry() is None
+
+    def test_valid_token(self, monkeypatch):
+        token = self._make_token(90 * 86400)  # 90 days
+        monkeypatch.setenv("APPLE_MUSIC_DEV_TOKEN", token)
+        result = check_token_expiry()
+        assert result is not None
+        assert result["expired"] is False
+        assert result["warning"] is False
+        assert result["days_remaining"] > 14
+
+    def test_expiring_soon_warns(self, monkeypatch):
+        token = self._make_token(5 * 86400)  # 5 days
+        monkeypatch.setenv("APPLE_MUSIC_DEV_TOKEN", token)
+        result = check_token_expiry(warn_days=14)
+        assert result["expired"] is False
+        assert result["warning"] is True
+
+    def test_expired_token(self, monkeypatch):
+        token = self._make_token(-86400)  # expired yesterday
+        monkeypatch.setenv("APPLE_MUSIC_DEV_TOKEN", token)
+        result = check_token_expiry()
+        assert result["expired"] is True
+        assert result["warning"] is True
+
+    def test_malformed_token(self, monkeypatch):
+        monkeypatch.setenv("APPLE_MUSIC_DEV_TOKEN", "not-a-jwt")
+        assert check_token_expiry() is None
+
+    def test_token_without_exp(self, monkeypatch):
+        header = base64.urlsafe_b64encode(b'{"alg":"ES256"}').rstrip(b"=").decode()
+        payload = base64.urlsafe_b64encode(b'{"iss":"team"}').rstrip(b"=").decode()
+        token = f"{header}.{payload}.sig"
+        monkeypatch.setenv("APPLE_MUSIC_DEV_TOKEN", token)
+        assert check_token_expiry() is None
+
+
+# ── get_storefront ───────────────────────────────────────────────
+
+class TestGetStorefront:
+    def test_explicit_override(self):
+        assert get_storefront("gb") == "gb"
+
+    def test_auto_falls_through(self, monkeypatch):
+        monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
+        import _common
+        monkeypatch.setattr(_common, "STOREFRONT_CACHE", type("P", (), {
+            "exists": lambda self: False,
+        })())
+        monkeypatch.setattr("_common.call_api", lambda *a, **kw: None)
+        result = get_storefront("auto")
+        assert result == "us"  # fallback
+
+    def test_env_var(self, monkeypatch):
+        monkeypatch.setenv("APPLE_MUSIC_STOREFRONT", "de")
+        assert get_storefront() == "de"
+
+    def test_cache_file(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
+        cache = tmp_path / "storefront.cache"
+        cache.write_text("jp\n")
+        import _common
+        monkeypatch.setattr(_common, "STOREFRONT_CACHE", cache)
+        assert get_storefront() == "jp"
+
+    def test_invalid_cache_ignored(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
+        cache = tmp_path / "storefront.cache"
+        cache.write_text("invalid_long_string\n")
+        import _common
+        monkeypatch.setattr(_common, "STOREFRONT_CACHE", cache)
+        monkeypatch.setattr("_common.call_api", lambda *a, **kw: None)
+        result = get_storefront()
+        assert result == "us"
+
+    def test_api_detection(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
+        cache = tmp_path / "storefront.cache"
+        import _common
+        monkeypatch.setattr(_common, "STOREFRONT_CACHE", cache)
+        monkeypatch.setattr("_common.call_api", lambda *a, **kw: "fr")
+        result = get_storefront()
+        assert result == "fr"
+        # Should have cached
+        assert cache.read_text().strip() == "fr"
+
+    def test_api_returns_invalid(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
+        cache = tmp_path / "storefront.cache"
+        import _common
+        monkeypatch.setattr(_common, "STOREFRONT_CACHE", cache)
+        monkeypatch.setattr("_common.call_api", lambda *a, **kw: "invalid")
+        result = get_storefront()
+        assert result == "us"

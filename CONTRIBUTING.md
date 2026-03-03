@@ -35,7 +35,7 @@ Thanks for your interest in contributing! Here's how to get started.
 
 **Python:**
 
-- Python 3.10+ (uses `X | Y` union type syntax)
+- Python 3.9+ (compatible with 3.9, 3.11, and 3.13)
 - No pip dependencies for core scripts (stdlib only)
 - `PyJWT` is the only exception (for token generation)
 - Functions use `snake_case`, classes use `PascalCase`

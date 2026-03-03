@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] — 2026-03-02
+
+### Added
+
+- **Python 3.9+ compatibility** — removed `X | Y` union syntax, works on 3.9, 3.11, and 3.13
+- **Genre filter** — `filter_generic_genres()` strips generic "Music" tag from taste data
+- **Token expiry warning** — `check_token_expiry()` warns when dev token is near expiration
+- **Playlist deduplication** — playlist health checker detects and removes duplicate tracks
+- **Storefront auto-detection** — `get_storefront()` resolves storefront from env, cache, or API
+- **verify_setup overhaul** — improved output, token validation, and connectivity checks
+- **Playlist history** — `playlist_history.py` tracks created playlists with freshness checking
+- **clawhub.json** — skill metadata for OpenClaw skill registry
+- **Test coverage to 87%** — 431 tests across 12 modules (up from 156 tests / 5 modules)
+- **New test suites** — `generate_dev_token`, `playlist_health`, `playlist_history`, `setup_cron`
+- **GitHub Actions CI** — Python 3.9/3.11/3.13 matrix with 80% coverage gate
+- **Makefile** — `make test`, `make coverage`, `make coverage-html` commands
+- **`.env.example`** — template for required environment variables
+
+### Changed
+
+- **README.md** — full rewrite with badges, feature list, quick start, and development section
+- **pyproject.toml** — added classifiers, project URLs, `pytest-cov` dev dependency
+- **CONTRIBUTING.md** — updated Python version requirement to 3.9+
+- **`.gitignore`** — expanded to cover `coverage_html/`, `node_modules/`, `.coverage`
+
 ## [3.0.0] — 2026-02-24
 
 ### Added

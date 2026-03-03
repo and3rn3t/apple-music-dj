@@ -1,6 +1,7 @@
 """Tests for strategy_engine — playlist strategy engine."""
 
 import json
+from unittest.mock import MagicMock
 import pytest
 
 import strategy_engine as se
@@ -478,3 +479,71 @@ class TestMoodMap:
             assert len(config["genres"]) >= 2
             assert isinstance(config["energy"], str)
             assert isinstance(config["description"], str)
+
+
+# ── check_playlist_exists ────────────────────────────────────────
+
+class TestCheckPlaylistExists:
+    def test_finds_existing_playlist(self, monkeypatch):
+        data = json.dumps({"data": [
+            {"id": "pl1", "attributes": {"name": "My Mix"}},
+            {"id": "pl2", "attributes": {"name": "Other"}},
+        ]})
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+            returncode=0, stdout=data
+        ))
+        assert se.check_playlist_exists("My Mix") == "pl1"
+
+    def test_returns_none_when_not_found(self, monkeypatch):
+        data = json.dumps({"data": [
+            {"id": "pl1", "attributes": {"name": "Other"}},
+        ]})
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+            returncode=0, stdout=data
+        ))
+        assert se.check_playlist_exists("Missing") is None
+
+    def test_returns_none_on_api_failure(self, monkeypatch):
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+            returncode=1, stdout=""
+        ))
+        assert se.check_playlist_exists("Any") is None
+
+    def test_returns_none_on_exception(self, monkeypatch):
+        monkeypatch.setattr("subprocess.run", MagicMock(side_effect=Exception("fail")))
+        assert se.check_playlist_exists("Any") is None
+
+
+# ── create_playlist_from_tracks ──────────────────────────────────
+
+class TestCreatePlaylistFromTracks:
+    def test_returns_false_with_no_tracks(self):
+        assert se.create_playlist_from_tracks([], "Name", "Desc") is False
+
+    def test_returns_false_when_playlist_exists(self, monkeypatch):
+        monkeypatch.setattr(se, "check_playlist_exists", lambda name: "pl1")
+        tracks = [{"id": "t1"}]
+        assert se.create_playlist_from_tracks(tracks, "Existing", "Desc") is False
+
+    def test_creates_playlist_successfully(self, monkeypatch):
+        monkeypatch.setattr(se, "check_playlist_exists", lambda name: None)
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(returncode=0))
+        tracks = [{"id": "t1"}, {"id": "t2"}]
+        assert se.create_playlist_from_tracks(tracks, "New", "Desc") is True
+
+    def test_returns_false_on_subprocess_failure(self, monkeypatch):
+        monkeypatch.setattr(se, "check_playlist_exists", lambda name: None)
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+            returncode=1, stderr="error"
+        ))
+        tracks = [{"id": "t1"}]
+        assert se.create_playlist_from_tracks(tracks, "New", "Desc") is False
+
+    def test_returns_false_on_timeout(self, monkeypatch):
+        import subprocess as sp
+        monkeypatch.setattr(se, "check_playlist_exists", lambda name: None)
+        monkeypatch.setattr("subprocess.run", MagicMock(
+            side_effect=sp.TimeoutExpired("cmd", 60)
+        ))
+        tracks = [{"id": "t1"}]
+        assert se.create_playlist_from_tracks(tracks, "New", "Desc") is False

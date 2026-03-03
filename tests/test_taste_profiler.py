@@ -1,8 +1,15 @@
 """Tests for taste_profiler.py — core data extraction and scoring functions."""
 
+import json
+import sys
+import time
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pytest
 
 from taste_profiler import (
+    build_profile,
     compute_mainstream_score,
     compute_variety_score,
     extract_artists,
@@ -11,7 +18,11 @@ from taste_profiler import (
     extract_ratings,
     extract_replay_highlights,
     infer_energy_profile,
+    load_cache,
+    save_cache,
+    log,
 )
+import taste_profiler as tp
 
 
 # ── extract_genres ───────────────────────────────────────────────
@@ -306,3 +317,265 @@ class TestExtractReplayHighlights:
         h = extract_replay_highlights({"data": []}, None)
         assert h["available"] is True
         assert h["genre_evolution"] == []
+
+
+# ── log ──────────────────────────────────────────────────────────
+
+class TestLog:
+    def test_log_verbose(self, capsys):
+        log("hello", verbose=True)
+        assert "hello" in capsys.readouterr().err
+
+    def test_log_silent(self, capsys):
+        log("hello", verbose=False)
+        assert capsys.readouterr().err == ""
+
+
+# ── load_cache ───────────────────────────────────────────────────
+
+class TestLoadCache:
+    def test_returns_none_when_missing(self, tmp_path):
+        result = load_cache(str(tmp_path / "nonexistent.json"), 168)
+        assert result is None
+
+    def test_returns_data_when_fresh(self, tmp_path):
+        f = tmp_path / "cache.json"
+        data = {"genre_distribution": []}
+        f.write_text(json.dumps(data))
+        result = load_cache(str(f), max_age_hours=168)
+        assert result == data
+
+    def test_returns_none_when_expired(self, tmp_path, monkeypatch):
+        f = tmp_path / "cache.json"
+        f.write_text(json.dumps({"old": True}))
+        # Make the file appear old
+        import os
+        old_time = time.time() - (200 * 3600)
+        os.utime(str(f), (old_time, old_time))
+        result = load_cache(str(f), max_age_hours=168)
+        assert result is None
+
+    def test_returns_none_on_invalid_json(self, tmp_path):
+        f = tmp_path / "cache.json"
+        f.write_text("{bad json")
+        assert load_cache(str(f), 168) is None
+
+    def test_returns_none_on_os_error(self, tmp_path):
+        f = tmp_path / "cache.json"
+        f.write_text("{}")
+        f.chmod(0o000)
+        result = load_cache(str(f), 168)
+        f.chmod(0o644)
+        assert result is None
+
+
+# ── save_cache ───────────────────────────────────────────────────
+
+class TestSaveCache:
+    def test_saves_profile(self, tmp_path):
+        f = tmp_path / "cache.json"
+        save_cache({"test": True}, str(f))
+        assert json.loads(f.read_text()) == {"test": True}
+
+    def test_creates_parent_dirs(self, tmp_path):
+        f = tmp_path / "deep" / "cache.json"
+        save_cache({}, str(f))
+        assert f.exists()
+
+    def test_handles_os_error(self, capsys):
+        """Should warn on error, not crash."""
+        save_cache({}, "/nonexistent/readonly/cache.json")
+        captured = capsys.readouterr()
+        assert "WARN" in captured.err
+
+
+# ── build_profile ────────────────────────────────────────────────
+
+class TestBuildProfile:
+    def _mock_all_apis(self, monkeypatch):
+        """Mock all API calls and env tokens for build_profile."""
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: None)
+        monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
+
+        sample_tracks = [
+            {
+                "id": "t1",
+                "attributes": {
+                    "name": "Song A",
+                    "artistName": "Artist A",
+                    "genreNames": ["Rock"],
+                    "releaseDate": "2020-01-01",
+                },
+                "relationships": {"artists": {"data": [{"id": "a1"}]}},
+            },
+            {
+                "id": "t2",
+                "attributes": {
+                    "name": "Song B",
+                    "artistName": "Artist B",
+                    "genreNames": ["Pop"],
+                    "releaseDate": "2021-06-15",
+                },
+                "relationships": {"artists": {"data": [{"id": "a2"}]}},
+            },
+        ]
+
+        def mock_call_api(command, *args, **kwargs):
+            if command == "recent-tracks":
+                return sample_tracks
+            elif command == "heavy-rotation":
+                return {"data": []}
+            elif command == "library-artists":
+                return {"data": [{"id": "a1"}, {"id": "a2"}]}
+            elif command == "library-songs":
+                return {"data": sample_tracks}
+            elif command == "ratings":
+                return {"data": []}
+            elif command == "recommendations":
+                return {"data": []}
+            elif command == "replay-summary":
+                return None
+            elif command == "replay-milestones":
+                return None
+            elif command == "charts":
+                return None
+            return None
+
+        monkeypatch.setattr("taste_profiler.call_api", mock_call_api)
+
+    def test_builds_complete_profile(self, monkeypatch):
+        self._mock_all_apis(monkeypatch)
+        args = MagicMock()
+        args.verbose = False
+        args.storefront = "us"
+        args.skip_replay = False
+        profile = build_profile(args)
+        assert "top_artists" in profile
+        assert "genre_distribution" in profile
+        assert "era_distribution" in profile
+        assert "energy_profile" in profile
+        assert "variety_score" in profile
+        assert "storefront" in profile
+        assert profile["storefront"] == "us"
+
+    def test_exits_on_no_track_data(self, monkeypatch):
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: None)
+        monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr("taste_profiler.call_api", lambda *a, **kw: None)
+
+        args = MagicMock()
+        args.verbose = False
+        args.storefront = "us"
+        args.skip_replay = True
+        with pytest.raises(SystemExit):
+            build_profile(args)
+
+    def test_skip_replay(self, monkeypatch):
+        self._mock_all_apis(monkeypatch)
+        call_log = []
+        original_mock = MagicMock()
+
+        def tracking_api(command, *args, **kwargs):
+            call_log.append(command)
+            if command == "recent-tracks":
+                return [{"id": "t1", "attributes": {"name": "S", "artistName": "A", "genreNames": ["Rock"], "releaseDate": "2020-01-01"}, "relationships": {"artists": {"data": [{"id": "a1"}]}}}]
+            elif command in ("library-artists", "library-songs"):
+                return {"data": []}
+            return None
+
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: None)
+        monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr("taste_profiler.call_api", tracking_api)
+
+        args = MagicMock()
+        args.verbose = False
+        args.storefront = "us"
+        args.skip_replay = True
+        build_profile(args)
+        assert "replay-summary" not in call_log
+
+    def test_expired_token_exits(self, monkeypatch):
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: {
+            "expired": True, "warning": True, "message": "Token expired",
+            "days_remaining": 0,
+        })
+
+        args = MagicMock()
+        args.verbose = False
+        args.storefront = "us"
+        args.skip_replay = True
+        with pytest.raises(SystemExit):
+            build_profile(args)
+
+
+# ── main ─────────────────────────────────────────────────────────
+
+class TestTasteProfilerMain:
+    def test_main_uses_cache(self, monkeypatch, tmp_path, capsys):
+        cache_file = tmp_path / "cache.json"
+        cache_data = {"cached": True, "top_artists": []}
+        cache_file.write_text(json.dumps(cache_data))
+
+        monkeypatch.setattr(sys, "argv", [
+            "taste_profiler.py",
+            "--cache", str(cache_file),
+            "--max-age", "9999",
+        ])
+        tp.main()
+        captured = capsys.readouterr()
+        assert "cached" in captured.out
+
+    def test_main_writes_output(self, monkeypatch, tmp_path):
+        output_file = tmp_path / "out" / "profile.json"
+
+        monkeypatch.setattr(sys, "argv", [
+            "taste_profiler.py",
+            "--output", str(output_file),
+        ])
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: None)
+        monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
+
+        tracks = [{"id": "t1", "attributes": {"name": "S", "artistName": "A", "genreNames": ["Rock"], "releaseDate": "2020-01-01"}, "relationships": {"artists": {"data": [{"id": "a1"}]}}}]
+
+        def mock_api(command, *args, **kwargs):
+            if command == "recent-tracks":
+                return tracks
+            elif command in ("library-artists", "library-songs"):
+                return {"data": []}
+            return None
+
+        monkeypatch.setattr("taste_profiler.call_api", mock_api)
+        tp.main()
+        assert output_file.exists()
+        data = json.loads(output_file.read_text())
+        assert "top_artists" in data
+
+    def test_main_saves_cache(self, monkeypatch, tmp_path, capsys):
+        cache_file = tmp_path / "new_cache.json"
+
+        monkeypatch.setattr(sys, "argv", [
+            "taste_profiler.py",
+            "--cache", str(cache_file),
+            "--max-age", "0",  # force rebuild
+        ])
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: None)
+        monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
+
+        tracks = [{"id": "t1", "attributes": {"name": "S", "artistName": "A", "genreNames": ["Rock"], "releaseDate": "2020-01-01"}, "relationships": {"artists": {"data": [{"id": "a1"}]}}}]
+
+        def mock_api(command, *args, **kwargs):
+            if command == "recent-tracks":
+                return tracks
+            elif command in ("library-artists", "library-songs"):
+                return {"data": []}
+            return None
+
+        monkeypatch.setattr("taste_profiler.call_api", mock_api)
+        tp.main()
+        assert cache_file.exists()

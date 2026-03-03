@@ -1,5 +1,10 @@
 # 🎧 Apple Music DJ
 
+[![Tests](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml/badge.svg)](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml)
+![Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen)
+![Python](https://img.shields.io/badge/python-3.9%20%7C%203.11%20%7C%203.13-blue)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Your AI-powered Apple Music curator.** Analyzes your listening history, understands your taste DNA, and creates intelligent playlists directly in your Apple Music library — on all your devices.
 
 Built as an [OpenClaw](https://openclaw.dev) skill. Talk naturally, get playlists.
@@ -137,10 +142,12 @@ All data stays on your machine. The skill reads your Apple Music listening data 
 ## 🧪 Testing
 
 ```bash
-python3 -m pytest tests/ -v
+make test              # Run all tests
+make coverage          # Tests with coverage summary (fails below 80%)
+make coverage-html     # Generate HTML coverage report
 ```
 
-156 unit tests covering taste profiling, archetype detection, compatibility scoring, card generation, and shared utilities.
+431 unit tests across 12 modules — 87% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, playlist health, history tracking, cron setup, token generation, and shared utilities.
 
 ## 📖 Full Documentation
 
@@ -152,7 +159,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## 📄 License
 
-[MIT](LICENSE) — © 2025 Andernet (Matthew Anderson)
+[MIT](LICENSE) — © 2026 Andernet (Matthew Anderson)
 
 ## 👤 Author
 

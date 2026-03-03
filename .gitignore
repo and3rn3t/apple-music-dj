@@ -1,7 +1,8 @@
 # Credentials — NEVER commit these
 *.p8
 .env
-.env.*
+.env.local
+.env.*.local
 
 # Cached data
 taste_profile.json
@@ -19,6 +20,17 @@ venv/
 .venv/
 .mypy_cache/
 .pytest_cache/
+
+# Coverage
+coverage_html/
+htmlcov/
+.coverage
+
+# Data directory
+~/.apple-music-dj/
+
+# Node
+node_modules/
 
 # IDE
 .vscode/

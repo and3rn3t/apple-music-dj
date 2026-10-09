@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Minimum Python is now 3.10** (3.9 is end-of-life); CI tests 3.10, 3.12 and 3.14
-- Loosened the `cryptography` pin to `>=46,<50` so patch releases no longer need a dependency PR
+- Loosened the `cryptography` pin to `>=50,<51` so patch releases no longer need a dependency PR
 
 ### Added
 

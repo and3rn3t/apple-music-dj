@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml/badge.svg)](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml)
 ![Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen)
-![Python](https://img.shields.io/badge/python-3.9%20%7C%203.11%20%7C%203.13-blue)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Your AI-powered Apple Music curator.** Analyzes your listening history, understands your taste DNA, and creates intelligent playlists directly in your Apple Music library — on all your devices.
@@ -34,7 +34,7 @@ Built as an [OpenClaw](https://openclaw.dev) skill. Talk naturally, get playlist
 |---|---|
 | **Apple Developer Account** | [$99/year](https://developer.apple.com/programs/) — needed for MusicKit API access |
 | **Apple Music subscription** | Active subscription on your Apple ID |
-| **Python** | 3.9+ (no pip packages needed for core features) |
+| **Python** | 3.10+ (no pip packages needed for core features) |
 | **OpenClaw** | [openclaw.dev](https://openclaw.dev) |
 | **CLI tools** | `curl`, `jq` (usually pre-installed on macOS) |
 

@@ -1,6 +1,5 @@
 """Tests for catalog_explorer.py — gap analysis, album dive, rabbit hole."""
 
-import pytest
 
 from catalog_explorer import cmd_album_dive, cmd_gap_analysis, cmd_rabbit_hole
 

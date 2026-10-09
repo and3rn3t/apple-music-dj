@@ -3,7 +3,6 @@
 import json
 import sys
 import time
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -430,15 +429,9 @@ class TestBuildProfile:
                 return {"data": [{"id": "a1"}, {"id": "a2"}]}
             elif command == "library-songs":
                 return {"data": sample_tracks}
-            elif command == "ratings":
+            elif command == "ratings" or command == "recommendations":
                 return {"data": []}
-            elif command == "recommendations":
-                return {"data": []}
-            elif command == "replay-summary":
-                return None
-            elif command == "replay-milestones":
-                return None
-            elif command == "charts":
+            elif command == "replay-summary" or command == "replay-milestones" or command == "charts":
                 return None
             return None
 
@@ -475,7 +468,6 @@ class TestBuildProfile:
     def test_skip_replay(self, monkeypatch):
         self._mock_all_apis(monkeypatch)
         call_log = []
-        original_mock = MagicMock()
 
         def tracking_api(command, *args, **kwargs):
             call_log.append(command)

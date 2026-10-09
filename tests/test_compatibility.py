@@ -1,6 +1,5 @@
 """Tests for compatibility.py — genre similarity and profile comparison."""
 
-import pytest
 
 from compatibility import (
     artist_compatibility,

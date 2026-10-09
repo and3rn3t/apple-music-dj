@@ -23,17 +23,14 @@ Requires: crontab available on the system.
 """
 
 import sys
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 10):
     sys.exit(
-        f"ERROR: Python 3.9+ is required (you have "
+        f"ERROR: Python 3.10+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
 import argparse
-import json
-import os
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 
 from _common import load_config

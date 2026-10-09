@@ -69,10 +69,9 @@ class TestSequenceTracks:
         result = se.sequence_tracks(tracks, max_same_artist=5)
         # Check no immediate back-to-back repeat
         for i in range(1, len(result)):
-            if result[i]["artist"] == result[i-1]["artist"]:
-                # Allow at most one back-to-back when forced
-                if i >= 2:
-                    assert result[i]["artist"] != result[i-2]["artist"]
+            # Allow at most one back-to-back when forced
+            if result[i]["artist"] == result[i-1]["artist"] and i >= 2:
+                assert result[i]["artist"] != result[i-2]["artist"]
 
     def test_album_cap(self):
         """Max 2 tracks from the same album."""
@@ -474,7 +473,7 @@ class TestMoodMap:
         assert set(se.MOOD_MAP.keys()) == expected
 
     def test_mood_structure(self):
-        for mood, config in se.MOOD_MAP.items():
+        for config in se.MOOD_MAP.values():
             assert isinstance(config["genres"], list)
             assert len(config["genres"]) >= 2
             assert isinstance(config["energy"], str)

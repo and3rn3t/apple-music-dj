@@ -14,9 +14,9 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 """
 
 import sys
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 10):
     sys.exit(
-        f"ERROR: Python 3.9+ is required (you have "
+        f"ERROR: Python 3.10+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -25,8 +25,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from _common import call_api, load_config, load_profile, require_env_tokens
-from typing import Optional, Union
+from _common import call_api, load_config, require_env_tokens
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -108,7 +107,7 @@ def check_playlist(playlist_id: str, sf: str) -> dict:
     }
 
 
-def find_replacement(sf: str, name: str, artist: str) -> Optional[dict]:
+def find_replacement(sf: str, name: str, artist: str) -> dict | None:
     """Search catalog for a replacement track (same song, different catalog ID)."""
     query = f"{name} {artist}"
     result = call_api("search", sf, query, "songs")

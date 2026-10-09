@@ -14,9 +14,9 @@ Requires: APPLE_MUSIC_DEV_TOKEN (for artist mode).
 """
 
 import sys
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 10):
     sys.exit(
-        f"ERROR: Python 3.9+ is required (you have "
+        f"ERROR: Python 3.10+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -25,7 +25,6 @@ import json
 from pathlib import Path
 
 from _common import call_api, load_profile
-from typing import Optional, Union
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -73,7 +72,7 @@ def genre_overlap_score(genres_a: list[dict], genres_b: list[dict]) -> float:
 
 # ── Artist Compatibility ─────────────────────────────────────────
 
-def resolve_artist(sf: str, query: str) -> Optional[dict]:
+def resolve_artist(sf: str, query: str) -> dict | None:
     """Search for an artist by name and return their catalog data."""
     from _common import search_artist
     found = search_artist(sf, query)

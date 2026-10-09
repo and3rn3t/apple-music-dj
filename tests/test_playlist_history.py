@@ -1,11 +1,10 @@
 """Tests for playlist_history.py — playlist creation tracking."""
 
 import json
-import os
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 

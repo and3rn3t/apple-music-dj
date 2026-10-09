@@ -1,9 +1,7 @@
 """Tests for setup_cron.py — cron job management for Apple Music DJ."""
 
-import json
 import sys
-from unittest.mock import patch, MagicMock
-from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,7 +17,7 @@ class TestBuildJobDefs:
 
     def test_each_job_has_required_keys(self):
         defs = sc.build_job_defs("/usr/bin/python3", "/path/profile.json", "us", "/tmp/logs")
-        for name, job in defs.items():
+        for job in defs.values():
             assert "description" in job
             assert "schedule" in job
             assert "command" in job
@@ -149,7 +147,7 @@ class TestCmdInstall:
         defs = sc.build_job_defs("/usr/bin/python3", "/p.json", "us", str(tmp_path))
         sc.cmd_install(defs, ["weekly-mix"], str(tmp_path))
         # Should have replaced — only one weekly-mix line
-        lines = [l for l in set_calls[0].splitlines() if "weekly-mix" in l]
+        lines = [ln for ln in set_calls[0].splitlines() if "weekly-mix" in ln]
         assert len(lines) == 1
         assert "old-cmd" not in set_calls[0]
 

@@ -13,10 +13,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional, Union
 
 # ── Python version guard ──────────────────────────────────────────
-_MIN_PYTHON = (3, 9)
+_MIN_PYTHON = (3, 10)
 if sys.version_info < _MIN_PYTHON:
     sys.exit(
         f"ERROR: Python {_MIN_PYTHON[0]}.{_MIN_PYTHON[1]}+ is required "
@@ -41,7 +40,7 @@ DEFAULT_CONFIG = {
 }
 
 
-def load_config(path: Optional[str] = None) -> dict:
+def load_config(path: str | None = None) -> dict:
     """Load user configuration from JSON, falling back to defaults.
 
     If no path is given, looks at ~/.apple-music-dj/config.json.
@@ -67,7 +66,7 @@ def load_config(path: Optional[str] = None) -> dict:
         return config
 
 
-def save_config(config: dict, path: Optional[str] = None):
+def save_config(config: dict, path: str | None = None):
     """Write config to JSON with restrictive permissions."""
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +90,7 @@ def require_env_tokens():
         sys.exit(1)
 
 
-def call_api(command: str, *args, raw: bool = False) -> Union[dict, list, str, None]:
+def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None:
     """Call apple_music_api.sh and parse JSON output.
 
     If raw=True, return stdout as a stripped string instead of parsing JSON.
@@ -135,7 +134,7 @@ def load_profile(path: str) -> dict:
         sys.exit(1)
 
 
-def search_artist(sf: str, name: str) -> Optional[dict]:
+def search_artist(sf: str, name: str) -> dict | None:
     """Search for an artist by name and return the top match."""
     result = call_api("search", sf, name, "artists")
     if not result:
@@ -144,7 +143,7 @@ def search_artist(sf: str, name: str) -> Optional[dict]:
     return artists[0] if artists else None
 
 
-def search_album(sf: str, query: str) -> Optional[dict]:
+def search_album(sf: str, query: str) -> dict | None:
     """Search for an album by name and return the top match."""
     result = call_api("search", sf, query, "albums")
     if not result:
@@ -158,7 +157,7 @@ def filter_generic_genres(genres: list[str]) -> list[str]:
     return [g for g in genres if g.lower() not in GENERIC_GENRES]
 
 
-def check_token_expiry(warn_days: int = 14) -> Optional[dict]:
+def check_token_expiry(warn_days: int = 14) -> dict | None:
     """Check the dev token JWT exp claim and return status.
 
     Returns a dict with keys: expired (bool), days_remaining (int|None),
@@ -216,7 +215,7 @@ def check_token_expiry(warn_days: int = 14) -> Optional[dict]:
 STOREFRONT_CACHE = Path.home() / ".apple-music-dj" / "storefront.cache"
 
 
-def get_storefront(override: Optional[str] = None) -> str:
+def get_storefront(override: str | None = None) -> str:
     """Get storefront code with auto-detection and caching.
 
     Priority: explicit override > env var > cache > API detection > 'us' fallback.

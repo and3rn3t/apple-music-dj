@@ -31,9 +31,9 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 import sys
 
 # Python version guard
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 10):
     sys.exit(
-        f"ERROR: Python 3.9+ is required (you have "
+        f"ERROR: Python 3.10+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -45,7 +45,6 @@ import tempfile
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Union
 
 from _common import (
     call_api,
@@ -318,7 +317,7 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
 
     # Source 2: Deep cuts from user's artists in mood-relevant genres
     top_artists = profile.get("top_artists", [])[:10]
-    for i, artist in enumerate(top_artists[:5]):
+    for artist in top_artists[:5]:
         artist_id = artist.get("id")
         if not artist_id:
             continue
@@ -573,10 +572,10 @@ def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int =
             playlist_artists[artist] += 1
 
     # Build a target genre profile from the existing playlist
-    total_genre = sum(playlist_genres.values()) or 1
     target_genres = [g for g, _ in playlist_genres.most_common(5)]
 
-    library_ids = set(profile.get("library_song_ids", []))
+    # TODO: exclude songs already in the library from refresh candidates
+    library_ids = set(profile.get("library_song_ids", []))  # noqa: F841
     disliked = set(profile.get("disliked_song_ids", []))
 
     candidates = []
@@ -648,8 +647,8 @@ def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int =
 
 # ── Playlist Creation ────────────────────────────────────────────
 
-def generate_name(strategy: str, mood: Optional[str] = None,
-                  profile: Optional[dict] = None) -> str:
+def generate_name(strategy: str, mood: str | None = None,
+                  profile: dict | None = None) -> str:
     """Auto-generate a playlist name."""
     date_str = datetime.now(timezone.utc).strftime("%b %Y")
     if strategy == "deep-cuts":
@@ -670,7 +669,7 @@ def generate_name(strategy: str, mood: Optional[str] = None,
     return f"Apple Music DJ · {date_str}"
 
 
-def generate_description(strategy: str, mood: Optional[str] = None,
+def generate_description(strategy: str, mood: str | None = None,
                          track_count: int = 0) -> str:
     """Auto-generate a playlist description."""
     descriptions = {
@@ -688,7 +687,7 @@ def generate_description(strategy: str, mood: Optional[str] = None,
     return f"{desc} {track_count} tracks."
 
 
-def check_playlist_exists(name: str) -> Optional[str]:
+def check_playlist_exists(name: str) -> str | None:
     """Check if a playlist with this name already exists. Returns playlist ID or None."""
     try:
         result = subprocess.run(

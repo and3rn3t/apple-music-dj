@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Minimum Python is now 3.10** (3.9 is end-of-life); CI tests 3.10, 3.12 and 3.14
+- Loosened the `cryptography` pin to `>=46,<50` so patch releases no longer need a dependency PR
+
+### Added
+
+- Ruff lint config (`[tool.ruff]`), `make ruff`, and lint + ShellCheck jobs in CI and pre-commit
+- pip caching in CI
+
+### Removed
+
+- Unused imports and dead assignments found by Ruff
+- Placeholder Lighthouse workflow and duplicate Markdown issue templates (the YAML forms remain)
+
 ## [3.1.0] — 2026-03-02
 
 ### Added

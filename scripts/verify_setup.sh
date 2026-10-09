@@ -37,10 +37,10 @@ py_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.versi
 py_major=$(echo "$py_version" | cut -d. -f1)
 py_minor=$(echo "$py_version" | cut -d. -f2)
 
-if [[ "$py_major" -ge 3 && "$py_minor" -ge 9 ]]; then
-    echo "  $PASS Python $py_version (≥ 3.9 required)"
+if [[ "$py_major" -ge 3 && "$py_minor" -ge 10 ]]; then
+    echo "  $PASS Python $py_version (≥ 3.10 required)"
 else
-    echo "  $FAIL Python $py_version (≥ 3.9 required)"
+    echo "  $FAIL Python $py_version (≥ 3.10 required)"
     errors=$((errors + 1))
 fi
 

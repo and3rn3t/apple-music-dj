@@ -18,9 +18,9 @@ As a library:
 import sys
 
 # Python version guard
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 10):
     sys.exit(
-        f"ERROR: Python 3.9+ is required (you have "
+        f"ERROR: Python 3.10+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -38,7 +38,7 @@ def load_history() -> list[dict]:
     if not HISTORY_FILE.exists():
         return []
     try:
-        with open(HISTORY_FILE, "r") as f:
+        with open(HISTORY_FILE) as f:
             data = json.load(f)
         if isinstance(data, list):
             return data
@@ -106,7 +106,7 @@ def cmd_log(args):
     """Log a playlist creation."""
     track_ids = []
     if args.track_ids_file:
-        with open(args.track_ids_file, "r") as f:
+        with open(args.track_ids_file) as f:
             track_ids = [line.strip() for line in f if line.strip()]
     elif args.track_ids:
         track_ids = args.track_ids

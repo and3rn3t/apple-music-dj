@@ -254,7 +254,7 @@ fi
 
 sf_cache="${HOME}/.apple-music-dj/storefront.cache"
 if [[ -f "$sf_cache" ]]; then
-    sf_val=$(cat "$sf_cache" | tr -d '[:space:]')
+    sf_val=$(tr -d '[:space:]' < "$sf_cache")
     echo "  $PASS Storefront cached: $sf_val"
 else
     echo "  $WARN No storefront cache (will auto-detect on first run)"

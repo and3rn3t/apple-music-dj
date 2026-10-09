@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: test coverage coverage-html lint
+.PHONY: test coverage coverage-html lint ruff
 
 ## Run all tests
 test:
@@ -14,6 +14,11 @@ coverage:
 coverage-html:
 	$(PYTHON) -m pytest tests/ --cov=scripts --cov-report=html:coverage_html --cov-report=term-missing
 	@echo "Coverage report: coverage_html/index.html"
+
+## Ruff (Python) and ShellCheck (bash)
+ruff:
+	$(PYTHON) -m ruff check scripts tests
+	shellcheck scripts/*.sh
 
 ## Syntax-check all scripts
 lint:

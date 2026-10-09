@@ -14,9 +14,9 @@ Dependencies: pip install PyJWT cryptography
 """
 
 import sys
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 10):
     sys.exit(
-        f"ERROR: Python 3.9+ is required (you have "
+        f"ERROR: Python 3.10+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -52,7 +52,7 @@ def main():
         print("ERROR: APPLE_TOKEN_EXPIRY must be a number (seconds)", file=sys.stderr)
         sys.exit(1)
 
-    with open(key_path, "r") as f:
+    with open(key_path) as f:
         private_key = f.read()
 
     now = int(time.time())
@@ -71,7 +71,7 @@ def main():
 
     print(token)
     print(f"\n✅ Token generated. Expires in {expiry // 86400} days.", file=sys.stderr)
-    print(f"  export APPLE_MUSIC_DEV_TOKEN=\"<token printed to stdout>\"", file=sys.stderr)
+    print("  export APPLE_MUSIC_DEV_TOKEN=\"<token printed to stdout>\"", file=sys.stderr)
 
 if __name__ == "__main__":
     main()

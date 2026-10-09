@@ -16,9 +16,9 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 """
 
 import sys
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 10):
     sys.exit(
-        f"ERROR: Python 3.9+ is required (you have "
+        f"ERROR: Python 3.10+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -27,7 +27,6 @@ import json
 from pathlib import Path
 
 from _common import call_api, load_profile, search_artist, search_album, get_album_tracks
-from typing import Optional, Union
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -122,7 +121,7 @@ def cmd_gap_analysis(profile: dict, sf: str) -> dict:
 
 # ── Album Deep Dive ──────────────────────────────────────────────
 
-def cmd_album_dive(sf: str, album_query: str, artist_hint: Optional[str] = None) -> dict:
+def cmd_album_dive(sf: str, album_query: str, artist_hint: str | None = None) -> dict:
     """Deep dive into a specific album."""
     query = f"{album_query} {artist_hint}" if artist_hint else album_query
     album = search_album(sf, query)

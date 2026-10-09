@@ -35,11 +35,12 @@ Thanks for your interest in contributing! Here's how to get started.
 
 **Python:**
 
-- Python 3.9+ (compatible with 3.9, 3.11, and 3.13)
+- Python 3.10+ (tested on 3.10, 3.12, and 3.14)
 - No pip dependencies for core scripts (stdlib only)
 - `PyJWT` is the only exception (for token generation)
 - Functions use `snake_case`, classes use `PascalCase`
 - Run tests before submitting: `python3 -m pytest tests/ -v`
+- Lint before submitting: `make ruff` (needs `pip install ruff` and ShellCheck)
 
 ### Testing Changes
 

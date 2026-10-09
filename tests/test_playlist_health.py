@@ -1,8 +1,7 @@
 """Tests for playlist_health.py — playlist health checking and maintenance."""
 
-import json
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 

@@ -1,7 +1,7 @@
 """Tests for generate_dev_token.py — Apple Music JWT token generation."""
 
 import sys
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import MagicMock
 
 import pytest
 

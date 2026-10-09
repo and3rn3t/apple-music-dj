@@ -4,7 +4,6 @@ import base64
 import json
 import os
 import subprocess
-import tempfile
 import time
 
 import pytest
@@ -22,7 +21,6 @@ from _common import (
     search_album,
     search_artist,
     DEFAULT_CONFIG,
-    STOREFRONT_CACHE,
 )
 
 

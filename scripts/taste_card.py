@@ -17,9 +17,9 @@ Requires: A taste profile JSON (from taste_profiler.py).
 """
 
 import sys
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 10):
     sys.exit(
-        f"ERROR: Python 3.9+ is required (you have "
+        f"ERROR: Python 3.10+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -94,7 +94,6 @@ def generate_svg(profile: dict) -> str:
     variety = profile.get("variety_score", 0.5)
     mainstream = profile.get("mainstream_score", 0.5)
     velocity = profile.get("listening_velocity", "moderate")
-    summary = profile.get("data_summary", {})
 
     # Colors
     bg = "#1a1a2e"
@@ -209,7 +208,6 @@ def generate_text(profile: dict) -> str:
     variety = profile.get("variety_score", 0.5)
     mainstream = profile.get("mainstream_score", 0.5)
     velocity = profile.get("listening_velocity", "moderate")
-    summary = profile.get("data_summary", {})
 
     bar_full = "█"
     bar_empty = "░"
@@ -335,7 +333,7 @@ def generate_compatibility_svg(result: dict) -> str:
     lines.append(f'<text x="40" y="{y}" font-family="system-ui,sans-serif" '
                  f'font-size="11" fill="{muted}" letter-spacing="2">UNIQUE TO EACH</text>')
     y += 6
-    for i, (a_item, b_item) in enumerate(zip(unique_a, unique_b)):
+    for a_item, b_item in zip(unique_a, unique_b, strict=False):
         y += 20
         a_name = a_item if isinstance(a_item, str) else a_item.get("name", "")
         b_name = b_item if isinstance(b_item, str) else b_item.get("name", "")
@@ -404,7 +402,6 @@ def generate_year_review_svg(review: dict) -> str:
 
     bg = "#1a1a2e"
     card_bg = "#16213e"
-    accent = "#e94560"
     text = "#eaeaea"
     muted = "#a0a0b0"
     bar_bg = "#2a2a4a"

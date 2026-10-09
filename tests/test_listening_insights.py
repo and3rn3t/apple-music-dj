@@ -1,6 +1,5 @@
 """Tests for listening_insights.py — timeline, streaks, year-review."""
 
-import pytest
 
 from listening_insights import cmd_streaks, cmd_timeline, cmd_year_review
 

@@ -186,8 +186,15 @@ def format_text(report: dict) -> str:
 # ── Main ─────────────────────────────────────────────────────────
 
 def _load_snapshot(path: Path) -> dict:
-    with open(path) as f:
-        return json.load(f)
+    """Read a snapshot, turning I/O and JSON problems into the CLI's user-facing ValueError."""
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        raise ValueError(f"Can't read snapshot {path.name}: {e}. Delete it or re-run taste_profiler.py.") from e
+    if not isinstance(data, dict):
+        raise ValueError(f"Snapshot {path.name} isn't a valid snapshot (expected a JSON object).")
+    return data
 
 
 def run(args, snapshot_dir: Path | None = None) -> dict:

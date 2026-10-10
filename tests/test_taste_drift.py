@@ -113,6 +113,47 @@ class TestPickBaseline:
         assert td.pick_baseline(snaps, date(2026, 4, 1), date(2026, 1, 1)) is None
 
 
+class TestSnapshotErrors:
+    def test_corrupt_snapshot_is_a_clean_error(self, tmp_path):
+        save_snapshot(_profile([("Rock", 1.0)], ["A"], day="2026-04-01"), tmp_path)
+        (tmp_path / "2026-01-01.json").write_text("{not json")
+        with pytest.raises(ValueError, match="Can't read snapshot 2026-01-01.json"):
+            td.run(_args(), tmp_path)
+
+    def test_non_object_snapshot_rejected(self, tmp_path):
+        save_snapshot(_profile([("Rock", 1.0)], ["A"], day="2026-04-01"), tmp_path)
+        (tmp_path / "2026-01-01.json").write_text("[1, 2]")
+        with pytest.raises(ValueError, match="isn't a valid snapshot"):
+            td.run(_args(), tmp_path)
+
+    def test_unreadable_snapshot_is_a_clean_error(self, tmp_path):
+        save_snapshot(_profile([("Rock", 1.0)], ["A"], day="2026-04-01"), tmp_path)
+        bad = tmp_path / "2026-01-01.json"
+        bad.write_text("{}")
+        bad.chmod(0)
+        try:
+            with pytest.raises(ValueError, match="Can't read snapshot"):
+                td.run(_args(), tmp_path)
+        finally:
+            bad.chmod(0o600)
+
+    def test_cli_reports_instead_of_tracebacks(self, tmp_path, monkeypatch, capsys):
+        import sys
+        import _common
+        monkeypatch.setattr(_common, "SNAPSHOT_DIR", tmp_path)
+        save_snapshot(_profile([("Rock", 1.0)], ["A"], day="2026-04-01"), tmp_path)
+        (tmp_path / "2026-01-01.json").write_text("{not json")
+        monkeypatch.setattr(sys, "argv", ["taste_drift.py"])
+        with pytest.raises(SystemExit) as e:
+            td.main()
+        assert e.value.code == 1 and "Can't read snapshot" in capsys.readouterr().err
+
+    def test_stray_files_are_ignored(self, tmp_path):
+        (tmp_path / "abcd-ef-gh.json").write_text("{}")
+        from _common import list_snapshots
+        assert list_snapshots(tmp_path) == []
+
+
 class TestRun:
     def test_no_snapshots(self, tmp_path):
         with pytest.raises(ValueError, match="No snapshots yet"):

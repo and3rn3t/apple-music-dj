@@ -30,6 +30,7 @@ if sys.version_info < (3, 10):
 
 import argparse
 import json
+import re
 import time
 from collections import Counter
 from datetime import datetime, timezone
@@ -127,7 +128,7 @@ def extract_station_genres(stations_data: dict | None) -> list[str]:
         title = station.get("attributes", {}).get("name", "").lower()
         # Longest names first so "Indie Pop" wins over "Pop"
         for genre in sorted(GENRE_ENERGY, key=len, reverse=True):
-            if genre.lower() in title:
+            if re.search(rf"(?<![a-z0-9]){re.escape(genre.lower())}(?![a-z0-9])", title):
                 found.append(genre)
                 break
     return found

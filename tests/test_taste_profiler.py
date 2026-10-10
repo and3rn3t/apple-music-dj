@@ -643,6 +643,15 @@ class TestRecentSignals:
     def test_recent_additions_empty(self, data):
         assert extract_recent_additions(data) == ([], [])
 
+    @pytest.mark.parametrize("title", ["Popular Hits Radio", "Rockstar Mix", "Jazzercise Station", "Folklore"])
+    def test_station_genres_need_whole_words(self, title):
+        assert extract_station_genres({"data": [{"attributes": {"name": title}}]}) == []
+
+    @pytest.mark.parametrize("title,genre", [("Pop Hits", "Pop"), ("Radio: Rock", "Rock"), ("K-Pop Hits", "K-Pop"),
+                                             ("indie pop favorites", "Indie Pop"), ("Smooth Jazz.", "Jazz")])
+    def test_station_genres_whole_word_hits(self, title, genre):
+        assert extract_station_genres({"data": [{"attributes": {"name": title}}]}) == [genre]
+
     def test_station_genres_from_titles(self):
         data = {"data": [
             {"attributes": {"name": "Alternative Radio"}},

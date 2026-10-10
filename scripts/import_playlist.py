@@ -116,6 +116,23 @@ def normalize_artist(artist: str) -> str:
     return re.sub(r"\s+", " ", a).strip()
 
 
+_CREDIT_SPLIT = re.compile(r"\s*(?:,|;|/|&|\band\b|\bfeat\.?|\bft\.?|\bfeaturing\b|\bwith\b|\bx\b)\s*", re.IGNORECASE)
+
+
+def artist_credited(want: str, credit: str) -> bool:
+    """True if `want` is the whole credit or one of its collaborators.
+
+    "Muse" must not match "Museum", and "Queen" must not match "Queens of the Stone Age"
+    or "Queen Latifah"; "Queen & David Bowie" does match "Queen".
+    """
+    wanted = normalize_artist(want)
+    if not wanted:
+        return False
+    if normalize_artist(credit) == wanted:
+        return True
+    return any(normalize_artist(part) == wanted for part in _CREDIT_SPLIT.split(credit))
+
+
 def _as_match(song: dict) -> dict:
     attrs = song.get("attributes", {})
     return {"id": song.get("id", ""), "name": attrs.get("name", ""), "artist": attrs.get("artistName", "")}
@@ -123,12 +140,11 @@ def _as_match(song: dict) -> dict:
 
 def best_search_match(row: dict, songs: list[dict]) -> dict | None:
     """Strict choice among search results: artist must match and the title must be close."""
-    want_artist, want_title = normalize_artist(row["artist"]), normalize_title(row["title"])
+    want_title = normalize_title(row["title"])
     best, best_score = None, 0.0
     for song in songs:
         attrs = song.get("attributes", {})
-        have_artist = normalize_artist(attrs.get("artistName", ""))
-        if not want_artist or want_artist not in have_artist:
+        if not artist_credited(row["artist"], attrs.get("artistName", "")):
             continue
         score = difflib.SequenceMatcher(None, want_title, normalize_title(attrs.get("name", ""))).ratio()
         if score > best_score:

@@ -85,8 +85,30 @@ class TestBestSearchMatch:
     def test_artist_credit_may_be_longer(self):
         assert ip.best_search_match(self.ROW, [_song("1", "Creep", "Radiohead & Friends")])["id"] == "1"
 
+    @pytest.mark.parametrize("credit", ["Museum", "Radiohead Tribute Band", "Radioheads", "Not Radiohead"])
+    def test_artist_must_match_whole_credit_not_a_substring(self, credit):
+        assert ip.best_search_match(self.ROW, [_song("1", "Creep", credit)]) is None
+
     def test_empty(self):
         assert ip.best_search_match(self.ROW, []) is None
+
+
+class TestArtistCredited:
+    @pytest.mark.parametrize("want,credit", [
+        ("Muse", "Muse"), ("The Beatles", "Beatles"), ("Queen", "Queen & David Bowie"),
+        ("David Bowie", "Queen & David Bowie"), ("Drake", "Drake feat. Rihanna"),
+        ("Tyler, the Creator", "Tyler, the Creator"), ("Simon & Garfunkel", "Simon & Garfunkel"),
+        ("Beyonce", "Jay-Z, Beyonce"), ("Kendrick Lamar", "SZA x Kendrick Lamar"),
+    ])
+    def test_credited(self, want, credit):
+        assert ip.artist_credited(want, credit)
+
+    @pytest.mark.parametrize("want,credit", [
+        ("Muse", "Museum"), ("Queen", "Queens of the Stone Age"), ("Queen", "Queen Latifah"),
+        ("Muse", ""), ("", "Muse"), ("Drake", "Drake Bell"),
+    ])
+    def test_not_credited(self, want, credit):
+        assert not ip.artist_credited(want, credit)
 
 
 class TestMatching:

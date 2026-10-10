@@ -257,7 +257,9 @@ class MockAppleMusic:
             wanted = set((q.get("filter[isrc]", [""])[0]).split(","))
             return 200, {"data": [song(r[0]) for r in _SONGS if r[6] in wanted]}
         if len(rest) == 2 and rest[0] == "songs":
-            return 200, {"data": [song(rest[1])]} if any(r[0] == rest[1] for r in _SONGS) else (404, {"errors": []})
+            if not any(r[0] == rest[1] for r in _SONGS):
+                return 404, {"errors": [{"status": "404", "detail": f"no song {rest[1]}"}]}
+            return 200, {"data": [song(rest[1])]}
         if rest[:1] == ["artists"] and len(rest) >= 2 and rest[1] in ARTISTS:
             aid = rest[1]
             if rest[2:] == ["view", "similar-artists"]:

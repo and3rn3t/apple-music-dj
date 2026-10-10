@@ -31,6 +31,7 @@ if sys.version_info < (3, 10):
     )
 
 import argparse
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -45,12 +46,16 @@ MARKER = "# apple-music-dj"
 def build_job_defs(python: str, profile: str, sf: str,
                    log_dir: str) -> dict[str, dict]:
     """Return cron job definitions keyed by job name."""
-    strategy = SCRIPT_DIR / "strategy_engine.py"
-    daily_pick = SCRIPT_DIR / "daily_pick.py"
-    new_releases = SCRIPT_DIR / "new_releases.sh"
-    health = SCRIPT_DIR / "playlist_health.py"
-    profiler = SCRIPT_DIR / "taste_profiler.py"
-    drift = SCRIPT_DIR / "taste_drift.py"
+    # These land in a crontab line that /bin/sh parses, so quote every dynamic value
+    # (a profile path with spaces, or shell metacharacters, must stay one argument).
+    q = shlex.quote
+    python, profile, sf = q(python), q(profile), q(sf)
+    strategy = q(str(SCRIPT_DIR / "strategy_engine.py"))
+    daily_pick = q(str(SCRIPT_DIR / "daily_pick.py"))
+    new_releases = q(str(SCRIPT_DIR / "new_releases.sh"))
+    health = q(str(SCRIPT_DIR / "playlist_health.py"))
+    profiler = q(str(SCRIPT_DIR / "taste_profiler.py"))
+    drift = q(str(SCRIPT_DIR / "taste_drift.py"))
 
     return {
         "weekly-mix": {

@@ -168,11 +168,17 @@ def _arc_order(tracks: list[dict], arc: str) -> list[dict]:
     if arc == "descending":
         return by_energy[::-1]
 
-    # wave: medium opener -> build -> peak in the middle -> wind-down. Give each
-    # slot a target on a bell curve, then hand out tracks lowest-energy-first
-    # to the lowest-target slots.
+    # wave: medium opener -> build -> peak in the middle -> wind-down. Each slot gets
+    # a target energy (opener 0.55, peak 1.0, closer 0.2 — deliberately asymmetric so
+    # the opener isn't the quietest track), then tracks are handed out lowest-energy
+    # first to the lowest-target slots.
     n = len(tracks)
-    targets = [0.35 + 0.65 * (1 - (2 * i / (n - 1) - 1) ** 2) for i in range(n)]
+
+    def target(i: int) -> float:
+        x = i / (n - 1)
+        return 0.55 + 0.9 * x if x <= 0.5 else 1.0 - 1.6 * (x - 0.5)
+
+    targets = [target(i) for i in range(n)]
     slots = sorted(range(n), key=lambda i: targets[i])
     ordered: list[dict] = [{}] * n
     for slot, track in zip(slots, by_energy, strict=True):
@@ -771,8 +777,23 @@ def _cap_per_artist(candidates: list[dict], target_size: int, cap: int = 3,
     return picked
 
 
+def _enforce_share(selected: list[dict], max_share: float) -> list[dict]:
+    """Drop the lowest-scoring tracks from whichever blend side exceeds `max_share` of the
+    *final* playlist. `selected` is in descending score order, so the last track of a side
+    is its weakest. Can shrink the playlist (even to nothing) when one listener's
+    candidates are scarce — a lopsided "blend" isn't returned."""
+    picked = list(selected)
+    while picked:
+        counts = Counter(c.get("source") for c in picked)
+        side = max(("a", "b"), key=lambda s: counts[s])
+        if counts[side] / len(picked) <= max_share + 1e-9:
+            break
+        picked.pop(max(i for i, c in enumerate(picked) if c.get("source") == side))
+    return picked
+
+
 def _finish(candidates: list[dict], target_size: int, arc: str = "wave", cap: int = 3,
-            side_cap: int | None = None) -> list[dict]:
+            side_cap: int | None = None, max_share: float | None = None) -> list[dict]:
     """Jitter, sort, cap per artist, strip internals, then sequence."""
     rng = random.Random()
     seen: set[str] = set()
@@ -784,6 +805,8 @@ def _finish(candidates: list[dict], target_size: int, arc: str = "wave", cap: in
             unique.append(c)
     unique.sort(key=lambda c: c["_score"], reverse=True)
     selected = _cap_per_artist(unique, target_size, cap, side_cap)
+    if max_share is not None:
+        selected = _enforce_share(selected, max_share)
     for c in selected:
         c.pop("_score", None)
         c.pop("_is_wildcard", None)
@@ -1043,7 +1066,7 @@ def strategy_blend(profile_a: dict, profile_b: dict, sf: str, target_size: int =
                 add(detail[0], side, f"A loved track from {who} library.", 0.6, "")
 
     cap = max(1, int(target_size * BLEND_MAX_SHARE))
-    return _finish(candidates, target_size, side_cap=cap)
+    return _finish(candidates, target_size, side_cap=cap, max_share=BLEND_MAX_SHARE)
 
 
 # ── Playlist Creation ────────────────────────────────────────────

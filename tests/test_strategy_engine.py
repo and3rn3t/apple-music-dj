@@ -102,6 +102,14 @@ class TestSequenceTracks:
         energies = [t["energy"] for t in result]
         assert energies == sorted(energies, reverse=True)
 
+    def test_wave_opener_is_not_the_quietest_track(self):
+        """Opener is mid-energy; the closer is the quietest (the wind-down)."""
+        result = se.sequence_tracks(self._energy_set(), arc="wave")
+        energies = [t["energy"] for t in result]
+        assert energies[0] > min(energies)
+        assert energies[-1] == min(energies)
+        assert energies[0] > energies[-1]
+
     def test_wave_arc_peaks_in_middle(self):
         result = se.sequence_tracks(self._energy_set(), arc="wave")
         energies = [t["energy"] for t in result]
@@ -755,12 +763,43 @@ class TestStrategyBlend:
         ids = {t["id"] for t in se.strategy_blend(a, b, "us")}
         assert "rh1" not in ids and "by1" not in ids and "rh2" in ids
 
-    def test_includes_loved_tracks(self, sample_profile, monkeypatch):
+    def test_includes_loved_tracks_from_both_listeners(self, sample_profile, monkeypatch):
         a, b = self._profiles(sample_profile)
+        a["loved_track_ids"] = ["love0"]
         self._api(monkeypatch, {})
         result = se.strategy_blend(a, b, "us")
-        assert [t["id"] for t in result] == ["love1"]
-        assert result[0]["source"] == "b"
+        assert {(t["id"], t["source"]) for t in result} == {("love0", "a"), ("love1", "b")}
+
+    def test_lopsided_candidates_never_exceed_share_of_final_playlist(self, sample_profile, monkeypatch):
+        """Only one listener has candidates: 10 of 10 would be 100% A, so it must not be returned."""
+        a, b = self._profiles(sample_profile)
+        b["top_artists"] = [{"name": "Nobody", "id": "zz"}]
+        b["loved_track_ids"] = []
+        self._api(monkeypatch, {"a2": [_song(f"w{i}", f"W{i}", "The Weeknd", ["Pop"], album=f"Al{i}")
+                                       for i in range(10)]})
+        for artist in a["top_artists"]:
+            artist["name"] = artist["name"] if artist["name"] == "The Weeknd" else artist["name"] + " (skip)"
+        assert se.strategy_blend(a, b, "us", target_size=30) == []
+
+    def test_share_holds_with_a_little_shared_material(self, sample_profile, monkeypatch):
+        a, b = self._profiles(sample_profile)
+        b["loved_track_ids"] = []
+        self._api(monkeypatch, {
+            "a1": [_song("rh1", "Creep", "Radiohead"), _song("rh2", "Karma", "Radiohead")],
+            "a2": [_song(f"w{i}", f"W{i}", "The Weeknd", ["Pop"], album=f"Al{i}") for i in range(3)],
+            "a3": [_song(f"k{i}", f"K{i}", "Kendrick Lamar", ["Hip-Hop/Rap"], album=f"Bl{i}") for i in range(3)],
+            "b9": [_song("by1", "Halo", "Beyonce", ["Pop"])],
+        })
+        result = se.strategy_blend(a, b, "us", target_size=30)
+        from collections import Counter
+        counts = Counter(t["source"] for t in result)
+        assert result and all(counts[s] / len(result) <= 0.6 + 1e-9 for s in ("a", "b"))
+
+    def test_enforce_share_drops_weakest_of_the_heavy_side(self):
+        picked = [{"id": str(i), "source": s} for i, s in enumerate("aaabab")]  # score order
+        out = se._enforce_share(picked, 0.6)
+        # 4 of 6 are "a" (67%): the weakest "a" (position 4) goes, leaving 3 of 5 (60%)
+        assert [t["id"] for t in out] == ["0", "1", "2", "3", "5"]
 
     def test_no_data_returns_empty(self, empty_profile, monkeypatch):
         self._api(monkeypatch, {})

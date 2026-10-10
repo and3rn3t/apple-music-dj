@@ -9,6 +9,7 @@ used across all scripts.
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -334,4 +335,5 @@ def save_snapshot(profile: dict, directory: Path | None = None) -> Path:
 def list_snapshots(directory: Path | None = None) -> list[tuple[str, Path]]:
     """All snapshots as (YYYY-MM-DD, path), oldest first."""
     directory = Path(directory) if directory else SNAPSHOT_DIR
-    return [(p.stem, p) for p in sorted(directory.glob("????-??-??.json"))]
+    return [(p.stem, p) for p in sorted(directory.glob("????-??-??.json"))
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.stem)]

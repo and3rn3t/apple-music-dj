@@ -3,6 +3,13 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_snapshots(tmp_path, monkeypatch):
+    """Never let a test write taste snapshots into the real ~/.apple-music-dj."""
+    import _common
+    monkeypatch.setattr(_common, "SNAPSHOT_DIR", tmp_path / "_snapshots")
+
+
 # ── Sample Tracks ────────────────────────────────────────────────
 
 @pytest.fixture

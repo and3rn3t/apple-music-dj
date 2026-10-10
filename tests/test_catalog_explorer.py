@@ -1,6 +1,12 @@
 """Tests for catalog_explorer.py — gap analysis, album dive, rabbit hole."""
 
 
+import json
+import sys
+
+import pytest
+
+import catalog_explorer as ce
 from catalog_explorer import cmd_album_dive, cmd_gap_analysis, cmd_rabbit_hole
 
 
@@ -351,3 +357,73 @@ class TestCmdRabbitHole:
         result = cmd_rabbit_hole(sample_profile, "us", "Radiohead", depth=1)
         assert len(result["playlist_tracks"]) >= 1
         assert all("id" in t for t in result["playlist_tracks"])
+
+
+# ── --add-missing ────────────────────────────────────────────────
+
+GAP = {"results": [
+    {"artist": "A", "albums_missing": [
+        {"name": "Old", "id": "1", "release_date": "1999-01-01"},
+        {"name": "New", "id": "2", "release_date": "2024-01-01"}]},
+    {"artist": "B", "albums_missing": [
+        {"name": "Mid", "id": "3", "release_date": "2010-01-01"},
+        {"name": "NoId", "id": "", "release_date": "2030-01-01"}]},
+]}
+
+
+class TestAddMissing:
+    def test_plan_picks_newest_first_and_skips_idless(self):
+        assert [a["id"] for a in ce.plan_missing_albums(GAP, 2)] == ["2", "3"]
+        assert [a["id"] for a in ce.plan_missing_albums(GAP, 10)] == ["2", "3", "1"]
+
+    def test_dry_run_never_calls_api(self, monkeypatch):
+        def boom(*a, **k):
+            raise AssertionError("dry run must not call the API")
+        monkeypatch.setattr(ce, "call_api", boom)
+        out = ce.run_add_missing(GAP, 2, confirmed=False)
+        assert out["dry_run"] is True and len(out["albums"]) == 2
+        assert "--yes" in out["note"]
+
+    def test_confirmed_adds_in_batches(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(ce, "call_api", lambda *a, **k: calls.append((a, k)) or "")
+        many = {"results": [{"artist": "A", "albums_missing": [
+            {"name": f"Al{i}", "id": str(i), "release_date": f"20{i:02d}-01-01"} for i in range(25)]}]}
+        out = ce.run_add_missing(many, 25, confirmed=True)
+        assert len(out["added"]) == 25 and out["failed"] == []
+        assert len(calls) == 3  # 10 + 10 + 5
+        cmd, kind, ids = calls[0][0]
+        assert (cmd, kind) == ("add-to-library", "albums") and len(ids.split(",")) == 10
+        assert calls[0][1] == {"raw": True}
+
+    def test_failed_batch_reported(self, monkeypatch):
+        monkeypatch.setattr(ce, "call_api", lambda *a, **k: None)
+        out = ce.run_add_missing(GAP, 2, confirmed=True)
+        assert out["added"] == [] and len(out["failed"]) == 2
+
+    def _run(self, monkeypatch, tmp_path, capsys, extra):
+        profile = tmp_path / "p.json"
+        profile.write_text("{}")
+        monkeypatch.setattr(ce, "cmd_gap_analysis", lambda p, sf: json.loads(json.dumps(GAP)))
+        monkeypatch.setattr(sys, "argv", ["catalog_explorer.py", "gap-analysis", str(profile), "us", *extra])
+        ce.main()
+        return json.loads(capsys.readouterr().out)
+
+    def test_cli_default_has_no_add_section(self, monkeypatch, tmp_path, capsys):
+        assert "add_missing" not in self._run(monkeypatch, tmp_path, capsys, [])
+
+    def test_cli_preview_without_yes(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(ce, "call_api", lambda *a, **k: pytest.fail("must not write"))
+        out = self._run(monkeypatch, tmp_path, capsys, ["--add-missing", "1"])
+        assert out["add_missing"]["dry_run"] is True
+
+    def test_cli_yes_writes(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(ce, "call_api", lambda *a, **k: "")
+        out = self._run(monkeypatch, tmp_path, capsys, ["--add-missing", "1", "--yes"])
+        assert out["add_missing"]["dry_run"] is False
+        assert [a["id"] for a in out["add_missing"]["added"]] == ["2"]
+
+    @pytest.mark.parametrize("extra", [["--add-missing", "0"], ["--yes"]])
+    def test_cli_rejects_bad_flags(self, monkeypatch, tmp_path, capsys, extra):
+        with pytest.raises(SystemExit):
+            self._run(monkeypatch, tmp_path, capsys, extra)

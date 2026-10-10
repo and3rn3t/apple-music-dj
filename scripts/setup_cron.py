@@ -7,6 +7,7 @@ Generates and installs crontab entries for recurring jobs:
   new-releases      Check for new releases from favourite artists weekly
   daily-drop        Surface a daily pick recommendation
   health-check      Scan playlists for removed/stale tracks monthly
+  monthly-drift     Snapshot taste + report drift monthly (opt-in: --jobs monthly-drift)
 
 Usage:
   python3 setup_cron.py list                    Show planned cron jobs
@@ -48,6 +49,8 @@ def build_job_defs(python: str, profile: str, sf: str,
     daily_pick = SCRIPT_DIR / "daily_pick.py"
     new_releases = SCRIPT_DIR / "new_releases.sh"
     health = SCRIPT_DIR / "playlist_health.py"
+    profiler = SCRIPT_DIR / "taste_profiler.py"
+    drift = SCRIPT_DIR / "taste_drift.py"
 
     return {
         "weekly-mix": {
@@ -80,6 +83,17 @@ def build_job_defs(python: str, profile: str, sf: str,
                 f"{python} {health} check all --profile {profile}"
             ),
             "log": f"{log_dir}/health-check.log",
+        },
+        "monthly-drift": {
+            "description": "Snapshot your taste and report drift on the 2nd of each month (opt-in)",
+            "schedule": "0 9 2 * *",
+            # Subshell so the log redirect covers both commands
+            "command": (
+                f"({python} {profiler} --storefront {sf} --output {profile} "
+                f"&& {python} {drift} --profile {profile} --since 30d --format text)"
+            ),
+            "log": f"{log_dir}/monthly-drift.log",
+            "optional": True,
         },
     }
 
@@ -141,7 +155,8 @@ def cmd_list(job_defs: dict[str, dict]):
     print("Available apple-music-dj cron jobs:\n")
     for name, job in job_defs.items():
         status = "✅ installed" if name in installed else "⬚ not installed"
-        print(f"  {name:20s} {status}")
+        opt_in = "  (opt-in: pass --jobs)" if job.get("optional") else ""
+        print(f"  {name:20s} {status}{opt_in}")
         print(f"    {job['description']}")
         print(f"    Schedule: {job['schedule']}")
         print(f"    Command:  {job['command']}")
@@ -246,7 +261,7 @@ def main():
     parser.add_argument("command", choices=["list", "install", "remove", "status"],
                         help="Action to perform")
     parser.add_argument("--jobs", default=None,
-                        help="Comma-separated job names (default: all)")
+                        help="Comma-separated job names (default: all except opt-in jobs)")
     parser.add_argument("--profile", default=None,
                         help="Path to taste profile JSON")
     parser.add_argument("--storefront", default=None,
@@ -268,7 +283,8 @@ def main():
     job_defs = build_job_defs(python_path, profile, sf, log_dir)
     all_names = list(job_defs.keys())
 
-    selected = all_names
+    # Opt-in jobs are only installed when named with --jobs
+    selected = [n for n in all_names if not job_defs[n].get("optional")]
     if args.jobs:
         selected = [j.strip() for j in args.jobs.split(",")]
 
@@ -280,7 +296,7 @@ def main():
                   "Specify --profile for a custom location.", file=sys.stderr)
         cmd_install(job_defs, selected, log_dir)
     elif args.command == "remove":
-        cmd_remove(job_defs, selected)
+        cmd_remove(job_defs, selected if args.jobs else all_names)
     elif args.command == "status":
         cmd_status()
 

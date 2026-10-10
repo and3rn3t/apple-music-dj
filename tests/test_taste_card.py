@@ -526,3 +526,37 @@ class TestYearReviewText:
     def test_footer(self, sample_year_review):
         text = generate_year_review_text(sample_year_review)
         assert "Apple Music DJ" in text
+
+
+# ── Taste drift card ─────────────────────────────────────────────
+
+_DRIFT = {
+    "period": {"from": "2026-01-01", "to": "2026-04-01", "days": 90},
+    "narrative": "Your taste moved toward Electronic (+12%) and away from Rock (−9%).",
+    "genres": {"risers": [{"genre": "Electronic", "delta": 0.12}],
+               "fallers": [{"genre": "Rock & Roll", "delta": -0.09}]},
+    "artists": {"new": ["Aphex <Twin>"], "dropped": []},
+    "archetype": {"from": "Balanced Explorer", "to": "Genre Drifter", "changed": True},
+}
+
+
+class TestDriftCard:
+    def test_text(self):
+        from taste_card import generate_drift_text
+        text = generate_drift_text(_DRIFT)
+        assert "TASTE DRIFT" in text and "2026-01-01 → 2026-04-01" in text
+        assert "▲ Electronic  +12%" in text and "▼ Rock & Roll  −9%" in text
+        assert "Balanced Explorer → Genre Drifter" in text
+
+    def test_svg_escapes_and_is_wellformed(self):
+        import xml.dom.minidom
+        from taste_card import generate_drift_svg
+        svg = generate_drift_svg(_DRIFT)
+        xml.dom.minidom.parseString(svg)  # raises if malformed (e.g. unescaped < or &)
+        assert "Aphex &lt;Twin&gt;" in svg and "Rock &amp; Roll" in svg
+
+    def test_minimal_report(self):
+        import xml.dom.minidom
+        from taste_card import generate_drift_svg, generate_drift_text
+        generate_drift_text({})
+        xml.dom.minidom.parseString(generate_drift_svg({}))

@@ -1,7 +1,7 @@
 # 🎧 Apple Music DJ
 
 [![Tests](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml/badge.svg)](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml)
-![Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -14,7 +14,11 @@ Built as an [OpenClaw](https://openclaw.dev) skill. Talk naturally, get playlist
 ## ✨ Features
 
 - **🧬 Taste DNA Profiling** — Deep analysis of your listening from recently played, heavy rotation, library, ratings, recommendations, and Apple Music Replay
-- **🎵 5 Playlist Strategies** — Deep cuts, mood/activity, trend radar, constellation discovery, playlist refresh
+- **🎵 8 Playlist Strategies** — Deep cuts, mood/activity, trend radar, constellation discovery, playlist refresh, **songs-like-X seed**, **decade throwbacks**, and **two-person blends**
+- **🌊 Energy-arc sequencing** — Playlists build, peak and wind down (or rise/fall for workouts and sleep) instead of just spacing artists out
+- **📈 Taste Drift** — Dated snapshots show how your genres, artists and listener archetype change over time
+- **📥 Playlist Import** — Rebuild a Spotify (CSV) or plain-text playlist in Apple Music, matched by ISRC
+- **👍 Feedback loop** — "I didn't like track 7" rates the song down and keeps it out of future playlists
 - **🃏 Taste DNA Card** — Shareable visual summary of your listener identity
 - **🎯 Compatibility Scoring** — How well does your taste match an artist (or another listener)?
 - **📊 Listening Insights** — Timeline, streaks, milestones, year-in-review
@@ -87,6 +91,12 @@ Just talk naturally. Here's what the DJ understands:
 | "What's trending that I'd like?" | Charts filtered through your taste |
 | "Surprise me" | Constellation discovery — familiar → frontier |
 | "Refresh my focus playlist" | Evolves an existing playlist with fresh tracks |
+| "Songs like Phoebe Bridgers" | Seed strategy — similar artists, filtered through your taste |
+| "Make me a 90s throwback" | Decade playlist built from your own artists |
+| "Blend my taste with my sister's" | One playlist for two listeners (needs their profile JSON) |
+| "How has my taste changed since spring?" | Taste drift report from your saved snapshots |
+| "Import my Spotify playlist" | Previews matches first, then creates it |
+| "I didn't like track 7" | Rates it down and updates your profile |
 | "How compatible am I with Radiohead?" | Taste compatibility score |
 | "What albums am I missing from Björk?" | Catalog gap analysis |
 | "Tell me about In Rainbows" | Album deep dive |
@@ -124,6 +134,9 @@ apple-music-dj/
     ├── daily_pick.py           # Daily song drop & instant recommendation
     ├── playlist_history.py     # Playlist creation history tracking
     ├── playlist_health.py      # Playlist health check & maintenance
+    ├── taste_drift.py          # Taste drift between dated snapshots
+    ├── import_playlist.py      # CSV/text playlist import (ISRC + strict search)
+    ├── feedback.py             # Like/dislike songs, update the profile
     ├── concert_prep.sh         # Concert prep playlist builder
     ├── new_releases.sh         # Personalized new release radar
     ├── generate_dev_token.py   # JWT generator (requires PyJWT)
@@ -137,7 +150,7 @@ apple-music-dj/
 
 ## 🔒 Privacy
 
-All data stays on your machine. The skill reads your Apple Music listening data via the official API and caches it locally at `~/.apple-music-dj/`. Nothing is sent to third-party services. Tokens are read from environment variables and never stored or logged.
+All data stays on your machine. The skill reads your Apple Music listening data via the official API and caches it locally at `~/.apple-music-dj/`. Nothing is sent to third-party services. Tokens are read from environment variables and never stored or logged. Taste drift keeps small dated snapshots (genre/artist/era weights, no song IDs) in `~/.apple-music-dj/snapshots/`. The skill only writes to your Apple Music account when you ask — creating playlists, adding missing albums, favoriting tracks, or rating songs — and the account-changing options (`--add-missing`, `--favorite`, feedback) are explicit.
 
 ## 🧪 Testing
 
@@ -147,7 +160,7 @@ make coverage          # Tests with coverage summary (fails below 80%)
 make coverage-html     # Generate HTML coverage report
 ```
 
-431 unit tests across 12 modules — 87% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, playlist health, history tracking, cron setup, token generation, and shared utilities.
+601 unit tests across 15 modules — 91% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, all eight strategies and energy-arc sequencing, taste drift, playlist import, feedback, playlist health, history tracking, cron setup, token generation, and shared utilities.
 
 ## 📖 Full Documentation
 

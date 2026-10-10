@@ -18,6 +18,12 @@ from _common import (
     load_profile,
     require_env_tokens,
     save_config,
+    track_energy,
+    GENRE_ENERGY,
+    MAX_SNAPSHOTS,
+    list_snapshots,
+    make_snapshot,
+    save_snapshot,
     search_album,
     search_artist,
     DEFAULT_CONFIG,
@@ -415,3 +421,63 @@ class TestGetStorefront:
         monkeypatch.setattr("_common.call_api", lambda *a, **kw: "invalid")
         result = get_storefront()
         assert result == "us"
+
+
+class TestTrackEnergy:
+    def test_unknown_genres_default_to_mid(self):
+        assert track_energy([]) == 0.5
+        assert track_energy(["Polka"]) == 0.5
+
+    def test_averages_known_genres(self):
+        assert track_energy(["Metal", "Ambient"]) == pytest.approx((0.95 + 0.1) / 2)
+
+    def test_ignores_unknown_when_mixed(self):
+        assert track_energy(["Rock", "Polka"]) == GENRE_ENERGY["Rock"]
+
+    def test_all_values_in_range(self):
+        assert all(0.0 <= v <= 1.0 for v in GENRE_ENERGY.values())
+
+
+class TestSnapshots:
+    def _profile(self, day="2026-03-02"):
+        return {
+            "top_artists": [{"name": "Radiohead", "id": "a1", "count": 5, "play_weight": 0.2}],
+            "genre_distribution": [{"genre": "Rock", "count": 9, "weight": 0.9}],
+            "era_distribution": [{"decade": "2000s", "count": 3, "weight": 1.0}],
+            "energy_profile": "chill", "variety_score": 0.4, "mainstream_score": 0.2,
+            "library_song_ids": ["secret1"], "loved_track_ids": ["secret2"],
+            "generated_at": f"{day}T08:00:00+00:00",
+        }
+
+    def test_make_snapshot_drops_ids(self):
+        snap = make_snapshot(self._profile())
+        assert "secret1" not in json.dumps(snap) and "a1" not in json.dumps(snap)
+        assert snap["top_artists"] == [{"name": "Radiohead", "weight": 0.2}]
+
+    def test_save_uses_date_name_and_private_perms(self, tmp_path):
+        path = save_snapshot(self._profile(), tmp_path / "snaps")
+        assert path.name == "2026-03-02.json"
+        assert oct(path.stat().st_mode & 0o777) == "0o600"
+        assert json.loads(path.read_text())["energy_profile"] == "chill"
+
+    def test_same_day_overwrites(self, tmp_path):
+        save_snapshot(self._profile(), tmp_path)
+        p = self._profile()
+        p["energy_profile"] = "high-energy"
+        save_snapshot(p, tmp_path)
+        assert len(list_snapshots(tmp_path)) == 1
+        assert json.loads((tmp_path / "2026-03-02.json").read_text())["energy_profile"] == "high-energy"
+
+    def test_prunes_to_max(self, tmp_path):
+        for i in range(MAX_SNAPSHOTS + 3):
+            (tmp_path / f"2025-01-{i + 1:02d}.json" if i < 28 else tmp_path / f"2025-02-{i - 27:02d}.json").write_text("{}")
+        save_snapshot(self._profile("2026-03-02"), tmp_path)
+        snaps = list_snapshots(tmp_path)
+        assert len(snaps) == MAX_SNAPSHOTS
+        assert snaps[-1][0] == "2026-03-02"
+        assert snaps[0][0] != "2025-01-01"
+
+    def test_list_ignores_other_files_and_missing_dir(self, tmp_path):
+        (tmp_path / "notes.txt").write_text("x")
+        assert list_snapshots(tmp_path) == []
+        assert list_snapshots(tmp_path / "nope") == []

@@ -5,17 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.2.0] — Unreleased
+
+### Added
+
+- **Seed strategy** — `--strategy seed --seed "<artist or song>"`: songs like X, via similar artists and the user's taste
+- **Era strategy** — `--strategy era --decade 90s`: a throwback built from the user's own artists (defaults to their top era)
+- **Blend strategy** — `--strategy blend --profile-b other.json`: one playlist for two listeners, capped at 60% from either, with a compatibility score
+- **Taste drift** — `taste_profiler.py` now saves a compact dated snapshot per fresh build (`~/.apple-music-dj/snapshots/`, last 52, no song IDs; skip with `--no-snapshot`); new `taste_drift.py` reports rising/falling genres, new top artists, era shift, score changes and archetype change; drift card via `taste_card.py --mode drift`; opt-in `monthly-drift` cron job
+- **Playlist import** — `import_playlist.py` rebuilds a playlist from a CSV (ISRC or title + artist) or text file; ISRC first, then strict title + artist matching, with a match report
+- **Feedback** — `feedback.py like|dislike|clear|info` rates songs in Apple Music (by ID or playlist position) and updates the cached profile
+- `--favorite` (with `--create`) adds a generated playlist's tracks to Apple Music favorites
+- `gap-analysis --add-missing N` previews adding the newest N missing albums to the library; `--yes` is required to write
+- Profile signals from recently added library items and recent radio-station titles (`recently_added_artists`, `station_genres`)
+- New `apple_music_api.sh` commands: `similar-artists`, `songs-by-isrc`, `recently-added`, `recent-stations`, `add-to-library`, `favorite`, `rate`, `unrate`
+- Real energy-arc sequencing: `sequence_tracks(arc=wave|ascending|descending|none)` driven by a shared `GENRE_ENERGY` map; moods pick their arc
+- Local mock Apple Music API (`tests/mock_api.py`) and end-to-end tests that run the real scripts against it; `APPLE_MUSIC_API_BASE` (loopback addresses only) points the wrapper at it
+- Ruff lint config (`[tool.ruff]`), `make ruff`, and lint + ShellCheck jobs in CI and pre-commit
+- pip caching in CI
 
 ### Changed
 
 - **Minimum Python is now 3.10** (3.9 is end-of-life); CI tests 3.10, 3.12 and 3.14
 - Loosened the `cryptography` pin to `>=50,<51` so patch releases no longer need a dependency PR
+- `infer_energy_profile` now reads the shared `GENRE_ENERGY` map (same results as before)
 
-### Added
+### Fixed
 
-- Ruff lint config (`[tool.ruff]`), `make ruff`, and lint + ShellCheck jobs in CI and pre-commit
-- pip caching in CI
+- `apple_music_api.sh`: URLs containing `[` `]` (e.g. `replay-summary <year>` → `filter[year]=`) failed with curl's "bad range" error — curl now runs with `-g`
+- `apple_music_api.sh`: helpers that set a `RETURN` trap leaked it to their caller, so `add-to-playlist` and `remove-from-playlist` aborted with an unbound-variable error after succeeding
+- `refresh` no longer suggests songs already in the library (`--include-library` opts back in)
 
 ### Removed
 

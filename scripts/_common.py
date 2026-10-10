@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Python version guard ──────────────────────────────────────────
@@ -26,10 +27,28 @@ if sys.version_info < _MIN_PYTHON:
 # Genres that Apple Music puts on everything — filter these out of scoring
 GENERIC_GENRES = {"music"}
 
+# Rough 0-1 energy per genre. >=0.7 counts as high-energy, <=0.3 as low-energy
+# (see taste_profiler.infer_energy_profile); everything else is mid-range.
+GENRE_ENERGY = {
+    "Metal": 0.95, "Punk": 0.9, "Dance": 0.85, "Electronic": 0.8, "House": 0.8,
+    "Techno": 0.85, "Grunge": 0.8, "Hip-Hop/Rap": 0.75, "Rock": 0.7, "Pop": 0.7,
+    "K-Pop": 0.75, "J-Pop": 0.7, "Synth Pop": 0.65, "Funk": 0.65, "Alternative": 0.6,
+    "IDM": 0.55, "Indie": 0.5, "R&B/Soul": 0.5, "Soul": 0.5, "Blues": 0.45,
+    "Country": 0.45, "Indie Pop": 0.45, "Americana": 0.4, "Bluegrass": 0.45,
+    "Soundtrack": 0.4, "Bossa Nova": 0.35, "Acoustic": 0.35,
+    "Jazz": 0.3, "Folk": 0.3, "Singer/Songwriter": 0.3, "Classical": 0.2,
+    "Ambient": 0.1, "New Age": 0.1,
+}
+HIGH_ENERGY = 0.7
+LOW_ENERGY = 0.3
+
 SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
 
 DEFAULT_CONFIG_PATH = Path.home() / ".apple-music-dj" / "config.json"
+
+SNAPSHOT_DIR = Path.home() / ".apple-music-dj" / "snapshots"
+MAX_SNAPSHOTS = 52
 
 DEFAULT_CONFIG = {
     "default_storefront": "auto",
@@ -266,3 +285,53 @@ def get_album_tracks(sf: str, album_id: str) -> list:
         track_rel = album_data.get("relationships", {}).get("tracks", {}).get("data", [])
         tracks.extend(track_rel)
     return tracks
+
+
+def track_energy(genres: list[str]) -> float:
+    """Average 0-1 energy of a track's genres (0.5 when none are recognised)."""
+    known = [GENRE_ENERGY[g] for g in genres if g in GENRE_ENERGY]
+    return sum(known) / len(known) if known else 0.5
+
+
+# ── Taste snapshots (for drift tracking) ─────────────────────────
+
+def make_snapshot(profile: dict) -> dict:
+    """Compact, ID-free copy of a profile that is safe to keep long-term."""
+    return {
+        "top_artists": [
+            {"name": a.get("name", ""), "weight": a.get("play_weight", a.get("count", 0))}
+            for a in profile.get("top_artists", [])[:20]
+        ],
+        "genre_distribution": [
+            {"genre": g.get("genre", ""), "weight": g.get("weight", 0)}
+            for g in profile.get("genre_distribution", [])
+        ],
+        "era_distribution": [
+            {"decade": e.get("decade", ""), "weight": e.get("weight", 0)}
+            for e in profile.get("era_distribution", [])
+        ],
+        "energy_profile": profile.get("energy_profile", "balanced"),
+        "variety_score": profile.get("variety_score", 0.5),
+        "mainstream_score": profile.get("mainstream_score", 0.5),
+        "generated_at": profile.get("generated_at") or datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def save_snapshot(profile: dict, directory: Path | None = None) -> Path:
+    """Write today's snapshot (one per day) with 0600 perms, keeping the newest MAX_SNAPSHOTS."""
+    directory = Path(directory) if directory else SNAPSHOT_DIR
+    snap = make_snapshot(profile)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = directory / f"{snap['generated_at'][:10]}.json"
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(snap, f, indent=2)
+    for old in sorted(directory.glob("????-??-??.json"))[:-MAX_SNAPSHOTS]:
+        old.unlink(missing_ok=True)
+    return path
+
+
+def list_snapshots(directory: Path | None = None) -> list[tuple[str, Path]]:
+    """All snapshots as (YYYY-MM-DD, path), oldest first."""
+    directory = Path(directory) if directory else SNAPSHOT_DIR
+    return [(p.stem, p) for p in sorted(directory.glob("????-??-??.json"))]

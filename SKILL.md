@@ -15,8 +15,9 @@ description: >
   "what's hot", "new releases for me", "taste DNA", "taste card", "compatibility", "how compatible",
   "year in review", "listening stats", "what have I missed", "album deep dive", "rabbit hole",
   "concert prep", "seeing [artist] live", "daily song", "what should I listen to right now",
-  or OpenClaw in the context of music.
-version: 3.1.0
+  "songs like", "blend", "throwback", "[decade] playlist", "taste drift", "import my playlist",
+  "I didn't like track", "add the missing albums", or OpenClaw in the context of music.
+version: 3.2.0
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
@@ -54,7 +55,7 @@ metadata:
 
 An intelligent Apple Music personalization engine for OpenClaw. Reads your listening history,
 Replay stats, ratings, and library to build a deep taste profile — then generates playlists
-using five strategies, surfaces insights about your listening, and writes everything directly
+using eight strategies, surfaces insights about your listening, and writes everything directly
 to your Apple Music library. Also includes shareable Taste DNA Cards, compatibility scoring,
 catalog gap analysis, album deep dives, artist rabbit holes, daily song drops, concert prep
 playlists, and personalized new release radar.
@@ -134,7 +135,7 @@ If the user has limited history:
 
 ## Playlist Strategies
 
-Five strategies. Read detailed algorithms in `references/playlist-strategies.md`.
+Eight strategies. Read detailed algorithms in `references/playlist-strategies.md`.
 
 ### Strategy 1: Deep Cuts Explorer
 **Triggers:** "deep cuts", "hidden gems", "B-sides", "underrated", "album tracks"
@@ -158,6 +159,44 @@ Journey from familiar artists outward to new territory in 3 "rings" of distance.
 **Triggers:** "refresh my [playlist]", "update my [playlist]", "evolve", "getting stale"
 Analyzes existing playlist's sonic signature, adds fresh matching tracks, optionally
 prunes overplayed songs.
+
+### Strategy 6: Seed ("songs like X")
+**Triggers:** "songs like [artist/song]", "more like [artist]", "similar to", "more like track 3"
+Starts from one artist or song, pulls in its top songs plus similar artists' top songs, and
+scores everything against both the seed's genres and the user's taste.
+
+Run: `python3 scripts/strategy_engine.py --strategy seed --seed "Radiohead" --profile <profile.json> --storefront <sf>`
+Add `--seed-type artist|song` if the name is ambiguous (default detects it).
+For "more like track N" of a DJ playlist, get the song first:
+`python3 scripts/feedback.py info --playlist-name "<name>" --position N`, then pass
+`--seed "<name> <artist>" --seed-type song`.
+
+### Strategy 7: Era Throwback
+**Triggers:** "90s playlist", "throwback", "[decade] throwback", "music from the 2000s"
+A decade playlist built from the user's own artists and genres, not a generic nostalgia list.
+
+Run: `python3 scripts/strategy_engine.py --strategy era --decade 90s --profile <profile.json> --storefront <sf>`
+Without `--decade` it uses the user's top era.
+
+### Strategy 8: Blend
+**Triggers:** "blend", "playlist for me and [person]", "something we'd both like", "road trip with my partner"
+One playlist for two listeners: artists they share, plus each person's favorites that fit the
+other's genres. Neither listener supplies more than 60% of the tracks. The output includes
+their compatibility score.
+
+The other person builds their own profile with their own tokens
+(`python3 scripts/taste_profiler.py --output friend.json`) and shares the JSON file.
+Run: `python3 scripts/strategy_engine.py --strategy blend --profile <mine.json> --profile-b <friend.json> --storefront <sf>`
+
+### Options shared by all strategies
+- `--include-library` — allow songs already in the library (refresh, seed and era skip them by default)
+- `--create` — create the playlist in Apple Music (without it, only JSON is printed)
+- `--favorite` — with `--create`, also add every track to the user's Apple Music favorites.
+  **This writes to the user's account — confirm with them first.**
+
+Energy arcs: playlists are sequenced by an energy arc — a wave (medium opener → peak in the middle →
+wind-down) by default, rising for workout/anger moods, falling for sleep/focus/sad. Tempo-ordered
+playlists also transition more smoothly with Apple Music's AutoMix, which is worth mentioning.
 
 ## Engagement Features
 
@@ -215,6 +254,41 @@ Run: `python3 scripts/catalog_explorer.py gap-analysis <profile.json> <storefron
 
 Present as: "You love Radiohead but you've only heard 3 of their 9 albums. Here's what
 you're missing, ranked by how much you'd probably like each one."
+
+**Add them to the library:** `... gap-analysis <profile.json> <storefront> --add-missing 5`
+previews the newest 5 missing albums and changes nothing. **Adding writes to the user's
+library — show them the preview and get a yes before re-running with `--yes`.**
+
+### Taste Drift
+**Triggers:** "taste drift", "how has my taste changed lately", "what's changed since [date]",
+"am I listening to different stuff", "what's new in my taste"
+Every fresh `taste_profiler.py` build saves a small dated snapshot (no song IDs) to
+`~/.apple-music-dj/snapshots/`. Drift compares the newest one with the snapshot closest to
+the chosen date: genres rising and falling, artists entering or leaving the top 20, era shift,
+variety/mainstream/energy changes, and whether the listener archetype changed.
+
+Run: `python3 scripts/taste_drift.py [--since 90d | --from 2026-01-01] [--profile <profile.json>] --format text`
+Needs at least two snapshots from different days. If there are fewer, say so and suggest
+setting up the monthly drift job (below); use Listening Insights → Timeline for long-range history from Replay.
+Card: `python3 scripts/taste_drift.py > drift.json` then
+`python3 scripts/taste_card.py <profile.json> --mode drift --data drift.json [--format text]`.
+
+### Import a Playlist
+**Triggers:** "import my Spotify playlist", "move this playlist to Apple Music", "rebuild this list in Apple Music"
+Rebuilds a playlist from a CSV (e.g. an Exportify export with ISRC codes) or a text file of
+`Artist - Title` lines. Matches by ISRC first, then a strict title + artist search; anything
+unclear is reported as unmatched instead of guessed.
+
+Preview: `python3 scripts/import_playlist.py <file>`
+Create: `python3 scripts/import_playlist.py <file> --create --name "<name>"` (writes to the library — confirm first)
+Show the user the exact / fuzzy / unmatched counts and list the unmatched ones.
+
+### Feedback
+**Triggers:** "I didn't like track 7", "thumbs down that song", "I loved track 3", "never play that again"
+Rates the song in Apple Music and updates the cached profile so later playlists skip it
+immediately: `python3 scripts/feedback.py dislike --playlist-name "<name>" --position 7 --profile <profile.json>`
+(or pass song IDs; `like` and `clear` also exist). Positions are 1-based within playlists the DJ
+created; omit `--playlist-name` for the most recent one. **This writes a rating to the user's account.**
 
 ### Album Deep Dive
 **Triggers:** "tell me about [album]", "album deep dive", "what's on [album]",
@@ -275,7 +349,13 @@ Run: `scripts/new_releases.sh <profile.json> <storefront> [--create-playlist]`
 | "Show my taste card" | Generate and display Taste DNA Card |
 | "Make me a playlist" | Ask what kind, then select strategy |
 | "Surprise me" | Constellation Discovery — no questions asked |
-| "More like [artist]" | Deep Cuts + Constellation hybrid seeded from named artist |
+| "More like [artist]" / "Songs like [song]" | Seed strategy (Strategy 6) |
+| "Make me a 90s throwback" | Era strategy (Strategy 7) |
+| "Blend my taste with [friend]'s" | Blend strategy (Strategy 8), needs their profile JSON |
+| "How has my taste changed lately?" | Taste drift report |
+| "Import this Spotify playlist" | Playlist import (preview first) |
+| "I didn't like track 7" | Feedback — rate down and update the profile |
+| "Add the missing albums" | Gap analysis `--add-missing` (preview, then confirm) |
 | "Refresh my workout playlist" | Strategy 5 on the named playlist |
 | "What have I been into?" | Present recent listening summary |
 | "How compatible am I with [artist]?" | Run compatibility score |
@@ -331,6 +411,15 @@ Task:
   3. Suggest replacements
 ```
 
+**Monthly Drift** (opt-in — install with `setup_cron.py install --jobs monthly-drift`):
+```
+Schedule: 2nd of each month at 9:00 AM
+Task:
+  1. Rebuild the taste profile (saves a dated snapshot)
+  2. python3 scripts/taste_drift.py --profile <profile> --since 30d --format text
+  3. Notify user with the one-line summary
+```
+
 When the user asks to set up automation, configure via OpenClaw's cron system and
 confirm the schedule with them before activating.
 
@@ -345,6 +434,10 @@ After any strategy produces candidate tracks, apply before creating:
 4. Tracks 16–22: Sustain interest, new textures
 5. Tracks 23–28: Wind down
 6. Final track: Memorable closer, not filler
+
+The strategy engine applies this arc automatically: each track gets an `energy` value (0–1)
+from its genres, and `sequence_tracks` orders by a wave, rising or falling arc before enforcing
+the spacing rules below.
 
 **Hard rules:**
 - Min 5 tracks between same-artist repeats
@@ -410,13 +503,26 @@ stores, and transmits.
 | Ratings (loved/disliked) | `/v1/me/ratings/songs` | Explicit preferences |
 | Recommendations | `/v1/me/recommendations` | Apple's inference data |
 | Replay summaries | `/v1/me/music-summaries` | Annual listening stats |
+| Recently added | `/v1/me/library/recently-added` | What the user is into right now |
+| Recent radio stations | `/v1/me/recent/radio-stations` | Light genre signal from station titles |
 | Storefront | `/v1/me/storefront` | Region detection |
+
+**Data written to the user's account (only on request — always confirm first):**
+
+| Action | Endpoint | Triggered by |
+|---|---|---|
+| Create playlist / add tracks | `/v1/me/library/playlists` | `--create`, playlist import |
+| Add albums to library | `/v1/me/library` | gap analysis `--add-missing N --yes` |
+| Add to favorites | `/v1/me/favorites` | `--create --favorite` |
+| Rate / un-rate a song | `/v1/me/ratings/songs/{id}` | `feedback.py like/dislike/clear` |
 
 **Data stored locally:**
 
 | File | Contents | Location |
 |---|---|---|
 | Taste profile cache | Aggregated taste data (JSON) | `~/.apple-music-dj/taste_profile.json` |
+| Taste snapshots | Genre/artist/era weights, no song IDs (last 52, one per day) | `~/.apple-music-dj/snapshots/` |
+| Playlist history | Names and track IDs of playlists the DJ created | `~/.apple-music-dj/playlist_history.json` |
 | Taste DNA Card | Generated SVG image | User-specified output path |
 
 **Data NOT collected:**
@@ -445,6 +551,9 @@ stores, and transmits.
 | `scripts/catalog_explorer.py` | Python | Gap analysis, album deep dive, artist rabbit hole |
 | `scripts/daily_pick.py` | Python | Daily song drop & instant recommendation |
 | `scripts/playlist_history.py` | Python | Playlist creation history tracking |
+| `scripts/taste_drift.py` | Python | Taste drift between dated snapshots |
+| `scripts/import_playlist.py` | Python | Import a CSV/text playlist via ISRC + strict search |
+| `scripts/feedback.py` | Python | Like/dislike songs and update the profile |
 | `scripts/concert_prep.sh` | Bash | Concert prep playlist builder |
 | `scripts/new_releases.sh` | Bash | Personalized new release radar |
 | `scripts/verify_setup.sh` | Bash | Setup verification (prereqs, tokens, API) |
@@ -501,3 +610,21 @@ stores, and transmits.
 
 **"How was my 2025 in music?"**
 → Year in review. Listen time, top artists, obscurity score, narrative insights.
+
+**"Give me songs like Phoebe Bridgers"**
+→ Strategy 6 (Seed). Her best songs plus similar artists, weighted toward the user's taste.
+
+**"Make me a 90s throwback"**
+→ Strategy 7 (Era). 90s albums from their own top artists, plus genre-matched finds.
+
+**"Make a playlist for me and my sister"**
+→ Strategy 8 (Blend). Ask for her profile JSON; shared artists first, balanced 60/40 at most.
+
+**"How has my taste changed since spring?"**
+→ Taste drift with `--from`. Rising/falling genres, new top artists, archetype change.
+
+**"I didn't like track 7 of that playlist"**
+→ Feedback. Rate it down, update the profile, confirm it won't come back.
+
+**"Move my Spotify playlist over"**
+→ Import. Preview match counts, list unmatched tracks, then create on a yes.

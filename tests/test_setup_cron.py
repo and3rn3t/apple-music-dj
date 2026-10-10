@@ -13,7 +13,7 @@ import setup_cron as sc
 class TestBuildJobDefs:
     def test_returns_all_four_jobs(self):
         defs = sc.build_job_defs("/usr/bin/python3", "/path/profile.json", "us", "/tmp/logs")
-        assert set(defs.keys()) == {"weekly-mix", "new-releases", "daily-drop", "health-check"}
+        assert set(defs.keys()) == {"weekly-mix", "new-releases", "daily-drop", "health-check", "monthly-drift"}
 
     def test_each_job_has_required_keys(self):
         defs = sc.build_job_defs("/usr/bin/python3", "/path/profile.json", "us", "/tmp/logs")
@@ -251,3 +251,23 @@ class TestMain:
         sc.main()
         captured = capsys.readouterr()
         assert "No matching" in captured.out
+
+
+class TestMonthlyDrift:
+    def test_is_optional_and_logs_both_commands(self):
+        defs = sc.build_job_defs("/usr/bin/python3", "/p/profile.json", "us", "/tmp/logs")
+        job = defs["monthly-drift"]
+        assert job["optional"] is True
+        assert "taste_profiler.py" in job["command"] and "taste_drift.py" in job["command"]
+        line = sc.format_cron_line(job, "monthly-drift")
+        # Subshell so the log redirect covers both commands
+        assert line.split(" ", 5)[5].startswith("(") and ") >> " in line
+
+    def test_other_jobs_not_optional(self):
+        defs = sc.build_job_defs("/usr/bin/python3", "/p.json", "us", "/tmp")
+        assert [n for n, j in defs.items() if j.get("optional")] == ["monthly-drift"]
+
+    def test_list_marks_opt_in(self, monkeypatch, capsys):
+        monkeypatch.setattr(sc, "get_installed_jobs", lambda: [])
+        sc.cmd_list(sc.build_job_defs("/usr/bin/python3", "/p.json", "us", "/tmp"))
+        assert "opt-in" in capsys.readouterr().out

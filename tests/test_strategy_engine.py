@@ -83,6 +83,52 @@ class TestSequenceTracks:
     def test_empty_input(self):
         assert se.sequence_tracks([]) == []
 
+    def test_unknown_arc_rejected(self):
+        with pytest.raises(ValueError):
+            se.sequence_tracks([self._make("A")], arc="zigzag")
+
+    def _energy_set(self):
+        genres = [["Ambient"], ["Jazz"], ["Rock"], ["Metal"], ["Folk"], ["Dance"], ["Pop"], ["Classical"]]
+        return [{"id": f"t{i}", "artist": f"Artist{i}", "album": f"Album{i}", "genre": g}
+                for i, g in enumerate(genres)]
+
+    def test_ascending_arc(self):
+        result = se.sequence_tracks(self._energy_set(), arc="ascending")
+        energies = [t["energy"] for t in result]
+        assert energies == sorted(energies)
+
+    def test_descending_arc(self):
+        result = se.sequence_tracks(self._energy_set(), arc="descending")
+        energies = [t["energy"] for t in result]
+        assert energies == sorted(energies, reverse=True)
+
+    def test_wave_arc_peaks_in_middle(self):
+        result = se.sequence_tracks(self._energy_set(), arc="wave")
+        energies = [t["energy"] for t in result]
+        peak = energies.index(max(energies))
+        assert 0 < peak < len(energies) - 1
+        # Opener and closer are below the peak
+        assert energies[0] < max(energies) and energies[-1] < max(energies)
+        # Builds up to the peak, then winds down
+        assert energies[: peak + 1] == sorted(energies[: peak + 1])
+        assert energies[peak:] == sorted(energies[peak:], reverse=True)
+
+    def test_none_arc_keeps_order(self):
+        tracks = self._energy_set()
+        ids = [t["id"] for t in tracks]
+        result = se.sequence_tracks(tracks, arc="none")
+        assert [t["id"] for t in result] == ids
+        assert "energy" not in result[0]
+
+    def test_arc_still_spaces_artists(self):
+        tracks = [{"id": f"a{i}", "artist": "Same", "album": f"Al{i}", "genre": ["Rock"]} for i in range(3)]
+        tracks += [{"id": f"b{i}", "artist": f"Other{i}", "album": f"Bl{i}", "genre": ["Rock"]} for i in range(4)]
+        result = se.sequence_tracks(tracks, max_same_artist=2, arc="ascending")
+        assert len(result) == 7
+        same_positions = [i for i, t in enumerate(result) if t["artist"] == "Same"]
+        assert all(b - a > 1 for a, b in zip(same_positions, same_positions[1:], strict=False))
+
+
 
 # ── Strategy: Deep Cuts ──────────────────────────────────────────
 
@@ -417,11 +463,312 @@ class TestStrategyRefresh:
         ids = {t["id"] for t in result}
         assert "exist1" not in ids
 
+    def _refresh_mocks(self, monkeypatch):
+        playlist_tracks = {"data": [{
+            "id": "pt1",
+            "attributes": {"name": "Existing", "artistName": "A", "genreNames": ["Rock"]},
+            "relationships": {"catalog": {"data": [{"id": "exist1"}]}},
+        }]}
+        charts = {"results": {"songs": [{"data": [
+            {"id": "owned1", "attributes": {"name": "Owned", "artistName": "B", "genreNames": ["Rock"]}},
+            {"id": "new1", "attributes": {"name": "New", "artistName": "C", "genreNames": ["Rock"]}},
+        ]}]}}
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+            playlist_tracks if cmd == "playlist-tracks"
+            else charts if cmd == "charts"
+            else {"data": []} if cmd == "artist-albums" else None)
+        monkeypatch.setattr(se, "search_artist", lambda sf, name: {"id": "x", "attributes": {"name": name}})
+        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [])
+
+    def test_excludes_library_songs(self, sample_profile, monkeypatch):
+        self._refresh_mocks(monkeypatch)
+        sample_profile["library_song_ids"] = ["owned1"]
+        ids = {t["id"] for t in se.strategy_refresh(sample_profile, "us", "p1", target_add=5)}
+        assert "owned1" not in ids
+        assert "new1" in ids
+
+    def test_include_library_opt_in(self, sample_profile, monkeypatch):
+        self._refresh_mocks(monkeypatch)
+        sample_profile["library_song_ids"] = ["owned1"]
+        ids = {t["id"] for t in se.strategy_refresh(
+            sample_profile, "us", "p1", target_add=5, include_library=True)}
+        assert "owned1" in ids
+
     def test_empty_playlist(self, sample_profile, monkeypatch):
         monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
             None if cmd == "playlist-tracks" else None)
         result = se.strategy_refresh(sample_profile, "us", "p1", target_add=5)
         assert result == []
+
+
+# ── Strategy: Seed ───────────────────────────────────────────────
+
+def _song(tid, name, artist, genres=("Alternative",), date="2000-01-01", album=None):
+    return {"id": tid, "type": "songs", "attributes": {
+        "name": name, "artistName": artist, "genreNames": list(genres),
+        "releaseDate": date, "albumName": album or f"Album {tid}"}}
+
+
+def _artist(aid, name, genres=("Alternative",)):
+    return {"id": aid, "type": "artists", "attributes": {"name": name, "genreNames": list(genres)}}
+
+
+def _top(songs):
+    return {"data": [{"views": {"top-songs": {"data": songs}}}]}
+
+
+class TestStrategySeed:
+    def _api(self, search_result, tops, similar=()):
+        def mock(cmd, *args, **kwargs):
+            if cmd == "search":
+                return search_result
+            if cmd == "artist-top":
+                return _top(tops.get(args[1], []))
+            if cmd == "similar-artists":
+                return {"data": list(similar)}
+            return None
+        return mock
+
+    def test_artist_seed_uses_similar_artists(self, sample_profile, monkeypatch):
+        search = {"results": {"artists": {"data": [_artist("r1", "Radiohead")]}, "songs": {"data": []}}}
+        tops = {
+            "r1": [_song("s1", "Creep", "Radiohead"), _song("s2", "Karma Police", "Radiohead")],
+            "b1": [_song("s3", "Wonderwall", "Oasis"), _song("s4", "Live Forever", "Oasis")],
+        }
+        monkeypatch.setattr(se, "call_api", self._api(search, tops, [_artist("b1", "Oasis")]))
+        result = se.strategy_seed(sample_profile, "us", "Radiohead")
+        assert {t["id"] for t in result} == {"s1", "s2", "s3", "s4"}
+        assert {t["source"] for t in result} == {"seed", "similar"}
+
+    def test_auto_prefers_exact_artist_match_over_song(self, sample_profile, monkeypatch):
+        search = {"results": {
+            "artists": {"data": [_artist("r1", "Radiohead")]},
+            "songs": {"data": [_song("x", "Radiohead Tribute", "Cover Band")]},
+        }}
+        monkeypatch.setattr(se, "call_api", self._api(search, {"r1": [_song("s1", "Creep", "Radiohead")]}))
+        artist, song = se._resolve_seed("us", "radiohead", "auto")
+        assert artist["id"] == "r1" and song is None
+
+    def test_song_seed_resolves_artist_and_excludes_seed_song(self, sample_profile, monkeypatch):
+        search = {"results": {"songs": {"data": [_song("seed1", "Creep", "Radiohead")]},
+                              "artists": {"data": [_artist("r1", "Radiohead")]}}}
+        tops = {"r1": [_song("seed1", "Creep", "Radiohead"), _song("s2", "Karma Police", "Radiohead")]}
+        monkeypatch.setattr(se, "call_api", self._api(search, tops))
+        monkeypatch.setattr(se, "search_artist", lambda sf, name: _artist("r1", name))
+        result = se.strategy_seed(sample_profile, "us", "Creep", seed_type="song")
+        ids = {t["id"] for t in result}
+        assert "seed1" not in ids and "s2" in ids
+
+    def test_excludes_library_and_disliked(self, sample_profile, monkeypatch):
+        search = {"results": {"artists": {"data": [_artist("r1", "Radiohead")]}}}
+        tops = {"r1": [_song("owned", "A", "Radiohead"), _song("bad", "B", "Radiohead"), _song("ok", "C", "Radiohead")]}
+        sample_profile["library_song_ids"] = ["owned"]
+        sample_profile["disliked_song_ids"] = ["bad"]
+        monkeypatch.setattr(se, "call_api", self._api(search, tops))
+        assert {t["id"] for t in se.strategy_seed(sample_profile, "us", "Radiohead", "artist")} == {"ok"}
+        out = se.strategy_seed(sample_profile, "us", "Radiohead", "artist", include_library=True)
+        assert {t["id"] for t in out} == {"owned", "ok"}
+
+    def test_caps_tracks_per_artist(self, sample_profile, monkeypatch):
+        search = {"results": {"artists": {"data": [_artist("r1", "Radiohead")]}}}
+        tops = {"r1": [_song(f"s{i}", f"Song{i}", "Radiohead", album=f"Al{i}") for i in range(8)]}
+        monkeypatch.setattr(se, "call_api", self._api(search, tops))
+        assert len(se.strategy_seed(sample_profile, "us", "Radiohead", "artist")) == 3
+
+    def test_genre_fallback_when_no_similar_artists(self, sample_profile, monkeypatch):
+        calls = []
+
+        def mock(cmd, *args, **kwargs):
+            calls.append((cmd, args))
+            if cmd == "search" and args[2] == "artists,songs" or (cmd == "search" and args[2] == "artists" and args[1] == "Radiohead"):
+                return {"results": {"artists": {"data": [_artist("r1", "Radiohead")]}}}
+            if cmd == "search":  # genre fallback search
+                return {"results": {"artists": {"data": [_artist("g1", "Muse")]}}}
+            if cmd == "artist-top":
+                return _top([_song("m1", "Starlight", "Muse")] if args[1] == "g1" else [])
+            return {"data": []}
+
+        monkeypatch.setattr(se, "call_api", mock)
+        result = se.strategy_seed(sample_profile, "us", "Radiohead")
+        assert [t["id"] for t in result] == ["m1"]
+
+    def test_unknown_seed_returns_empty(self, sample_profile, monkeypatch):
+        monkeypatch.setattr(se, "call_api", lambda *a, **k: {"results": {}})
+        assert se.strategy_seed(sample_profile, "us", "zzzz") == []
+
+    def test_bad_seed_type(self, sample_profile):
+        with pytest.raises(ValueError):
+            se.strategy_seed(sample_profile, "us", "x", seed_type="album")
+
+
+# ── Strategy: Era ────────────────────────────────────────────────
+
+class TestNormalizeDecade:
+    @pytest.mark.parametrize("raw,expected", [
+        ("90s", "1990s"), ("1990s", "1990s"), ("'90s", "1990s"), ("1994", "1990s"),
+        ("00s", "2000s"), ("10s", "2010s"), ("2020s", "2020s"), ("70", "1970s"),
+    ])
+    def test_formats(self, raw, expected):
+        assert se.normalize_decade(raw) == expected
+
+    @pytest.mark.parametrize("raw", ["nineties", "", "19s0", "199999"])
+    def test_rejects_garbage(self, raw):
+        with pytest.raises(ValueError):
+            se.normalize_decade(raw)
+
+
+class TestStrategyEra:
+    def _setup(self, monkeypatch, albums, tracks, charts=None, search=None):
+        def mock(cmd, *args, **kwargs):
+            if cmd == "artist-albums":
+                return {"data": albums.get(args[1], [])}
+            if cmd == "charts":
+                return charts
+            if cmd == "search":
+                return search
+            return None
+        monkeypatch.setattr(se, "call_api", mock)
+        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: tracks.get(aid, []))
+
+    def _album(self, aid, name, date, single=False):
+        return {"id": aid, "attributes": {"name": name, "releaseDate": date, "isSingle": single}}
+
+    def test_only_albums_from_decade(self, sample_profile, monkeypatch):
+        albums = {"a1": [self._album("al90", "OK Computer", "1997-05-21"),
+                         self._album("al00", "Kid A", "2000-10-02"),
+                         self._album("sg90", "Single", "1995-01-01", single=True)]}
+        tracks = {"al90": [_song("t90", "Karma Police", "Radiohead")],
+                  "al00": [_song("t00", "Idioteque", "Radiohead")],
+                  "sg90": [_song("tsg", "Single", "Radiohead")]}
+        self._setup(monkeypatch, albums, tracks, charts={}, search={})
+        result = se.strategy_era(sample_profile, "us", "90s", target_size=10)
+        assert [t["id"] for t in result] == ["t90"]
+        assert "1990s" in result[0]["reason"]
+
+    def test_defaults_to_top_era(self, sample_profile, monkeypatch):
+        albums = {"a1": [self._album("al00", "Kid A", "2000-10-02"),
+                         self._album("al90", "OK Computer", "1997-05-21")]}
+        tracks = {"al00": [_song("t00", "Idioteque", "Radiohead")],
+                  "al90": [_song("t90", "Karma Police", "Radiohead")]}
+        self._setup(monkeypatch, albums, tracks, charts={}, search={})
+        result = se.strategy_era(sample_profile, "us", None, target_size=10)
+        assert [t["id"] for t in result] == ["t00"]  # top era in sample_profile is 2000s
+
+    def test_charts_filtered_by_decade(self, sample_profile, monkeypatch):
+        charts = {"results": {"songs": [{"data": [
+            _song("c20", "New", "Pop Star", ["Pop"], "2024-05-01"),
+            _song("c90", "Old", "Pop Star", ["Pop"], "1996-05-01"),
+        ]}]}}
+        self._setup(monkeypatch, {}, {}, charts=charts, search={})
+        assert [t["id"] for t in se.strategy_era(sample_profile, "us", "2020s")] == ["c20"]
+
+    def test_search_fallback_and_library_exclusion(self, sample_profile, monkeypatch):
+        search = {"results": {"songs": {"data": [
+            _song("f1", "Fit", "A", ["Alternative"], "1993-01-01"),
+            _song("f2", "Owned", "B", ["Alternative"], "1993-01-01"),
+            _song("f3", "Wrong decade", "C", ["Alternative"], "2003-01-01"),
+        ]}}}
+        sample_profile["library_song_ids"] = ["f2"]
+        self._setup(monkeypatch, {}, {}, charts={}, search=search)
+        assert {t["id"] for t in se.strategy_era(sample_profile, "us", "1990s")} == {"f1"}
+        assert {t["id"] for t in se.strategy_era(sample_profile, "us", "1990s", include_library=True)} == {"f1", "f2"}
+
+    def test_empty_profile_without_data(self, empty_profile, monkeypatch):
+        self._setup(monkeypatch, {}, {}, charts=None, search=None)
+        assert se.strategy_era(empty_profile, "us") == []
+
+
+class TestNamingSeedEra:
+    def test_seed_name(self):
+        assert se.generate_name("seed", seed="Radiohead").startswith("Like Radiohead")
+
+    def test_era_name(self):
+        assert se.generate_name("era", decade="1990s").startswith("1990s Throwback")
+        assert se.generate_name("era").startswith("Throwback")
+
+    def test_descriptions(self):
+        assert "orbit" in se.generate_description("seed", track_count=5)
+        assert "decade" in se.generate_description("era", track_count=5)
+
+
+# ── Strategy: Blend ──────────────────────────────────────────────
+
+class TestStrategyBlend:
+    def _profiles(self, sample_profile):
+        a = sample_profile
+        b = {
+            "top_artists": [{"name": "Radiohead", "id": "a1"}, {"name": "Beyonce", "id": "b9"},
+                            {"name": "SZA", "id": "b8"}],
+            "genre_distribution": [{"genre": "R&B/Soul", "weight": 0.5}, {"genre": "Pop", "weight": 0.3},
+                                   {"genre": "Alternative", "weight": 0.2}],
+            "era_distribution": [{"decade": "2010s", "weight": 1.0}],
+            "energy_profile": "balanced",
+            "loved_track_ids": ["love1"],
+        }
+        return a, b
+
+    def _api(self, monkeypatch, tops):
+        def mock(cmd, *args, **kwargs):
+            if cmd == "artist-top":
+                return _top(tops.get(args[1], []))
+            if cmd == "song-detail":
+                return {"data": [_song(args[1], "Loved", "Someone", ["Pop"])]}
+            return None
+        monkeypatch.setattr(se, "call_api", mock)
+
+    def test_tags_shared_and_sides(self, sample_profile, monkeypatch):
+        a, b = self._profiles(sample_profile)
+        self._api(monkeypatch, {
+            "a1": [_song("rh1", "Creep", "Radiohead")],
+            "a2": [_song("wk1", "Starboy", "The Weeknd", ["Pop", "R&B/Soul"])],
+            "a4": [_song("q1", "Bohemian Rhapsody", "Queen", ["Classical"])],  # no overlap with B's genres
+            "b9": [_song("by1", "Halo", "Beyonce", ["Pop"])],
+        })
+        result = se.strategy_blend(a, b, "us", target_size=10)
+        by_id = {t["id"]: t for t in result}
+        assert by_id["rh1"]["source"] == "shared"
+        assert by_id["wk1"]["source"] == "a"
+        assert by_id["by1"]["source"] == "b"
+        assert "q1" not in by_id
+
+    def test_neither_listener_exceeds_cap(self, sample_profile, monkeypatch):
+        a, b = self._profiles(sample_profile)
+        # A supplies many fitting songs; B only a few
+        tops = {"a2": [_song(f"w{i}", f"W{i}", "The Weeknd", ["Pop"]) for i in range(5)],
+                "a3": [_song(f"k{i}", f"K{i}", "Kendrick Lamar", ["Hip-Hop/Rap"]) for i in range(5)],
+                "a4": [], "a5": [],
+                "b9": [_song("by1", "Halo", "Beyonce", ["Pop"])]}
+        self._api(monkeypatch, tops)
+        a["top_artists"] = [x for x in a["top_artists"] if x["name"] != "Radiohead"]
+        b["top_artists"] = [x for x in b["top_artists"] if x["name"] != "Radiohead"]
+        result = se.strategy_blend(a, b, "us", target_size=10)
+        from collections import Counter
+        sides = Counter(t["source"] for t in result)
+        assert sides["a"] <= 6  # int(10 * 0.6)
+
+    def test_excludes_dislikes_from_either_profile(self, sample_profile, monkeypatch):
+        a, b = self._profiles(sample_profile)
+        a["disliked_song_ids"] = ["rh1"]
+        b["disliked_song_ids"] = ["by1"]
+        self._api(monkeypatch, {"a1": [_song("rh1", "Creep", "Radiohead"), _song("rh2", "Karma", "Radiohead")],
+                                "b9": [_song("by1", "Halo", "Beyonce", ["Pop"])]})
+        ids = {t["id"] for t in se.strategy_blend(a, b, "us")}
+        assert "rh1" not in ids and "by1" not in ids and "rh2" in ids
+
+    def test_includes_loved_tracks(self, sample_profile, monkeypatch):
+        a, b = self._profiles(sample_profile)
+        self._api(monkeypatch, {})
+        result = se.strategy_blend(a, b, "us")
+        assert [t["id"] for t in result] == ["love1"]
+        assert result[0]["source"] == "b"
+
+    def test_no_data_returns_empty(self, empty_profile, monkeypatch):
+        self._api(monkeypatch, {})
+        assert se.strategy_blend(empty_profile, dict(empty_profile), "us") == []
+
+    def test_blend_name_and_description(self):
+        assert se.generate_name("blend").startswith("Blend")
+        assert "two listeners" in se.generate_description("blend", track_count=3)
 
 
 # ── Name & Description Generation ────────────────────────────────
@@ -478,6 +825,14 @@ class TestMoodMap:
             assert len(config["genres"]) >= 2
             assert isinstance(config["energy"], str)
             assert isinstance(config["description"], str)
+
+    def test_mood_arcs_are_valid(self):
+        for config in se.MOOD_MAP.values():
+            assert config.get("arc", "wave") in se.ARCS
+
+    def test_sleep_descends_and_workout_ascends(self):
+        assert se.MOOD_MAP["sleep"]["arc"] == "descending"
+        assert se.MOOD_MAP["workout"]["arc"] == "ascending"
 
 
 # ── check_playlist_exists ────────────────────────────────────────
@@ -546,3 +901,101 @@ class TestCreatePlaylistFromTracks:
         ))
         tracks = [{"id": "t1"}]
         assert se.create_playlist_from_tracks(tracks, "New", "Desc") is False
+
+
+# ── favorite_tracks ──────────────────────────────────────────────
+
+class TestFavoriteTracks:
+    def test_batches_and_uses_raw(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(se, "call_api", lambda *a, **k: calls.append((a, k)) or "")
+        out = se.favorite_tracks([{"id": str(i)} for i in range(30)] + [{"name": "no id"}])
+        assert out == {"favorited": 30, "failed": 0}
+        assert [len(c[0][2].split(",")) for c in calls] == [25, 5]
+        assert calls[0][0][:2] == ("favorite", "songs") and calls[0][1] == {"raw": True}
+
+    def test_counts_failures(self, monkeypatch):
+        monkeypatch.setattr(se, "call_api", lambda *a, **k: None)
+        assert se.favorite_tracks([{"id": "1"}, {"id": "2"}]) == {"favorited": 0, "failed": 2}
+
+
+# ── CLI (main) ───────────────────────────────────────────────────
+
+class TestMainCli:
+    @pytest.fixture
+    def cli(self, monkeypatch, tmp_path, sample_profile):
+        import sys
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        other = tmp_path / "b.json"
+        other.write_text(json.dumps(sample_profile))
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {})
+        tracks = [{"id": "t1", "name": "N", "artist": "A", "album": "B", "genre": []}]
+        state = {"tracks": tracks, "created": [], "favorited": []}
+        monkeypatch.setattr(se, "create_playlist_from_tracks",
+                            lambda t, n, d: state["created"].append(n) or True)
+        monkeypatch.setattr(se, "favorite_tracks", lambda t: state["favorited"].append(t) or
+                            {"favorited": len(t), "failed": 0})
+        monkeypatch.setattr("playlist_history.log_playlist", lambda *a, **k: None)
+
+        def run(*argv):
+            monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--profile", str(profile), *argv])
+            se.main()
+        state.update(run=run, profile=profile, other=other)
+        return state
+
+    def test_seed_requires_seed(self, cli):
+        with pytest.raises(SystemExit):
+            cli["run"]("--strategy", "seed")
+
+    def test_seed_runs_with_args(self, cli, monkeypatch, capsys):
+        seen = {}
+        monkeypatch.setattr(se, "strategy_seed", lambda p, sf, seed, st, n, inc:
+                            seen.update(seed=seed, st=st, inc=inc) or cli["tracks"])
+        cli["run"]("--strategy", "seed", "--seed", "Radiohead", "--seed-type", "artist", "--include-library")
+        assert seen == {"seed": "Radiohead", "st": "artist", "inc": True}
+        assert json.loads(capsys.readouterr().out)["name"].startswith("Like Radiohead")
+
+    def test_era_defaults_to_top_era_and_validates(self, cli, monkeypatch, capsys):
+        seen = {}
+        monkeypatch.setattr(se, "strategy_era", lambda p, sf, d, n, inc: seen.update(d=d) or cli["tracks"])
+        cli["run"]("--strategy", "era")
+        assert seen["d"] == "2000s"  # sample_profile's top era
+        assert json.loads(capsys.readouterr().out)["name"].startswith("2000s Throwback")
+        cli["run"]("--strategy", "era", "--decade", "'90s")
+        assert seen["d"] == "1990s"
+        with pytest.raises(SystemExit):
+            cli["run"]("--strategy", "era", "--decade", "nineties")
+
+    def test_blend_requires_profile_b_and_reports_compat(self, cli, monkeypatch, capsys):
+        with pytest.raises(SystemExit):
+            cli["run"]("--strategy", "blend")
+        monkeypatch.setattr(se, "strategy_blend", lambda a, b, sf, n: cli["tracks"])
+        cli["run"]("--strategy", "blend", "--profile-b", str(cli["other"]))
+        out = json.loads(capsys.readouterr().out)
+        assert set(out["compatibility"]) == {"compatibility_pct", "verdict", "shared_artists"}
+        assert 0 <= out["compatibility"]["compatibility_pct"] <= 100
+        assert out["name"].startswith("Blend")
+
+    def test_favorite_requires_create(self, cli):
+        with pytest.raises(SystemExit):
+            cli["run"]("--strategy", "trend", "--favorite")
+
+    def test_create_and_favorite(self, cli, monkeypatch):
+        monkeypatch.setattr(se, "strategy_trend", lambda p, sf, n: cli["tracks"])
+        cli["run"]("--strategy", "trend", "--create", "--favorite")
+        assert len(cli["created"]) == 1 and cli["favorited"] == [cli["tracks"]]
+
+    def test_create_without_favorite_never_favorites(self, cli, monkeypatch):
+        monkeypatch.setattr(se, "strategy_trend", lambda p, sf, n: cli["tracks"])
+        cli["run"]("--strategy", "trend", "--create")
+        assert cli["favorited"] == []
+
+    def test_failed_create_does_not_favorite(self, cli, monkeypatch):
+        monkeypatch.setattr(se, "strategy_trend", lambda p, sf, n: cli["tracks"])
+        monkeypatch.setattr(se, "create_playlist_from_tracks", lambda *a: False)
+        with pytest.raises(SystemExit):
+            cli["run"]("--strategy", "trend", "--create", "--favorite")
+        assert cli["favorited"] == []

@@ -35,7 +35,16 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import call_api, check_token_expiry, get_storefront, require_env_tokens
+from _common import (
+    GENRE_ENERGY,
+    HIGH_ENERGY,
+    LOW_ENERGY,
+    call_api,
+    check_token_expiry,
+    get_storefront,
+    require_env_tokens,
+    save_snapshot,
+)
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -93,6 +102,50 @@ def extract_genres(tracks: list[dict]) -> list[dict]:
     ]
 
 
+def extract_recent_additions(recent_data: dict | None) -> tuple[list[dict], list[str]]:
+    """Split a recently-added response into (track-like items, artist names by frequency).
+
+    Library playlists have no artist and are skipped; albums/songs carry
+    artistName and genreNames, so they can be analysed like tracks.
+    """
+    items = [
+        i for i in (recent_data or {}).get("data", [])
+        if i.get("attributes", {}).get("artistName")
+    ]
+    counts = Counter(i["attributes"]["artistName"] for i in items)
+    return items, [name for name, _ in counts.most_common()]
+
+
+def extract_station_genres(stations_data: dict | None) -> list[str]:
+    """Genres named in recently played station titles (e.g. "Alternative Radio").
+
+    Apple's station resources carry no genre attribute, so this matches known
+    genre names in the title; stations named after an artist or mood match nothing.
+    """
+    found = []
+    for station in (stations_data or {}).get("data", []):
+        title = station.get("attributes", {}).get("name", "").lower()
+        # Longest names first so "Indie Pop" wins over "Pop"
+        for genre in sorted(GENRE_ENERGY, key=len, reverse=True):
+            if genre.lower() in title:
+                found.append(genre)
+                break
+    return found
+
+
+def merge_station_genres(genres: list[dict], station_genres: list[str]) -> list[dict]:
+    """Add one count per matched station to the genre distribution (a deliberately light nudge)."""
+    if not station_genres:
+        return genres
+    counts: Counter = Counter({g["genre"]: g["count"] for g in genres})
+    counts.update(station_genres)
+    total = sum(counts.values()) or 1
+    return [
+        {"genre": g, "count": c, "weight": round(c / total, 3)}
+        for g, c in counts.most_common(20)
+    ]
+
+
 def extract_artists(tracks: list[dict]) -> list[dict]:
     """Extract artist frequency from tracks."""
     artist_data: dict[str, dict] = {}
@@ -142,10 +195,8 @@ def extract_eras(tracks: list[dict]) -> list[dict]:
 
 def infer_energy_profile(genres: list[dict]) -> str:
     """Infer overall energy from genre distribution."""
-    high_energy = {"Electronic", "Dance", "Hip-Hop/Rap", "Metal", "Punk", "Rock", "Pop"}
-    low_energy = {"Ambient", "Classical", "Jazz", "Singer/Songwriter", "Folk", "New Age"}
-    high_score = sum(g["weight"] for g in genres if g["genre"] in high_energy)
-    low_score = sum(g["weight"] for g in genres if g["genre"] in low_energy)
+    high_score = sum(g["weight"] for g in genres if GENRE_ENERGY.get(g["genre"], 0.5) >= HIGH_ENERGY)
+    low_score = sum(g["weight"] for g in genres if GENRE_ENERGY.get(g["genre"], 0.5) <= LOW_ENERGY)
     if high_score > low_score + 0.2:
         return "high-energy"
     elif low_score > high_score + 0.2:
@@ -288,6 +339,11 @@ def build_profile(args) -> dict:
     rec_count = len((recs or {}).get("data", []))
     log(f"Got {rec_count} recommendation groups", verbose)
 
+    log("Fetching recently added...", verbose)
+    recent_added = call_api("recently-added", "25")
+    log("Fetching recent stations...", verbose)
+    recent_stations = call_api("recent-stations")
+
     # Replay data
     replay_summary = None
     replay_milestones = None
@@ -309,6 +365,8 @@ def build_profile(args) -> dict:
 
     # Combine all available track data for analysis
     all_tracks = list(recent_tracks)
+    added_items, recently_added_artists = extract_recent_additions(recent_added)
+    all_tracks.extend(added_items)  # new additions count toward taste like any other listen
     if lib_songs and "data" in lib_songs:
         all_tracks.extend(lib_songs["data"])
 
@@ -350,7 +408,8 @@ def build_profile(args) -> dict:
             if sid:
                 library_song_ids.append(sid)
 
-    genres = extract_genres(all_tracks)
+    station_genres = extract_station_genres(recent_stations)
+    genres = merge_station_genres(extract_genres(all_tracks), station_genres)
 
     if not all_tracks:
         print("ERROR: No track data retrieved from API. Check your tokens and network.", file=sys.stderr)
@@ -387,6 +446,8 @@ def build_profile(args) -> dict:
         "loved_track_ids": loved,
         "disliked_song_ids": disliked_songs,
         "library_song_ids": library_song_ids,
+        "recently_added_artists": recently_added_artists[:10],
+        "station_genres": sorted(set(station_genres)),
         "replay_highlights": replay,
         "data_summary": {
             "recent_tracks": len(recent_tracks),
@@ -395,6 +456,8 @@ def build_profile(args) -> dict:
             "library_song_ids_extracted": len(library_song_ids),
             "heavy_rotation_items": hr_count,
             "recommendation_groups": rec_count,
+            "recently_added_items": len(added_items),
+            "recent_stations": len((recent_stations or {}).get("data", [])),
             "loved_count": len(loved),
             "disliked_count": len(disliked_songs),
         },
@@ -413,6 +476,8 @@ def main():
     parser.add_argument("--cache", default=None, help="Cache file path")
     parser.add_argument("--max-age", type=int, default=168, help="Max cache age in hours (default: 168)")
     parser.add_argument("--skip-replay", action="store_true", help="Skip Replay endpoints")
+    parser.add_argument("--no-snapshot", action="store_true",
+                        help="Don't save a dated taste snapshot (used by taste_drift.py)")
     parser.add_argument("--verbose", action="store_true", help="Verbose output to stderr")
     args = parser.parse_args()
 
@@ -436,6 +501,14 @@ def main():
     if args.cache:
         save_cache(profile, args.cache)
         print(f"Cached to {args.cache}", file=sys.stderr)
+
+    # Dated snapshot for drift tracking (fresh builds only)
+    if not args.no_snapshot:
+        try:
+            snap_path = save_snapshot(profile)
+            print(f"Snapshot saved to {snap_path}", file=sys.stderr)
+        except OSError as e:
+            print(f"⚠️  Could not save snapshot: {e}", file=sys.stderr)
 
     # Output
     if args.output:

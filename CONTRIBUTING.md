@@ -56,6 +56,22 @@ scripts/apple_music_api.sh verify
 python3 scripts/taste_profiler.py --cache /tmp/test_profile.json
 ```
 
+### Testing without an Apple Developer account
+
+`tests/mock_api.py` is a local stand-in for the Apple Music API, and
+`tests/test_integration_mock_api.py` runs the real scripts (curl, jq and all) against it.
+It runs as part of `pytest`. To poke at it by hand:
+
+```bash
+python3 tests/mock_api.py &                       # serves http://127.0.0.1:8765
+export APPLE_MUSIC_API_BASE=http://127.0.0.1:8765  # loopback addresses only
+export APPLE_MUSIC_DEV_TOKEN=x APPLE_MUSIC_USER_TOKEN=y
+scripts/apple_music_api.sh recently-added 5
+```
+
+The mock's response shapes follow Apple's docs but are not verified against the real
+service, so it complements a live run rather than replacing one.
+
 ## Making Changes
 
 1. Create a feature branch: `git checkout -b feature/my-change`

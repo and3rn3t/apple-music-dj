@@ -17,6 +17,9 @@ from taste_profiler import (
     extract_ratings,
     extract_replay_highlights,
     infer_energy_profile,
+    extract_recent_additions,
+    extract_station_genres,
+    merge_station_genres,
     load_cache,
     save_cache,
     log,
@@ -571,3 +574,124 @@ class TestTasteProfilerMain:
         monkeypatch.setattr("taste_profiler.call_api", mock_api)
         tp.main()
         assert cache_file.exists()
+
+
+class TestSnapshotOnMain:
+    def _mock(self, monkeypatch):
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: None)
+        monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
+        tracks = [{"id": "t1", "attributes": {"name": "S", "artistName": "A", "genreNames": ["Rock"],
+                                              "releaseDate": "2020-01-01"},
+                   "relationships": {"artists": {"data": [{"id": "a1"}]}}}]
+        monkeypatch.setattr("taste_profiler.call_api", lambda c, *a, **k:
+            tracks if c == "recent-tracks" else {"data": []} if c in ("library-artists", "library-songs") else None)
+
+    def test_fresh_build_saves_snapshot(self, monkeypatch, tmp_path):
+        import _common
+        self._mock(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["taste_profiler.py", "--output", str(tmp_path / "p.json")])
+        tp.main()
+        snaps = _common.list_snapshots()
+        assert len(snaps) == 1
+        assert "library_song_ids" not in snaps[0][1].read_text()
+
+    def test_no_snapshot_flag(self, monkeypatch, tmp_path):
+        import _common
+        self._mock(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["taste_profiler.py", "--no-snapshot", "--output", str(tmp_path / "p.json")])
+        tp.main()
+        assert _common.list_snapshots() == []
+
+    def test_cache_hit_saves_no_snapshot(self, monkeypatch, tmp_path):
+        import _common
+        cache = tmp_path / "cache.json"
+        cache.write_text(json.dumps({"cached": True}))
+        monkeypatch.setattr(sys, "argv", ["taste_profiler.py", "--cache", str(cache), "--max-age", "9999"])
+        tp.main()
+        assert _common.list_snapshots() == []
+
+    def test_snapshot_failure_is_not_fatal(self, monkeypatch, tmp_path, capsys):
+        self._mock(monkeypatch)
+
+        def boom(profile):
+            raise OSError("disk full")
+
+        monkeypatch.setattr("taste_profiler.save_snapshot", boom)
+        out = tmp_path / "p.json"
+        monkeypatch.setattr(sys, "argv", ["taste_profiler.py", "--output", str(out)])
+        tp.main()
+        assert out.exists()
+        assert "Could not save snapshot" in capsys.readouterr().err
+
+
+# ── recently added / stations ────────────────────────────────────
+
+class TestRecentSignals:
+    def test_recent_additions_split(self):
+        data = {"data": [
+            {"id": "l.1", "attributes": {"name": "OK Computer", "artistName": "Radiohead", "genreNames": ["Alternative"]}},
+            {"id": "l.2", "attributes": {"name": "Kid A", "artistName": "Radiohead", "genreNames": ["Alternative"]}},
+            {"id": "p.1", "attributes": {"name": "My Playlist"}},  # playlists have no artist
+            {"id": "l.3", "attributes": {"name": "Blue", "artistName": "Joni Mitchell", "genreNames": ["Folk"]}},
+        ]}
+        items, artists = extract_recent_additions(data)
+        assert len(items) == 3
+        assert artists == ["Radiohead", "Joni Mitchell"]
+
+    @pytest.mark.parametrize("data", [None, {}, {"data": []}])
+    def test_recent_additions_empty(self, data):
+        assert extract_recent_additions(data) == ([], [])
+
+    def test_station_genres_from_titles(self):
+        data = {"data": [
+            {"attributes": {"name": "Alternative Radio"}},
+            {"attributes": {"name": "Indie Pop Hits"}},
+            {"attributes": {"name": "Radiohead Station"}},  # no genre in the title
+        ]}
+        assert extract_station_genres(data) == ["Alternative", "Indie Pop"]
+        assert extract_station_genres(None) == []
+
+    def test_merge_station_genres_nudges_weights(self):
+        genres = [{"genre": "Rock", "count": 9, "weight": 0.9}, {"genre": "Pop", "count": 1, "weight": 0.1}]
+        merged = merge_station_genres(genres, ["Jazz", "Jazz"])
+        by = {g["genre"]: g for g in merged}
+        assert by["Jazz"]["count"] == 2
+        assert by["Rock"]["weight"] == pytest.approx(9 / 12, abs=0.001)
+        assert merge_station_genres(genres, []) is genres
+
+    def test_profile_includes_new_signals(self, monkeypatch):
+        tracks = [{"id": "t1", "attributes": {"name": "S", "artistName": "A", "genreNames": ["Rock"],
+                                              "releaseDate": "2020-01-01"},
+                   "relationships": {"artists": {"data": [{"id": "a1"}]}}}]
+        added = {"data": [{"id": "l.1", "attributes": {"name": "Kid A", "artistName": "Radiohead",
+                                                       "genreNames": ["Alternative"], "releaseDate": "2000-10-02"}}]}
+        stations = {"data": [{"attributes": {"name": "Jazz Radio"}}]}
+
+        def api(cmd, *a, **k):
+            return {"recent-tracks": tracks, "recently-added": added, "recent-stations": stations,
+                    "library-artists": {"data": []}, "library-songs": {"data": []}}.get(cmd)
+
+        monkeypatch.setattr("taste_profiler.call_api", api)
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: None)
+        monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
+        args = MagicMock(verbose=False, storefront="us", skip_replay=True)
+        profile = build_profile(args)
+        assert profile["recently_added_artists"] == ["Radiohead"]
+        assert profile["station_genres"] == ["Jazz"]
+        assert profile["data_summary"]["recently_added_items"] == 1
+        assert profile["data_summary"]["recent_stations"] == 1
+        assert {g["genre"] for g in profile["genre_distribution"]} >= {"Rock", "Alternative", "Jazz"}
+        assert "Radiohead" in {a["name"] for a in profile["top_artists"]}
+
+    def test_profile_degrades_when_endpoints_fail(self, monkeypatch):
+        tracks = [{"id": "t1", "attributes": {"name": "S", "artistName": "A", "genreNames": ["Rock"],
+                                              "releaseDate": "2020-01-01"}}]
+        monkeypatch.setattr("taste_profiler.call_api", lambda cmd, *a, **k:
+            tracks if cmd == "recent-tracks" else {"data": []} if cmd.startswith("library") else None)
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: None)
+        monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
+        profile = build_profile(MagicMock(verbose=False, storefront="us", skip_replay=True))
+        assert profile["recently_added_artists"] == [] and profile["station_genres"] == []

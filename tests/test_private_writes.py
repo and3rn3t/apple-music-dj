@@ -10,6 +10,8 @@ import os
 import stat
 import sys
 
+import pytest
+
 import _common
 import feedback
 import playlist_history
@@ -59,6 +61,38 @@ class TestWritePrivate:
 
     def test_non_regular_targets_still_work(self):
         _common.write_private("/dev/null", "discarded")  # e.g. --output /dev/stdout must not break
+
+    def test_symlink_is_refused_and_its_target_left_untouched(self, tmp_path):
+        victim = loose_file(tmp_path / "victim.txt", "precious")
+        (tmp_path / "out.json").symlink_to(victim)
+        with pytest.raises(OSError, match="Refusing to write through the symlink"):
+            _common.write_private(tmp_path / "out.json", "overwritten")
+        assert victim.read_text() == "precious" and mode(victim) == 0o644
+
+    def test_dangling_symlink_is_refused_and_creates_nothing(self, tmp_path):
+        (tmp_path / "out.json").symlink_to(tmp_path / "nowhere.txt")
+        with pytest.raises(OSError, match="symlink"):
+            _common.write_private(tmp_path / "out.json", "x")
+        assert not (tmp_path / "nowhere.txt").exists()
+
+    def test_symlink_to_a_stream_device_still_works(self, tmp_path):
+        """/dev/stdout is itself a symlink on Linux, so --output /dev/stdout must keep working."""
+        (tmp_path / "stdout-like").symlink_to("/dev/null")
+        _common.write_private(tmp_path / "stdout-like", "discarded")
+        assert mode("/dev/null") == mode("/dev/null")  # untouched (no chmod/truncate attempted)
+
+    def test_foreign_owned_file_is_refused_before_truncation(self, tmp_path, monkeypatch):
+        f = loose_file(tmp_path / "theirs.json", "not yours")
+        monkeypatch.setattr(os, "getuid", lambda: os.stat(f).st_uid + 1)
+        with pytest.raises(PermissionError, match="owned by another user"):
+            _common.write_private(f, "mine now")
+        assert f.read_text() == "not yours" and mode(f) == 0o644
+
+    def test_existing_content_is_replaced_not_appended(self, tmp_path):
+        f = tmp_path / "f.txt"
+        _common.write_private(f, "a much longer first version")
+        _common.write_private(f, "short")
+        assert f.read_text() == "short"
 
     def test_ensure_private_dir_is_idempotent(self, tmp_path):
         d = tmp_path / "x" / "y"

@@ -80,6 +80,8 @@ def validate_storefront(value: str) -> str:
 
 def validate_job_names(value: str) -> list[str]:
     names = [n.strip() for n in value.split(",") if n.strip()]
+    if not names:
+        raise ValueError("--jobs was given but names no jobs (e.g. --jobs weekly-mix,daily-drop).")
     for name in names:
         if not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", name):
             raise ValueError(f"Job name '{name}' isn't valid (lowercase letters, digits and dashes only).")
@@ -387,7 +389,8 @@ def main():
         log_dir = validate_path(args.log_dir or str(DEFAULT_LOG_DIR), "--log-dir")
         python_path = validate_python(args.python or sys.executable)
         profile = validate_path(args.profile or str(APP_DIR / "profile.json"), "--profile")
-        jobs = validate_job_names(args.jobs) if args.jobs else None
+        # `is not None`: an explicit but empty --jobs must be rejected, not treated as "all"
+        jobs = validate_job_names(args.jobs) if args.jobs is not None else None
     except ValueError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
@@ -397,7 +400,12 @@ def main():
 
     # Opt-in jobs are only installed when named with --jobs
     selected = [n for n in all_names if not job_defs[n].get("optional")]
-    if jobs:
+    if jobs is not None:
+        unknown = [n for n in jobs if n not in job_defs]
+        if unknown:
+            print(f"ERROR: Unknown job(s): {', '.join(unknown)}. Available: {', '.join(all_names)}.",
+                  file=sys.stderr)
+            sys.exit(1)
         selected = jobs
 
     if args.command == "list":
@@ -408,7 +416,7 @@ def main():
                   "Specify --profile for a custom location.", file=sys.stderr)
         cmd_install(job_defs, selected, log_dir, dry_run=args.dry_run)
     elif args.command == "remove":
-        cmd_remove(job_defs, selected if jobs else all_names)
+        cmd_remove(job_defs, selected if jobs is not None else all_names)
     elif args.command == "status":
         cmd_status()
 

@@ -7,6 +7,7 @@ used across all scripts.
 """
 
 import base64
+import errno
 import json
 import os
 import re
@@ -121,21 +122,47 @@ def tighten_app_dir(path) -> None:
         ensure_private_dir(APP_DIR, tighten=True)
 
 
+def _is_stream(path: Path) -> bool:
+    """Character device, FIFO or socket (e.g. /dev/stdout resolves to one)."""
+    try:
+        mode = os.stat(path).st_mode
+    except OSError:
+        return False
+    return stat.S_ISCHR(mode) or stat.S_ISFIFO(mode) or stat.S_ISSOCK(mode)
+
+
 def write_private(path, text: str) -> None:
     """Write `text` to `path` readable by the owner only.
 
-    `os.open(..., 0o600)` only applies when the file is *created*; a pre-existing file keeps
-    whatever (possibly looser) mode it had, so we fchmod after opening. New parent
-    directories are 0700, and our own ~/.apple-music-dj directories are tightened to 0700.
-    Non-regular targets (e.g. /dev/stdout) are written as-is, without the chmod.
+    - `os.open(..., 0o600)` only applies when a file is *created*, so a pre-existing file is
+      fchmod'ed too. New parent directories are 0700, and our own ~/.apple-music-dj
+      directories are tightened to 0700.
+    - The target is validated *before* anything destructive happens: it is opened without
+      O_TRUNC and with O_NOFOLLOW, and only truncated once fstat shows a regular file we own.
+      A symlink (or a file owned by someone else) is refused rather than truncated/chmod'ed.
+    - Stream devices are the one exception, since `/dev/stdout` is itself a symlink on Linux;
+      they are opened directly and left untouched (no truncate, no chmod).
     """
     path = Path(path)
     tighten_app_dir(path)
     ensure_private_dir(path.parent, tighten=path.parent == APP_DIR or APP_DIR in path.parent.parents)
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        if stat.S_ISREG(os.fstat(fd).st_mode):
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except OSError as e:
+        if e.errno != errno.ELOOP:
+            raise
+        target = path.resolve()
+        if not _is_stream(target):
+            raise OSError(errno.ELOOP, f"Refusing to write through the symlink {path}; "
+                                       f"pass the real path instead.") from e
+        fd = os.open(str(target), os.O_WRONLY)
+    try:
+        st = os.fstat(fd)
+        if stat.S_ISREG(st.st_mode):
+            if st.st_uid != os.getuid():
+                raise PermissionError(errno.EPERM, f"{path} is owned by another user; refusing to overwrite it.")
             os.fchmod(fd, 0o600)
+            os.ftruncate(fd, 0)
         with os.fdopen(fd, "w") as f:
             fd = -1  # now owned by the file object
             f.write(text)

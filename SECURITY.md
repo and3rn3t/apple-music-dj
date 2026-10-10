@@ -58,6 +58,10 @@ Include:
   existed with looser permissions is tightened rather than left as it was. `~/.apple-music-dj/` itself
   is tightened to `0700`. Directories you pointed it at that already exist (e.g. `~/Documents`) are
   never changed.
+- **No writing through symlinks.** An `--output` (or cache/profile) path that is a symlink, or an
+  existing file owned by another user, is refused *before* anything is truncated or chmod'ed — a
+  planted symlink can't be used to clobber an unrelated file. Pass the real path instead. (Stream
+  devices such as `/dev/stdout` still work.)
 - **No tokens on disk.** Tokens come from environment variables. The temporary curl config that
   carries them is created `0600`, deleted right after each request, and removed on Ctrl-C / `kill`.
 
@@ -68,6 +72,8 @@ Automation is **opt-in**: nothing is scheduled unless you run `setup_cron.py ins
 until removed, the installer is deliberately strict:
 
 - `install --dry-run` prints the exact crontab lines and changes nothing — review them first.
+- `--jobs` must name at least one known job (an empty value is an error, never "all jobs"; unknown
+  names are rejected up front, including for `remove`).
 - `--profile`, `--log-dir`, `--python`, `--storefront` and `--jobs` are validated: paths must not
   contain newlines, control characters or `%` (cron turns `%` into a newline, even inside quotes),
   `--python` must be an executable file, and the storefront must be a two-letter code.

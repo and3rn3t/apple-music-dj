@@ -526,6 +526,31 @@ class TestMainRejectsUnsafeInput:
             self._run(monkeypatch, *argv)
         assert e.value.code == 1 and "ERROR:" in capsys.readouterr().err
 
+    @pytest.mark.parametrize("jobs", ["", " ", ",", " , ,"])
+    @pytest.mark.parametrize("command", ["install", "remove", "list"])
+    def test_explicit_empty_jobs_is_rejected_not_treated_as_all(self, monkeypatch, capsys, command, jobs):
+        """`--jobs ''` used to fall back to every default job — and `remove` removed them all."""
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        with pytest.raises(SystemExit) as e:
+            self._run(monkeypatch, command, "--jobs", jobs)
+        assert e.value.code == 1 and "names no jobs" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("command", ["install", "remove"])
+    def test_unknown_job_names_are_rejected_up_front(self, monkeypatch, capsys, command):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        with pytest.raises(SystemExit) as e:
+            self._run(monkeypatch, command, "--jobs", "weekly-mix,not-a-job")
+        err = capsys.readouterr().err
+        assert e.value.code == 1 and "Unknown job(s): not-a-job" in err and "weekly-mix" in err
+
+    def test_remove_without_jobs_still_means_all(self, monkeypatch):
+        removed = {}
+        monkeypatch.setattr(sc, "cmd_remove", lambda defs, selected: removed.setdefault("sel", selected))
+        self._run(monkeypatch, "remove")
+        assert set(removed["sel"]) == set(sc.build_job_defs("/x", "/p", "us", "/l"))
+
     def test_dry_run_flag_via_cli(self, monkeypatch, capsys, tmp_path):
         monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
         monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))

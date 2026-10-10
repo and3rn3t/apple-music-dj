@@ -30,6 +30,8 @@ Addresses the ClawHub security audit of v3.1.0:
 
 - **Cron injection** (`setup_cron.py`): `--profile`, `--log-dir`, `--python`, `--storefront` and `--jobs` are now validated (no newlines/control characters/`%`; `--python` must be an executable file; storefront must be a two-letter code), the log path is shell-quoted like every other value, and a line containing a newline or `%` is refused. Jobs run under `umask 077`. New `install --dry-run` prints the exact crontab lines without installing anything.
 - **Cron logs readable by other users**: log directories are created `0700` and log files `0600` *before* cron writes to them; symlinked or foreign-owned log directories/files and directories other users can write to are rejected.
+- **Symlink / ownership safety for every write**: `write_private()` opens without truncating and with `O_NOFOLLOW`, and only truncates after `fstat` confirms a regular file you own — a symlinked `--output` (or a file owned by someone else) is refused instead of clobbered. `/dev/stdout`-style stream devices still work.
+- **`--jobs` handling in `setup_cron.py`**: an explicit empty value (`--jobs ''`, `,`) used to fall back to *all* default jobs — and `remove` removed every job. It is now rejected, and unknown job names are rejected up front.
 - **Profiles written with loose permissions**: `os.open(..., 0o600)` only applies to newly created files, and the profiler's cache-hit `--output` path used a plain `write_text`. All writers now go through `write_private()`, which enforces `0600` on existing files too and creates directories `0700`; `~/.apple-music-dj/` is tightened to `0700`.
 
 ### Changed

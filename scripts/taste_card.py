@@ -696,6 +696,9 @@ def main():
             result = generate_drift_svg(drift_data)
         else:
             result = generate_drift_text(drift_data)
+    else:  # argparse's `choices` makes this unreachable; it keeps `result` provably assigned
+        print(f"ERROR: unknown mode '{args.mode}'.", file=sys.stderr)
+        sys.exit(1)
 
     if args.output:
         write_private(args.output, result)

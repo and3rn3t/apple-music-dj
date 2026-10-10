@@ -33,15 +33,22 @@ require_user_token() {
 # returns, so they fire again in the caller where the function's locals no longer
 # exist (an unbound-variable error under `set -u`) — and one helper's trap silently
 # replaced another's, leaving the token-bearing curl config behind. Instead every
-# helper removes its own temp files right after use; this registry plus the EXIT /
-# INT / TERM traps are only the backstop for interrupts. Read commands run as
-# `_get | jq` in a subshell, where bash resets traps, so _with_auth re-installs them.
-_TMPFILES=()
+# helper removes its own temp files right after use; the EXIT / INT / TERM traps are
+# only the backstop for interrupts. Read commands run as `_get | jq` in a subshell,
+# where bash resets traps, so _with_auth re-installs them.
+#
+# Every temp file is named am_<kind>_<script pid>_XXXXXX (`$$` stays the main script's
+# pid inside subshells) and the backstop removes by that pattern instead of keeping a
+# list: a signal that lands right after mktemp but before a list append would otherwise
+# leak the file, because bash runs a pending trap before the next command.
+_CURL_PID=""
 _cleanup() {
-  local f
-  for f in "${_TMPFILES[@]:-}"; do
-    [[ -n "$f" ]] && rm -f "$f"
-  done
+  # `if`, not `cmd && kill`: under `set -e` a failing last `&&` element (curl already dead)
+  # would abort the EXIT trap and replace the real exit status with 1.
+  if [[ -n "${_CURL_PID:-}" ]]; then
+    kill "$_CURL_PID" 2>/dev/null || true
+  fi
+  rm -f "${TMPDIR:-/tmp}"/am_*_$$_* 2>/dev/null || true
   return 0
 }
 _install_traps() {
@@ -55,18 +62,34 @@ _install_traps
 _retry() {
   # Retry a curl command with exponential backoff on 429 responses.
   # Usage: _retry curl_args...
+  #
+  # curl runs in the background and we `wait` for it: bash defers traps until the
+  # current foreground command finishes, so with a plain `$(curl ...)` a Ctrl-C/TERM
+  # that curl happens to miss (e.g. it lands while curl is still being forked) would
+  # not be acted on until the whole request completed. `wait` is interrupted at once.
   local max_retries=3
   local delay=1
   local attempt=0
   local rc=0
-  local tmpfile=""
-  tmpfile=$(mktemp "${TMPDIR:-/tmp}/am_api_XXXXXX")
-  _TMPFILES+=("$tmpfile")
+  local tmpfile codefile
+  tmpfile=$(mktemp "${TMPDIR:-/tmp}/am_api_$$_XXXXXX")
+  codefile=$(mktemp "${TMPDIR:-/tmp}/am_code_$$_XXXXXX")
 
   while (( attempt <= max_retries )); do
     local http_code
     local curl_exit=0
-    http_code=$(curl -sS -g -o "$tmpfile" -w '%{http_code}' "$@") || curl_exit=$?
+    curl -sS -g -o "$tmpfile" -w '%{http_code}' "$@" > "$codefile" &
+    _CURL_PID=$!
+    wait "$_CURL_PID" || curl_exit=$?
+    _CURL_PID=""
+    # Exit >= 128 means curl was ended by a signal, or `wait` was interrupted by a trapped
+    # one (bash runs that trap only after the next commands). Don't report it as a network
+    # failure — clean up and exit with the signal's status.
+    if (( curl_exit >= 128 )); then
+      _cleanup
+      exit "$curl_exit"
+    fi
+    http_code=$(cat "$codefile")
     if [[ $curl_exit -ne 0 && "$http_code" != "429" ]]; then
       echo "ERROR: curl failed (exit $curl_exit). Check network connectivity." >&2
       rc=1
@@ -83,14 +106,14 @@ _retry() {
       break
     fi
   done
-  rm -f "$tmpfile"
+  rm -f "$tmpfile" "$codefile"
   return "$rc"
 }
 
 _make_auth_config() {
   # Write tokens to a curl config file so they don't appear in ps output.
   local cfgfile
-  cfgfile=$(mktemp "${TMPDIR:-/tmp}/am_auth_XXXXXX")
+  cfgfile=$(mktemp "${TMPDIR:-/tmp}/am_auth_$$_XXXXXX")
   chmod 600 "$cfgfile"
   if [[ -n "${2:-}" ]]; then
     printf -- '-H "Authorization: Bearer %s"\n-H "Music-User-Token: %s"\n' "$1" "$2" > "$cfgfile"
@@ -111,7 +134,6 @@ _with_auth() {
   else
     cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN")
   fi
-  _TMPFILES+=("$cfg")
   _retry -K "$cfg" "$@" || rc=$?
   rm -f "$cfg"
   return "$rc"
@@ -442,7 +464,7 @@ cmd_rate() {
   [[ "$value" == "1" || "$value" == "-1" ]] || { echo "ERROR: value must be 1 or -1" >&2; return 1; }
   _validate_ids "$id" || return 1
   local tmpfile rc=0
-  tmpfile=$(mktemp "${TMPDIR:-/tmp}/am_rate_XXXXXX")
+  tmpfile=$(mktemp "${TMPDIR:-/tmp}/am_rate_$$_XXXXXX")
   printf '{"type":"rating","attributes":{"value":%s}}' "$value" > "$tmpfile"
   _put_file "/v1/me/ratings/songs/${id}" "$tmpfile" || rc=$?
   rm -f "$tmpfile"

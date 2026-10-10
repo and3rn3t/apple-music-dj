@@ -162,6 +162,80 @@ class TestWrapper:
             server.server_close()
         assert list(api.tmpdir.glob("am_*")) == []
 
+    def test_retries_on_429_then_succeeds(self, api):
+        seen = []
+
+        class Flaky(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append(self.path)
+                body = b'{"data": [{"id": "ok"}]}' if len(seen) >= 3 else b"{}"
+                self.send_response(200 if len(seen) >= 3 else 429)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Flaky)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{server.server_address[1]}"}
+        try:
+            r = subprocess.run(["bash", str(SCRIPTS / "apple_music_api.sh"), "heavy-rotation"],
+                               capture_output=True, text=True, env=env, timeout=30)
+        finally:
+            server.shutdown()
+            server.server_close()
+        assert r.returncode == 0 and json.loads(r.stdout)["data"] == [{"id": "ok"}]
+        assert len(seen) == 3 and r.stderr.count("Rate limited") == 2
+        assert list(api.tmpdir.glob("am_*")) == []
+
+    def test_connection_failure_is_reported_and_cleans_up(self, api):
+        env = {**api.env, "APPLE_MUSIC_API_BASE": "http://127.0.0.1:9"}  # nothing listens on the discard port
+        r = subprocess.run(["bash", str(SCRIPTS / "apple_music_api.sh"), "heavy-rotation"],
+                           capture_output=True, text=True, env=env, timeout=30)
+        assert r.returncode != 0 and "curl failed" in r.stderr
+        assert list(api.tmpdir.glob("am_*")) == []
+
+    def test_term_to_the_script_alone_stops_promptly_and_kills_curl(self, api):
+        """bash defers traps until the foreground command ends; waiting on a background curl
+        makes TERM act immediately instead of after the whole (here: 30s) request."""
+
+        class Hang(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                time.sleep(30)
+
+            do_POST = do_GET  # `favorite` is a POST
+
+            def log_message(self, *args):
+                pass
+
+        socketserver.ThreadingTCPServer.daemon_threads = True
+        server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Hang)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        port = server.server_address[1]
+        env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{port}"}
+        proc = subprocess.Popen(["bash", str(SCRIPTS / "apple_music_api.sh"), "favorite", "songs", "s1"],
+                                env=env, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.time() + 10
+            while not list(api.tmpdir.glob("am_auth_*")) and time.time() < deadline:
+                time.sleep(0.05)
+            time.sleep(0.5)  # let curl start
+            started = time.time()
+            proc.send_signal(signal.SIGTERM)  # the script only — not its process group
+            proc.wait(timeout=5)
+            assert time.time() - started < 5 and proc.returncode == 143
+            assert list(api.tmpdir.glob("am_*")) == []
+            time.sleep(0.3)
+            curl_left = subprocess.run(["pgrep", "-f", f"curl.*127.0.0.1:{port}"], capture_output=True)
+            assert curl_left.returncode == 1, "curl was left running"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            server.shutdown()
+            server.server_close()
+
     def test_missing_auth_is_rejected_by_server(self, api):
         r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
                             f"{api.mock.url}/v1/storefronts/us"], capture_output=True, text=True)

@@ -4,11 +4,16 @@ These catch what mocked unit tests can't — URL quoting, empty 202 bodies, shel
 subprocess plumbing. They do NOT prove Apple's real response shapes match the mock.
 """
 
+import http.server
 import json
 import os
 import shutil
+import signal
+import socketserver
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -28,7 +33,9 @@ def api(tmp_path):
     mock = MockAppleMusic().start()
     home = tmp_path / "home"
     home.mkdir()
-    env = {**os.environ, "HOME": str(home), "APPLE_MUSIC_API_BASE": mock.url,
+    tmpdir = tmp_path / "tmpdir"  # isolated so tests can see whether scripts leave temp files behind
+    tmpdir.mkdir()
+    env = {**os.environ, "HOME": str(home), "TMPDIR": str(tmpdir), "APPLE_MUSIC_API_BASE": mock.url,
            "APPLE_MUSIC_DEV_TOKEN": "dev", "APPLE_MUSIC_USER_TOKEN": "user", "PYTHONDONTWRITEBYTECODE": "1"}
     for k in ("APPLE_MUSIC_STOREFRONT",):
         env.pop(k, None)
@@ -41,7 +48,7 @@ def api(tmp_path):
             raise AssertionError(f"{script} {args} exited {r.returncode}\nSTDERR:\n{r.stderr}\nSTDOUT:\n{r.stdout}")
         return r
 
-    run.mock, run.home, run.tmp = mock, home, tmp_path
+    run.mock, run.home, run.tmp, run.tmpdir, run.env = mock, home, tmp_path, tmpdir, env
     yield run
     mock.stop()
 
@@ -70,6 +77,12 @@ class TestWrapper:
     def test_replay_summary_year_filter_reaches_server(self, api):
         api("apple_music_api.sh", "replay-summary", "2023", check=False)  # mock 404s Replay on purpose
         assert api.mock.requests[-1]["query"]["filter[year]"] == ["2023"]
+
+    def test_unknown_song_is_a_real_404(self, api):
+        assert api("apple_music_api.sh", "song-detail", "us", "s1").returncode == 0
+        r = api("apple_music_api.sh", "song-detail", "us", "nope", check=False)
+        assert r.returncode != 0
+        assert api.mock.requests[-1]["path"] == "/v1/catalog/us/songs/nope"
 
     def test_new_read_commands(self, api):
         assert [i["id"] for i in _json(api("apple_music_api.sh", "recently-added", "5"))["data"]] == ["l.alb4", "p.1"]
@@ -103,6 +116,51 @@ class TestWrapper:
                      ("songs-by-isrc", "us", "BADISRC"), ("rate", "s1", "5"), ("unrate", "x/y")):
             assert api("apple_music_api.sh", *args, check=False).returncode != 0
         assert api.mock.writes() == []
+
+    def test_no_token_files_left_behind(self, api):
+        """The curl auth config holds both tokens — it must be gone after every call."""
+        w = "apple_music_api.sh"
+        api(w, "verify")
+        api(w, "heavy-rotation")                    # read path (runs in a pipeline subshell)
+        api(w, "favorite", "songs", "s1")           # write path (runs in the main shell)
+        api(w, "rate", "s1", "1")
+        api(w, "unrate", "s1")
+        api(w, "replay-summary", "2023", check=False)   # server answers 404
+        assert list(api.tmpdir.glob("am_*")) == []
+
+    @pytest.mark.parametrize("command", [["heavy-rotation"], ["favorite", "songs", "s1"]])
+    @pytest.mark.parametrize("sig", [signal.SIGINT, signal.SIGTERM])
+    def test_interrupt_cleans_up_token_files(self, api, command, sig):
+        """Ctrl-C (signal to the whole process group) mid-request must not leave tokens in $TMPDIR."""
+
+        class Hang(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                time.sleep(30)
+
+            do_POST = do_GET
+
+            def log_message(self, *args):
+                pass
+
+        socketserver.ThreadingTCPServer.daemon_threads = True  # don't wait for the hung handler on shutdown
+        server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Hang)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{server.server_address[1]}"}
+        proc = subprocess.Popen(["bash", str(SCRIPTS / "apple_music_api.sh"), *command], env=env,
+                                stderr=subprocess.DEVNULL, start_new_session=True)
+        try:
+            deadline = time.time() + 10
+            while not list(api.tmpdir.glob("am_auth_*")) and time.time() < deadline:
+                time.sleep(0.05)
+            assert list(api.tmpdir.glob("am_auth_*")), "request never started"
+            os.killpg(proc.pid, sig)
+            proc.wait(timeout=10)
+        finally:
+            if proc.poll() is None:
+                os.killpg(proc.pid, signal.SIGKILL)
+            server.shutdown()
+            server.server_close()
+        assert list(api.tmpdir.glob("am_*")) == []
 
     def test_missing_auth_is_rejected_by_server(self, api):
         r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",

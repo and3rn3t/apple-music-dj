@@ -28,6 +28,29 @@ require_user_token() {
   fi
 }
 
+# ── Temp-file hygiene ─────────────────────────────────────────────
+# No RETURN traps: bash 4+/5 keeps them armed after the function that set them
+# returns, so they fire again in the caller where the function's locals no longer
+# exist (an unbound-variable error under `set -u`) — and one helper's trap silently
+# replaced another's, leaving the token-bearing curl config behind. Instead every
+# helper removes its own temp files right after use; this registry plus the EXIT /
+# INT / TERM traps are only the backstop for interrupts. Read commands run as
+# `_get | jq` in a subshell, where bash resets traps, so _with_auth re-installs them.
+_TMPFILES=()
+_cleanup() {
+  local f
+  for f in "${_TMPFILES[@]:-}"; do
+    [[ -n "$f" ]] && rm -f "$f"
+  done
+  return 0
+}
+_install_traps() {
+  trap _cleanup EXIT
+  trap '_cleanup; exit 130' INT
+  trap '_cleanup; exit 143' TERM
+}
+_install_traps
+
 # ── HTTP helpers ──────────────────────────────────────────────────
 _retry() {
   # Retry a curl command with exponential backoff on 429 responses.
@@ -35,10 +58,10 @@ _retry() {
   local max_retries=3
   local delay=1
   local attempt=0
+  local rc=0
   local tmpfile=""
   tmpfile=$(mktemp "${TMPDIR:-/tmp}/am_api_XXXXXX")
-  # Only use RETURN trap — EXIT persists globally and outlives the local var
-  trap 'rm -f "$tmpfile"' RETURN
+  _TMPFILES+=("$tmpfile")
 
   while (( attempt <= max_retries )); do
     local http_code
@@ -46,7 +69,8 @@ _retry() {
     http_code=$(curl -sS -g -o "$tmpfile" -w '%{http_code}' "$@") || curl_exit=$?
     if [[ $curl_exit -ne 0 && "$http_code" != "429" ]]; then
       echo "ERROR: curl failed (exit $curl_exit). Check network connectivity." >&2
-      return 1
+      rc=1
+      break
     fi
     if [[ "$http_code" == "429" && attempt -lt max_retries ]]; then
       (( attempt++ ))
@@ -55,12 +79,12 @@ _retry() {
       (( delay *= 2 ))
     else
       cat "$tmpfile"
-      if [[ "$http_code" =~ ^[45] ]]; then
-        return 1
-      fi
-      return 0
+      [[ "$http_code" =~ ^[45] ]] && rc=1
+      break
     fi
   done
+  rm -f "$tmpfile"
+  return "$rc"
 }
 
 _make_auth_config() {
@@ -76,86 +100,67 @@ _make_auth_config() {
   echo "$cfgfile"
 }
 
+_with_auth() {
+  # Usage: _with_auth <dev|both> <curl args...>
+  # Runs _retry with a temporary auth config that is always removed afterwards.
+  local mode="$1"; shift
+  local cfg rc=0
+  _install_traps
+  if [[ "$mode" == "both" ]]; then
+    cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
+  else
+    cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN")
+  fi
+  _TMPFILES+=("$cfg")
+  _retry -K "$cfg" "$@" || rc=$?
+  rm -f "$cfg"
+  return "$rc"
+}
+
 _get() {
   # Personalized request (both tokens)
   require_user_token
-  local _cfg
-  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
-  trap 'rm -f "${_cfg:-}"' RETURN INT TERM
-  _retry -K "$_cfg" "${BASE}${1}"
+  _with_auth both "${BASE}${1}"
 }
 
 _get_catalog() {
   # Catalog-only request (dev token only)
   require_dev_token
-  local _cfg
-  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN")
-  trap 'rm -f "${_cfg:-}"' RETURN INT TERM
-  _retry -K "$_cfg" "${BASE}${1}"
+  _with_auth dev "${BASE}${1}"
 }
 
 _post() {
   require_user_token
-  local _cfg
-  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
-  trap 'rm -f "${_cfg:-}"' RETURN INT TERM
-  _retry -X POST -K "$_cfg" \
-    -H "Content-Type: application/json" \
-    -d "${2}" \
-    "${BASE}${1}"
+  _with_auth both -X POST -H "Content-Type: application/json" -d "${2}" "${BASE}${1}"
 }
 
 _post_file() {
   require_user_token
-  local _cfg
-  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
-  trap 'rm -f "${_cfg:-}"' RETURN INT TERM
-  _retry -X POST -K "$_cfg" \
-    -H "Content-Type: application/json" \
-    -d @"${2}" \
-    "${BASE}${1}"
+  _with_auth both -X POST -H "Content-Type: application/json" -d @"${2}" "${BASE}${1}"
 }
 
 _post_empty() {
   # POST with no body (both tokens)
   require_user_token
-  local _cfg
-  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
-  trap 'rm -f "${_cfg:-}"' RETURN INT TERM
-  _retry -X POST -K "$_cfg" "${BASE}${1}"
+  _with_auth both -X POST "${BASE}${1}"
 }
 
 _put_file() {
   # PUT with a JSON body file (both tokens)
   require_user_token
-  local _cfg
-  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
-  trap 'rm -f "${_cfg:-}"' RETURN INT TERM
-  _retry -X PUT -K "$_cfg" \
-    -H "Content-Type: application/json" \
-    -d @"${2}" \
-    "${BASE}${1}"
+  _with_auth both -X PUT -H "Content-Type: application/json" -d @"${2}" "${BASE}${1}"
 }
 
 _delete() {
   # DELETE request with JSON body (both tokens)
   require_user_token
-  local _cfg
-  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
-  trap 'rm -f "${_cfg:-}"' RETURN INT TERM
-  _retry -X DELETE -K "$_cfg" \
-    -H "Content-Type: application/json" \
-    -d @"${2}" \
-    "${BASE}${1}"
+  _with_auth both -X DELETE -H "Content-Type: application/json" -d @"${2}" "${BASE}${1}"
 }
 
 _delete_no_body() {
   # DELETE request without body (both tokens)
   require_user_token
-  local _cfg
-  _cfg=$(_make_auth_config "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN")
-  trap 'rm -f "${_cfg:-}"' RETURN INT TERM
-  _retry -X DELETE -K "$_cfg" "${BASE}${1}"
+  _with_auth both -X DELETE "${BASE}${1}"
 }
 
 _urlencode() {

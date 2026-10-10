@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `apple_music_api.sh`: URLs containing `[` `]` (e.g. `replay-summary <year>` → `filter[year]=`) failed with curl's "bad range" error — curl now runs with `-g`
-- `apple_music_api.sh`: helpers that set a `RETURN` trap leaked it to their caller, so `add-to-playlist` and `remove-from-playlist` aborted with an unbound-variable error after succeeding
+- `apple_music_api.sh`: on bash 4+/5 (Linux, Homebrew bash) every API call aborted with `tmpfile: unbound variable` because `RETURN` traps stay armed after their function returns; one helper's trap also replaced another's, leaving the token-bearing curl config in `$TMPDIR`. Temp files are now removed explicitly after each call, with `EXIT`/`INT`/`TERM` traps as a backstop (this also fixes `add-to-playlist` / `remove-from-playlist` aborting after succeeding)
 - `refresh` no longer suggests songs already in the library (`--include-library` opts back in)
 
 ### Removed

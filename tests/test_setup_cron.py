@@ -43,7 +43,7 @@ class TestFormatCronLine:
     def test_includes_schedule_and_command(self):
         job = {"schedule": "0 7 * * 1", "command": "echo hello", "log": "/tmp/test.log"}
         line = sc.format_cron_line(job, "test-job")
-        assert line.startswith("0 7 * * 1 echo hello")
+        assert line.startswith("0 7 * * 1 umask 077; echo hello")
 
     def test_includes_marker(self):
         job = {"schedule": "0 7 * * 1", "command": "echo hello", "log": "/tmp/test.log"}
@@ -292,7 +292,7 @@ class TestMonthlyDrift:
         assert "taste_profiler.py" in job["command"] and "taste_drift.py" in job["command"]
         line = sc.format_cron_line(job, "monthly-drift")
         # Subshell so the log redirect covers both commands
-        assert line.split(" ", 5)[5].startswith("(") and ") >> " in line
+        assert "umask 077; (" in line and ") >> " in line
 
     def test_other_jobs_not_optional(self):
         defs = sc.build_job_defs("/usr/bin/python3", "/p.json", "us", "/tmp")
@@ -302,3 +302,234 @@ class TestMonthlyDrift:
         monkeypatch.setattr(sc, "get_installed_jobs", lambda: [])
         sc.cmd_list(sc.build_job_defs("/usr/bin/python3", "/p.json", "us", "/tmp"))
         assert "opt-in" in capsys.readouterr().out
+
+
+# ── Security audit: validation, log privacy, dry run ─────────────
+
+import os
+import stat
+
+
+def _mode(path):
+    return stat.S_IMODE(os.stat(path).st_mode)
+
+
+class TestValidation:
+    @pytest.mark.parametrize("bad", ["", "   ", "/tmp/a\nb", "/tmp/a\rb", "/tmp/a\x00b", "/tmp/50%off", "/tmp/a\tb"])
+    def test_validate_path_rejects_line_breaking_input(self, bad):
+        with pytest.raises(ValueError):
+            sc.validate_path(bad, "--profile")
+
+    def test_validate_path_normalizes(self, monkeypatch):
+        monkeypatch.setenv("HOME", "/home/jane")
+        assert sc.validate_path("~/x/../profile.json", "--profile") == "/home/jane/profile.json"
+        assert sc.validate_path("/a/b c/p.json", "--profile") == "/a/b c/p.json"
+
+    @pytest.mark.parametrize("ok", ["us", "gb", "auto"])
+    def test_storefront_ok(self, ok):
+        assert sc.validate_storefront(ok) == ok
+
+    @pytest.mark.parametrize("bad", ["", "USA", "u", "us; rm -rf ~", "us\nus", "$(id)", "u1"])
+    def test_storefront_rejected(self, bad):
+        with pytest.raises(ValueError):
+            sc.validate_storefront(bad)
+
+    def test_python_must_be_an_executable_file(self, tmp_path):
+        exe = tmp_path / "py"
+        exe.write_text("#!/bin/sh\n")
+        with pytest.raises(ValueError, match="not an executable file"):
+            sc.validate_python(str(exe))
+        exe.chmod(0o755)
+        assert sc.validate_python(str(exe)) == str(exe)
+        with pytest.raises(ValueError):
+            sc.validate_python(str(tmp_path / "missing"))
+
+    @pytest.mark.parametrize("bad", ["weekly mix", "Weekly", "a;b", "x$(id)", "-x", "a" * 40])
+    def test_job_names_rejected(self, bad):
+        with pytest.raises(ValueError):
+            sc.validate_job_names(bad)
+
+    def test_job_names_ok(self):
+        assert sc.validate_job_names("weekly-mix, daily-drop,") == ["weekly-mix", "daily-drop"]
+
+
+class TestCronLineSafety:
+    def _job(self, **kw):
+        return {"schedule": "0 7 * * 1", "command": "echo hi", "log": "/tmp/x.log", **kw}
+
+    def test_log_path_is_quoted(self):
+        line = sc.format_cron_line(self._job(log="/tmp/my logs/x.log"), "j")
+        assert ">> '/tmp/my logs/x.log' 2>&1" in line
+
+    def test_log_path_cannot_inject_commands(self):
+        import shlex
+        line = sc.format_cron_line(self._job(log="/tmp/x.log; touch /tmp/pwned #"), "j")
+        redirect = line.split(" >> ", 1)[1]
+        assert shlex.split(redirect)[0] == "/tmp/x.log; touch /tmp/pwned #"
+
+    def test_job_runs_with_private_umask(self):
+        assert " umask 077; " in sc.format_cron_line(self._job(), "j")
+
+    @pytest.mark.parametrize("field", ["command", "log"])
+    @pytest.mark.parametrize("bad", ["a\nb", "a\rb", "50%", "a\x00b"])
+    def test_refuses_to_build_a_line_that_could_split_or_be_rewritten_by_cron(self, field, bad):
+        with pytest.raises(ValueError, match="Refusing"):
+            sc.format_cron_line(self._job(**{field: bad}), "j")
+
+    def test_every_real_job_formats_cleanly(self):
+        for name, job in sc.build_job_defs("/usr/bin/python3", "/p/profile.json", "us", "/tmp/logs").items():
+            line = sc.format_cron_line(job, name)
+            assert "\n" not in line and "%" not in line
+
+
+class TestPrepareLogs:
+    def test_creates_private_dir_and_files(self, tmp_path):
+        log_dir = tmp_path / "a" / "b" / "logs"
+        logs = [str(log_dir / "one.log"), str(log_dir / "two.log")]
+        sc.prepare_logs(str(log_dir), logs)
+        assert _mode(log_dir) == 0o700 and _mode(log_dir.parent) == 0o700
+        assert all(_mode(p) == 0o600 for p in logs)
+
+    def test_tightens_a_preexisting_world_readable_log_and_keeps_content(self, tmp_path):
+        log = tmp_path / "old.log"
+        log.write_text("earlier run\n")
+        log.chmod(0o644)
+        sc.prepare_logs(str(tmp_path), [str(log)])
+        assert _mode(log) == 0o600 and log.read_text() == "earlier run\n"
+
+    def test_rejects_symlinked_directory(self, tmp_path):
+        real = tmp_path / "real"
+        real.mkdir()
+        link = tmp_path / "link"
+        link.symlink_to(real)
+        with pytest.raises(ValueError, match="symlink"):
+            sc.prepare_logs(str(link), [str(link / "x.log")])
+        assert list(real.iterdir()) == []
+
+    def test_rejects_symlinked_log_file_without_touching_target(self, tmp_path):
+        target = tmp_path / "victim.txt"
+        target.write_text("keep me")
+        target.chmod(0o644)
+        (tmp_path / "x.log").symlink_to(target)
+        with pytest.raises(ValueError, match="symlink"):
+            sc.prepare_logs(str(tmp_path), [str(tmp_path / "x.log")])
+        assert target.read_text() == "keep me" and _mode(target) == 0o644
+
+    def test_rejects_directory_other_users_can_write(self, tmp_path):
+        d = tmp_path / "shared"
+        d.mkdir()
+        d.chmod(0o777)
+        with pytest.raises(ValueError, match="writable by other users"):
+            sc.prepare_logs(str(d), [str(d / "x.log")])
+
+    def test_rejects_directory_owned_by_someone_else(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(os, "getuid", lambda: os.stat(tmp_path).st_uid + 1)
+        with pytest.raises(ValueError, match="owned by another user"):
+            sc.prepare_logs(str(tmp_path), [str(tmp_path / "x.log")])
+
+    def test_rejects_log_path_that_is_a_directory(self, tmp_path):
+        (tmp_path / "x.log").mkdir()
+        with pytest.raises(OSError):
+            sc.prepare_logs(str(tmp_path), [str(tmp_path / "x.log")])
+
+    def test_logs_inside_the_app_dir_tighten_the_app_dir_itself(self, tmp_path, monkeypatch):
+        import _common
+        app = tmp_path / ".apple-music-dj"
+        app.mkdir()
+        app.chmod(0o755)
+        monkeypatch.setattr(_common, "APP_DIR", app)
+        monkeypatch.setattr(sc, "DEFAULT_LOG_DIR", app / "logs")
+        sc.prepare_logs(str(app / "logs"), [str(app / "logs" / "x.log")])
+        assert _mode(app) == 0o700 and _mode(app / "logs") == 0o700
+
+    def test_default_log_dir_is_tightened_but_foreign_dirs_are_not(self, tmp_path, monkeypatch):
+        mine = tmp_path / "app"
+        mine.mkdir()
+        mine.chmod(0o755)
+        monkeypatch.setattr(sc, "DEFAULT_LOG_DIR", mine)
+        sc.prepare_logs(str(mine), [str(mine / "x.log")])
+        assert _mode(mine) == 0o700
+        other = tmp_path / "custom"
+        other.mkdir()
+        other.chmod(0o755)
+        sc.prepare_logs(str(other), [str(other / "x.log")])
+        assert _mode(other) == 0o755  # user-chosen dir: only the files are locked down
+        assert _mode(other / "x.log") == 0o600
+
+
+class TestInstallSafety:
+    def _defs(self, log_dir):
+        return sc.build_job_defs("/usr/bin/python3", "/p/profile.json", "us", str(log_dir))
+
+    def test_dry_run_prints_exact_lines_and_changes_nothing(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        log_dir = tmp_path / "logs"
+        defs = self._defs(log_dir)
+        sc.cmd_install(defs, ["weekly-mix", "daily-drop"], str(log_dir), dry_run=True)
+        out = capsys.readouterr().out
+        assert sc.format_cron_line(defs["weekly-mix"], "weekly-mix") in out
+        assert sc.format_cron_line(defs["daily-drop"], "daily-drop") in out
+        assert "nothing was changed" in out
+        assert not log_dir.exists()
+
+    def test_install_creates_private_logs_before_writing_crontab(self, tmp_path, monkeypatch):
+        log_dir = tmp_path / "logs"
+        seen = {}
+
+        def fake_set(content):
+            seen["files"] = {p.name: _mode(p) for p in log_dir.iterdir()}
+            return True
+
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
+        monkeypatch.setattr(sc, "set_crontab", fake_set)
+        sc.cmd_install(self._defs(log_dir), ["weekly-mix"], str(log_dir))
+        assert seen["files"] == {"weekly-mix.log": 0o600} and _mode(log_dir) == 0o700
+
+    def test_install_aborts_without_touching_crontab_on_unsafe_log_dir(self, tmp_path, monkeypatch, capsys):
+        target = tmp_path / "real"
+        target.mkdir()
+        link = tmp_path / "link"
+        link.symlink_to(target)
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        with pytest.raises(SystemExit):
+            sc.cmd_install(self._defs(link), ["weekly-mix"], str(link))
+        assert "symlink" in capsys.readouterr().err
+
+    def test_unknown_jobs_do_not_create_log_files(self, tmp_path, monkeypatch):
+        log_dir = tmp_path / "logs"
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
+        monkeypatch.setattr(sc, "set_crontab", lambda c: True)
+        sc.cmd_install(self._defs(log_dir), ["nonexistent-job"], str(log_dir))
+        assert list(log_dir.iterdir()) == []
+
+
+class TestMainRejectsUnsafeInput:
+    def _run(self, monkeypatch, *argv):
+        monkeypatch.setattr(sys, "argv", ["setup_cron.py", *argv])
+        monkeypatch.setattr(sc, "load_config", lambda: {})
+        sc.main()
+
+    @pytest.mark.parametrize("argv", [
+        ["install", "--storefront", "us; touch /tmp/pwned"],
+        ["install", "--profile", "/tmp/a\nb"],
+        ["install", "--log-dir", "/tmp/50%"],
+        ["install", "--python", "/definitely/not/python"],
+        ["install", "--jobs", "weekly-mix;reboot"],
+        ["list", "--storefront", "$(id)"],
+    ])
+    def test_exits_before_touching_crontab(self, monkeypatch, capsys, argv):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        with pytest.raises(SystemExit) as e:
+            self._run(monkeypatch, *argv)
+        assert e.value.code == 1 and "ERROR:" in capsys.readouterr().err
+
+    def test_dry_run_flag_via_cli(self, monkeypatch, capsys, tmp_path):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        self._run(monkeypatch, "install", "--dry-run", "--log-dir", str(tmp_path / "l"),
+                  "--profile", str(tmp_path / "p.json"))
+        out = capsys.readouterr().out
+        assert "weekly-mix" in out and "umask 077;" in out and not (tmp_path / "l").exists()

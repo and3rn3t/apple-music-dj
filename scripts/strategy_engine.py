@@ -66,6 +66,7 @@ from _common import (
     require_env_tokens,
     search_artist,
     track_energy,
+    write_private,
 )
 
 SCRIPT_DIR = Path(__file__).parent
@@ -1301,11 +1302,7 @@ def main():
     # Output
     output_json = json.dumps(result, indent=2)
     if args.output:
-        import os as _os
-        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        fd = _os.open(str(args.output), _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
-        with _os.fdopen(fd, "w") as f:
-            f.write(output_json)
+        write_private(args.output, output_json)
         print(f"Playlist JSON written to {args.output}", file=sys.stderr)
     else:
         print(output_json)

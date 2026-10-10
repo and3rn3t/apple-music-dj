@@ -26,9 +26,10 @@ if sys.version_info < (3, 10):
 
 import argparse
 import json
-import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+from _common import write_private
 
 HISTORY_FILE = Path.home() / ".apple-music-dj" / "playlist_history.json"
 
@@ -49,10 +50,7 @@ def load_history() -> list[dict]:
 
 def save_history(history: list[dict]) -> None:
     """Save playlist history to disk."""
-    HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(HISTORY_FILE), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(history, f, indent=2)
+    write_private(HISTORY_FILE, json.dumps(history, indent=2))
 
 
 def log_playlist(name: str, strategy: str, track_ids: list[str]) -> dict:

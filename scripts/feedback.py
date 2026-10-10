@@ -29,10 +29,9 @@ if sys.version_info < (3, 10):
 
 import argparse
 import json
-import os
 from pathlib import Path
 
-from _common import call_api, load_profile, require_env_tokens
+from _common import call_api, load_profile, require_env_tokens, write_private
 from playlist_history import load_history
 
 RATING_VALUE = {"like": "1", "dislike": "-1"}
@@ -81,10 +80,7 @@ def apply_to_profile(profile: dict, action: str, song_ids: list[str]) -> dict:
 
 
 def save_profile(profile: dict, path: str) -> None:
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.fchmod(fd, 0o600)  # the mode above only applies to new files; profiles hold listening data
-    with os.fdopen(fd, "w") as f:
-        json.dump(profile, f, indent=2)
+    write_private(path, json.dumps(profile, indent=2))
 
 
 # ── Commands ─────────────────────────────────────────────────────

@@ -1018,6 +1018,18 @@ class TestMainCli:
         assert 0 <= out["compatibility"]["compatibility_pct"] <= 100
         assert out["name"].startswith("Blend")
 
+    def test_output_file_is_owner_only(self, cli, monkeypatch, tmp_path):
+        import os
+        import stat
+        out = tmp_path / "plans" / "plan.json"
+        out.parent.mkdir()
+        out.write_text("old")
+        out.chmod(0o644)
+        monkeypatch.setattr(se, "strategy_trend", lambda p, sf, n: cli["tracks"])
+        cli["run"]("--strategy", "trend", "--output", str(out))
+        assert stat.S_IMODE(os.stat(out).st_mode) == 0o600
+        assert json.loads(out.read_text())["strategy"] == "trend"
+
     def test_favorite_requires_create(self, cli):
         with pytest.raises(SystemExit):
             cli["run"]("--strategy", "trend", "--favorite")

@@ -45,6 +45,7 @@ from _common import (
     get_storefront,
     require_env_tokens,
     save_snapshot,
+    write_private,
 )
 
 SCRIPT_DIR = Path(__file__).parent
@@ -72,13 +73,8 @@ def load_cache(path: str, max_age_hours: int) -> dict | None:
 
 def save_cache(profile: dict, path: str):
     """Write profile to cache file with restrictive permissions."""
-    import os as _os
     try:
-        p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        fd = _os.open(str(p), _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
-        with _os.fdopen(fd, "w") as f:
-            json.dump(profile, f, indent=2)
+        write_private(path, json.dumps(profile, indent=2))
     except OSError as e:
         print(f"WARN: Could not save cache: {e}", file=sys.stderr)
 
@@ -489,7 +485,7 @@ def main():
             print("Using cached taste profile.", file=sys.stderr)
             output = json.dumps(cached, indent=2)
             if args.output:
-                Path(args.output).write_text(output)
+                write_private(args.output, output)
             else:
                 print(output)
             return
@@ -513,11 +509,7 @@ def main():
 
     # Output
     if args.output:
-        import os as _os
-        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        fd = _os.open(str(args.output), _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
-        with _os.fdopen(fd, "w") as f:
-            f.write(output)
+        write_private(args.output, output)
         print(f"Profile written to {args.output}", file=sys.stderr)
     else:
         print(output)

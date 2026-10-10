@@ -12,6 +12,7 @@ Generates and installs crontab entries for recurring jobs:
 Usage:
   python3 setup_cron.py list                    Show planned cron jobs
   python3 setup_cron.py install [--jobs J,...]  Install selected (or all) jobs
+  python3 setup_cron.py install --dry-run       Print the exact crontab lines; change nothing
   python3 setup_cron.py remove  [--jobs J,...]  Remove selected (or all) jobs
   python3 setup_cron.py status                  Show currently installed jobs
 
@@ -31,14 +32,58 @@ if sys.version_info < (3, 10):
     )
 
 import argparse
+import errno
+import os
+import re
 import shlex
+import stat
 import subprocess
 from pathlib import Path
 
-from _common import load_config
+from _common import APP_DIR, ensure_private_dir, load_config, tighten_app_dir
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 MARKER = "# apple-music-dj"
+DEFAULT_LOG_DIR = APP_DIR / "logs"
+
+# Anything that could end a crontab line, or that cron itself rewrites, must never reach one.
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+# ── Input validation ─────────────────────────────────────────────
+# Values end up in a crontab line that /bin/sh parses on a schedule, indefinitely, so they
+# are validated here (and shell-quoted in build_job_defs) instead of trusted.
+
+def validate_path(value: str, label: str) -> str:
+    """Absolute, normalized path with no newline/control characters or '%'."""
+    if not value or not value.strip():
+        raise ValueError(f"{label} is empty.")
+    if _CONTROL_CHARS.search(value):
+        raise ValueError(f"{label} contains a newline or control character.")
+    if "%" in value:
+        raise ValueError(f"{label} contains '%', which cron treats as a newline.")
+    return os.path.abspath(os.path.expanduser(value))
+
+
+def validate_python(value: str) -> str:
+    path = validate_path(value, "--python")
+    if not (os.path.isfile(path) and os.access(path, os.X_OK)):
+        raise ValueError(f"--python {path} is not an executable file.")
+    return path
+
+
+def validate_storefront(value: str) -> str:
+    if not re.fullmatch(r"[a-z]{2}|auto", value or ""):
+        raise ValueError(f"Storefront '{value}' must be a two-letter lowercase code like 'us' (or 'auto').")
+    return value
+
+
+def validate_job_names(value: str) -> list[str]:
+    names = [n.strip() for n in value.split(",") if n.strip()]
+    for name in names:
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", name):
+            raise ValueError(f"Job name '{name}' isn't valid (lowercase letters, digits and dashes only).")
+    return names
 
 
 # ── Job Definitions ──────────────────────────────────────────────
@@ -104,11 +149,57 @@ def build_job_defs(python: str, profile: str, sf: str,
 
 
 def format_cron_line(job: dict, name: str) -> str:
-    """Format a single crontab line with logging and marker."""
-    return (
-        f"{job['schedule']} {job['command']} >> {job['log']} 2>&1 "
+    """Format a single crontab line with logging and marker.
+
+    `umask 077` makes anything the job (or its log redirect) creates owner-only. The log path
+    is quoted like every other dynamic value, and the finished line is refused if it contains
+    a newline/control character or '%' (cron turns '%' into a newline even inside quotes).
+    """
+    line = (
+        f"{job['schedule']} umask 077; {job['command']} >> {shlex.quote(job['log'])} 2>&1 "
         f"{MARKER}:{name}"
     )
+    if _CONTROL_CHARS.search(line) or "%" in line:
+        raise ValueError(f"Refusing to build a crontab line for '{name}': it contains a newline, "
+                         f"control character or '%'.")
+    return line
+
+
+# ── Private log files ────────────────────────────────────────────
+
+def prepare_logs(log_dir: str, log_paths: list[str]) -> None:
+    """Create the log directory and log files owner-only, before cron ever writes to them.
+
+    Shell redirection would create the files under the ambient umask (typically world-readable),
+    and the logs hold playlist names, track picks and artist preferences. Refuses symlinks,
+    directories/files owned by someone else, and directories other users can write to.
+    """
+    d = Path(log_dir)
+    if d.is_symlink():
+        raise ValueError(f"Log directory {d} is a symlink; refusing to write logs through it.")
+    tighten_app_dir(d)
+    ensure_private_dir(d, tighten=(d == DEFAULT_LOG_DIR))
+    st = os.lstat(d)
+    if not stat.S_ISDIR(st.st_mode):
+        raise ValueError(f"Log directory {d} is not a directory.")
+    if st.st_uid != os.getuid():
+        raise ValueError(f"Log directory {d} is owned by another user.")
+    if st.st_mode & 0o022:
+        raise ValueError(f"Log directory {d} is writable by other users; choose a private directory.")
+    for log in log_paths:
+        try:
+            fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+        except OSError as e:
+            if e.errno == errno.ELOOP:
+                raise ValueError(f"Log file {log} is a symlink; refusing to write through it.") from e
+            raise
+        try:
+            fst = os.fstat(fd)
+            if not stat.S_ISREG(fst.st_mode) or fst.st_uid != os.getuid():
+                raise ValueError(f"Log file {log} is not a regular file owned by you.")
+            os.fchmod(fd, 0o600)  # tighten a pre-existing file; the open() mode only covers new ones
+        finally:
+            os.close(fd)
 
 
 # ── Crontab Interaction ─────────────────────────────────────────
@@ -170,10 +261,20 @@ def cmd_list(job_defs: dict[str, dict]):
 
 
 def cmd_install(job_defs: dict[str, dict], selected: list[str],
-                log_dir: str):
-    """Install selected cron jobs."""
-    # Ensure log directory exists
-    Path(log_dir).mkdir(parents=True, exist_ok=True)
+                log_dir: str, dry_run: bool = False):
+    """Install selected cron jobs (or, with dry_run, only print the exact crontab lines)."""
+    known = [n for n in selected if n in job_defs]
+    try:
+        new_lines = {name: format_cron_line(job_defs[name], name) for name in known}
+        if dry_run:
+            print("Dry run — these lines WOULD be added to your crontab (nothing was changed):\n")
+            for name in known:
+                print(new_lines[name])
+            return
+        prepare_logs(log_dir, [job_defs[n]["log"] for n in known])
+    except (ValueError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
     crontab = get_current_crontab()
     lines = crontab.splitlines()
@@ -194,8 +295,7 @@ def cmd_install(job_defs: dict[str, dict], selected: list[str],
         if name not in job_defs:
             print(f"WARNING: Unknown job '{name}', skipping.", file=sys.stderr)
             continue
-        new_line = format_cron_line(job_defs[name], name)
-        filtered.append(new_line)
+        filtered.append(new_lines[name])
         print(f"  ✅ {name}: {job_defs[name]['schedule']}")
 
     new_crontab = "\n".join(filtered)
@@ -275,23 +375,30 @@ def main():
                         help="Directory for log files")
     parser.add_argument("--python", default=None,
                         help="Path to python3 executable")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="install: print the exact crontab lines without installing anything")
 
     args = parser.parse_args()
     config = load_config()
 
-    # Resolve defaults
-    sf = args.storefront or config.get("default_storefront", "us")
-    log_dir = args.log_dir or str(Path.home() / ".apple-music-dj" / "logs")
-    python_path = args.python or sys.executable
-    profile = args.profile or str(Path.home() / ".apple-music-dj" / "profile.json")
+    # Resolve defaults, then validate everything that will be written into a crontab line
+    try:
+        sf = validate_storefront(args.storefront or config.get("default_storefront", "us"))
+        log_dir = validate_path(args.log_dir or str(DEFAULT_LOG_DIR), "--log-dir")
+        python_path = validate_python(args.python or sys.executable)
+        profile = validate_path(args.profile or str(APP_DIR / "profile.json"), "--profile")
+        jobs = validate_job_names(args.jobs) if args.jobs else None
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
     job_defs = build_job_defs(python_path, profile, sf, log_dir)
     all_names = list(job_defs.keys())
 
     # Opt-in jobs are only installed when named with --jobs
     selected = [n for n in all_names if not job_defs[n].get("optional")]
-    if args.jobs:
-        selected = [j.strip() for j in args.jobs.split(",")]
+    if jobs:
+        selected = jobs
 
     if args.command == "list":
         cmd_list(job_defs)
@@ -299,9 +406,9 @@ def main():
         if not args.profile:
             print("WARNING: Using default profile path. "
                   "Specify --profile for a custom location.", file=sys.stderr)
-        cmd_install(job_defs, selected, log_dir)
+        cmd_install(job_defs, selected, log_dir, dry_run=args.dry_run)
     elif args.command == "remove":
-        cmd_remove(job_defs, selected if args.jobs else all_names)
+        cmd_remove(job_defs, selected if jobs else all_names)
     elif args.command == "status":
         cmd_status()
 

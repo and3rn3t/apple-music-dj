@@ -10,11 +10,13 @@ import base64
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+import contextlib
 
 # ── Python version guard ──────────────────────────────────────────
 _MIN_PYTHON = (3, 10)
@@ -46,7 +48,8 @@ LOW_ENERGY = 0.3
 SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
 
-DEFAULT_CONFIG_PATH = Path.home() / ".apple-music-dj" / "config.json"
+APP_DIR = Path.home() / ".apple-music-dj"
+DEFAULT_CONFIG_PATH = APP_DIR / "config.json"
 
 SNAPSHOT_DIR = Path.home() / ".apple-music-dj" / "snapshots"
 MAX_SNAPSHOTS = 52
@@ -86,14 +89,65 @@ def load_config(path: str | None = None) -> dict:
         return config
 
 
+def ensure_private_dir(path, tighten: bool = False) -> Path:
+    """Create `path` and any missing parents as 0700 directories.
+
+    mkdir's `mode` only applies to the leaf (and is masked by the umask), so each missing
+    level is created and chmod'ed individually. Directories that already exist are left
+    alone unless `tighten` is set, and then only if we own them — we never loosen or
+    chmod somebody else's directory (e.g. a user's ~/Documents).
+    """
+    path = Path(path)
+    missing = []
+    p = path
+    while not p.exists() and p != p.parent:
+        missing.append(p)
+        p = p.parent
+    for d in reversed(missing):
+        try:
+            d.mkdir(mode=0o700)
+        except FileExistsError:
+            continue
+        os.chmod(d, 0o700)
+    if tighten and path.is_dir() and not path.is_symlink() and path.stat().st_uid == os.getuid():
+        os.chmod(path, 0o700)
+    return path
+
+
+def tighten_app_dir(path) -> None:
+    """If `path` is inside ~/.apple-music-dj, make that directory (if we own it) owner-only too."""
+    path = Path(path)
+    if path == APP_DIR or APP_DIR in path.parents:
+        ensure_private_dir(APP_DIR, tighten=True)
+
+
+def write_private(path, text: str) -> None:
+    """Write `text` to `path` readable by the owner only.
+
+    `os.open(..., 0o600)` only applies when the file is *created*; a pre-existing file keeps
+    whatever (possibly looser) mode it had, so we fchmod after opening. New parent
+    directories are 0700, and our own ~/.apple-music-dj directories are tightened to 0700.
+    Non-regular targets (e.g. /dev/stdout) are written as-is, without the chmod.
+    """
+    path = Path(path)
+    tighten_app_dir(path)
+    ensure_private_dir(path.parent, tighten=path.parent == APP_DIR or APP_DIR in path.parent.parents)
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            fd = -1  # now owned by the file object
+            f.write(text)
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
 def save_config(config: dict, path: str | None = None):
     """Write config to JSON with restrictive permissions."""
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(config, f, indent=2)
-        f.write("\n")
+    write_private(config_path, json.dumps(config, indent=2) + "\n")
 
 
 def require_env_tokens():
@@ -261,11 +315,8 @@ def get_storefront(override: str | None = None) -> str:
     result = call_api("user-storefront", raw=True)
     if isinstance(result, str) and len(result) == 2 and result.isalpha():
         # Cache the result
-        try:
-            STOREFRONT_CACHE.parent.mkdir(parents=True, exist_ok=True)
-            STOREFRONT_CACHE.write_text(result + "\n")
-        except OSError:
-            pass
+        with contextlib.suppress(OSError):
+            write_private(STOREFRONT_CACHE, result + "\n")
         return result
 
     print(
@@ -322,11 +373,8 @@ def save_snapshot(profile: dict, directory: Path | None = None) -> Path:
     """Write today's snapshot (one per day) with 0600 perms, keeping the newest MAX_SNAPSHOTS."""
     directory = Path(directory) if directory else SNAPSHOT_DIR
     snap = make_snapshot(profile)
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = directory / f"{snap['generated_at'][:10]}.json"
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(snap, f, indent=2)
+    write_private(path, json.dumps(snap, indent=2))
     for old in sorted(directory.glob("????-??-??.json"))[:-MAX_SNAPSHOTS]:
         old.unlink(missing_ok=True)
     return path

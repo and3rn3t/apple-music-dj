@@ -421,7 +421,11 @@ Task:
 ```
 
 When the user asks to set up automation, configure via OpenClaw's cron system and
-confirm the schedule with them before activating.
+confirm the schedule with them before activating. A crontab entry keeps running until removed,
+so **always run `python3 scripts/setup_cron.py install --dry-run [--jobs ...]` first and show the
+user the exact lines it prints; only run the real `install` after they say yes.** The installer
+validates its arguments, quotes every value, and creates owner-only log files; it refuses
+unsafe input rather than guessing. `setup_cron.py status` / `remove` let the user review or undo it.
 
 ## Assembly Rules
 
@@ -522,6 +526,7 @@ stores, and transmits.
 |---|---|---|
 | Taste profile cache | Aggregated taste data (JSON) | `~/.apple-music-dj/taste_profile.json` |
 | Taste snapshots | Genre/artist/era weights, no song IDs (last 52, one per day) | `~/.apple-music-dj/snapshots/` |
+| Cron job logs | Output of scheduled jobs (playlist names, picks) — only if cron is installed | `~/.apple-music-dj/logs/` (files `0600`) |
 | Playlist history | Names and track IDs of playlists the DJ created | `~/.apple-music-dj/playlist_history.json` |
 | Taste DNA Card | Generated SVG image | User-specified output path |
 

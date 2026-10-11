@@ -87,7 +87,7 @@ subscription. Tokens live only in environment variables.
 **Safety:** read-only by default. Creating playlists, favoriting, rating, adding albums and
 scheduling cron jobs are opt-in and confirmed first (the scripts preview by default and write only
 with an explicit `--create` / `--yes` / `--apply` / `--confirm`). **Editing an existing playlist can
-remove tracks** (`playlist_health.py fix --apply` drops duplicates and swaps in replacements;
+remove tracks** (`playlist_health.py fix --apply` removes duplicate copies and adds a replacement for each unavailable track (it leaves the unavailable entry in place);
 `build_playlist.sh refresh|remove` add or remove tracks) — show the exact changes and get a yes first.
 Scheduled jobs run unattended once installed, so installing one needs a reviewed `--confirm` digest.
 Local data is owner-only (`~/.apple-music-dj/`). See `SECURITY.md`.
@@ -451,8 +451,8 @@ Task:
   1. Scan user's playlists
   2. Flag any tracks removed from Apple Music catalog (404 on lookup)
   3. Suggest replacements (report only: the scheduled job runs `playlist_health.py check`;
-     removing or replacing tracks needs `playlist_health.py fix <id> --apply`, which previews
-     by default and is never run unattended)
+     removing duplicate copies or adding replacement tracks needs
+     `playlist_health.py fix <id> --apply`, which previews by default and is never run unattended)
 ```
 
 **Monthly Drift** (opt-in — install with `setup_cron.py install --jobs monthly-drift`):

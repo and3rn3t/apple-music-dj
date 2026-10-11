@@ -298,7 +298,7 @@ class TestCmdFix:
         args.storefront = None
         args.apply = False
         result = phealth.cmd_fix(args)
-        assert any("WOULD replace" in a for a in result["actions_taken"])
+        assert any("WOULD add" in a and "as a replacement for" in a for a in result["actions_taken"])
 
     def test_fix_removed_no_replacement(self, monkeypatch):
         monkeypatch.setattr("playlist_health.require_env_tokens", lambda: None)

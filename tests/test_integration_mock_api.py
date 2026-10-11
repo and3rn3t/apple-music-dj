@@ -613,3 +613,26 @@ class TestVerifySetup:
             server.server_close()
         assert proc.returncode in (130, 143, -sig)
         assert list(api.tmpdir.glob("am_verify_*")) == []
+
+    def test_term_sent_only_to_the_script_stops_it_and_cleans_up(self, api):
+        """TERM to the script alone (curl is not signalled) must not wait out the request."""
+        server = _hanging_server()
+        env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{server.server_address[1]}"}
+        proc = subprocess.Popen(["bash", str(SCRIPTS / "verify_setup.sh")], env=env, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.time() + 15
+            while not list(api.tmpdir.glob("am_verify_*")) and time.time() < deadline:
+                time.sleep(0.05)
+            assert list(api.tmpdir.glob("am_verify_*")), "the token check never started"
+            started = time.time()
+            proc.terminate()
+            proc.wait(timeout=5)
+            assert time.time() - started < 5
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            server.shutdown()
+            server.server_close()
+        assert proc.returncode in (143, -signal.SIGTERM)
+        assert list(api.tmpdir.glob("am_verify_*")) == []

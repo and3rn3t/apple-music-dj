@@ -4,14 +4,16 @@ playlist_health.py — Playlist Health Check & Maintenance.
 
 Subcommands:
   check     Scan playlists for removed tracks, duplicates, and staleness
-  fix       Preview, or with --apply carry out, removing duplicate tracks and replacing unavailable ones
+  fix       Preview, or with --apply carry out: remove duplicate copies of a track and ADD a
+            replacement for each unavailable track (the unavailable entry itself is left in place)
 
 Usage:
   python3 playlist_health.py check <playlist_id|all> --profile <profile.json>
   python3 playlist_health.py fix <playlist_id> --profile <profile.json> [--apply]
 
-`fix` changes the playlist in the user's library (it can REMOVE tracks and ADD replacements), so it
-only previews ("WOULD remove ...") unless --apply is given. (--apply was called --auto before 3.2.4;
+`fix` changes the playlist in the user's library (it REMOVES duplicate copies and ADDS replacement
+tracks; it never removes an unavailable entry), so it only previews ("WOULD remove ...") unless
+--apply is given. (--apply was called --auto before 3.2.4;
 the old spelling still works.)
 
 Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
@@ -227,10 +229,10 @@ def cmd_fix(args) -> dict:
 
             if replacement and args.apply:
                 print(
-                    f"  Replacing '{track['name']}' with '{replacement['name']}'...",
+                    f"  Adding a replacement for '{track['name']}': '{replacement['name']}'...",
                     file=sys.stderr,
                 )
-                # Remove old, add new
+                # Add only: the unavailable entry itself stays in the playlist
                 import tempfile
                 import subprocess
 
@@ -251,8 +253,8 @@ def cmd_fix(args) -> dict:
                     Path(ids_file).unlink(missing_ok=True)
             elif replacement:
                 actions_taken.append(
-                    f"WOULD replace '{track['name']}' with '{replacement['name']}' "
-                    f"by {replacement['artist']} (use --apply)"
+                    f"WOULD add '{replacement['name']}' by {replacement['artist']} "
+                    f"as a replacement for '{track['name']}' (use --apply)"
                 )
             else:
                 actions_taken.append(

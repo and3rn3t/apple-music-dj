@@ -21,11 +21,35 @@ fi
 # so the cleanup only ever touches this run's files.
 # shellcheck disable=SC2317,SC2329  # invoked via the traps below (older ShellCheck says 2317, newer 2329)
 _cleanup() {
+    if [[ -n "${_CURL_PID:-}" ]]; then
+        kill "$_CURL_PID" 2>/dev/null || true
+    fi
     rm -f "${TMPDIR:-/tmp}"/am_verify_$$_* 2>/dev/null || true
 }
+_CURL_PID=""
 trap _cleanup EXIT
 trap '_cleanup; exit 130' INT
 trap '_cleanup; exit 143' TERM
+
+# _http_status <curl-config> <url> — sets HTTP_CODE ("000" on failure). curl runs in the
+# background and we `wait` for it: bash defers traps until a foreground command finishes, so a
+# plain `$(curl ...)` would ignore Ctrl-C/TERM until the request ended.
+HTTP_CODE="000"
+_http_status() {
+    local cfg="$1" url="$2" out rc=0
+    out=$(mktemp "${TMPDIR:-/tmp}/am_verify_$$_XXXXXX")
+    curl -s -o /dev/null -w "%{http_code}" --max-time 20 -K "$cfg" "$url" > "$out" 2>/dev/null &
+    _CURL_PID=$!
+    wait "$_CURL_PID" || rc=$?
+    if (( rc >= 128 )); then
+        _cleanup
+        exit "$rc"
+    fi
+    _CURL_PID=""
+    HTTP_CODE=$(cat "$out" 2>/dev/null || true)
+    [[ -n "$HTTP_CODE" ]] || HTTP_CODE="000"
+    rm -f "$out"
+}
 
 PASS="✅"
 FAIL="❌"
@@ -194,10 +218,8 @@ if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" && -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; th
     auth_cfg=$(mktemp "${TMPDIR:-/tmp}/am_verify_$$_XXXXXX")
     chmod 600 "$auth_cfg"
     printf -- '-H "Authorization: Bearer %s"\n' "$APPLE_MUSIC_DEV_TOKEN" > "$auth_cfg"
-    dev_code=$(curl -s -o /dev/null -w "%{http_code}" \
-        -K "$auth_cfg" \
-        "${BASE}/v1/storefronts/us" \
-        2>/dev/null || echo "000")
+    _http_status "$auth_cfg" "${BASE}/v1/storefronts/us"
+    dev_code="$HTTP_CODE"
     rm -f "$auth_cfg"
 
     case "$dev_code" in
@@ -221,10 +243,8 @@ if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" && -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; th
     chmod 600 "$auth_cfg"
     printf -- '-H "Authorization: Bearer %s"\n-H "Music-User-Token: %s"\n' \
         "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN" > "$auth_cfg"
-    user_code=$(curl -s -o /dev/null -w "%{http_code}" \
-        -K "$auth_cfg" \
-        "${BASE}/v1/me/recent/played/tracks?limit=1" \
-        2>/dev/null || echo "000")
+    _http_status "$auth_cfg" "${BASE}/v1/me/recent/played/tracks?limit=1"
+    user_code="$HTTP_CODE"
     rm -f "$auth_cfg"
 
     case "$user_code" in

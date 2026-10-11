@@ -16,8 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Docs no longer say Spotify CSV exports carry ISRC codes.** Exportify's files have title and artist columns but no ISRC, so such imports are matched by a strict title + artist search (reported as "fuzzy"). The importer was already doing this; the README, `SKILL.md` and the script's docstring now say so.
-- **Two read endpoints were missing from the privacy tables**: `apple_music_api.sh recent-played` (`/v1/me/recent/played`) and `ratings <type>` for albums, playlists and music videos. Both are read-only; found by the new endpoint check.
+- **Four read endpoints were missing from the privacy tables**: `/v1/me/recent/played` (`apple_music_api.sh recent-played`), `/v1/me/ratings/{type}` (albums, playlists and music videos), `/v1/me/library/artists` and `/v1/me/music-summaries/milestones`. All are read-only; found by the new endpoint check, which now matches documented paths exactly.
 
 ## [3.3.1] — 2026-10-11
 

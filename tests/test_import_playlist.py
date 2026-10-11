@@ -26,6 +26,18 @@ class TestParsing:
         assert rows[1]["title"] == "Hello, Goodbye" and rows[1]["artist"] == "The Beatles"  # first artist only
         assert rows[2]["isrc"] is None
 
+    def test_exportify_style_artist_credits(self):
+        """Exportify joins artists with ", " (and escapes commas inside a name as "\\,"); only ";" splits
+        to the first artist, so a comma credit is kept whole and matched as a collaboration."""
+        text = ("Track URI,Track Name,Artist Name(s),ISRC\n"
+                'spotify:track:1,Collab,"Artist A, Artist B",\n'
+                'spotify:track:2,Solo,"Tyler\\, The Creator",\n')
+        rows = ip.parse_csv(text)
+        assert rows[0]["artist"] == "Artist A, Artist B"
+        assert rows[1]["artist"] == "Tyler\\, The Creator"
+        assert ip.artist_credited(rows[0]["artist"], "Artist A & Artist B")
+        assert ip.artist_credited(rows[1]["artist"], "Tyler, The Creator")
+
     def test_csv_isrc_only(self):
         assert ip.parse_csv("isrc\nGBAYE9200070\nnot-an-isrc\n") == [
             {"title": "", "artist": "", "isrc": "GBAYE9200070"}]

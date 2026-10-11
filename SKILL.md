@@ -607,11 +607,12 @@ stores, and transmits.
 | Recently played tracks | `/v1/me/recent/played/tracks` | Current taste signal |
 | Recently played albums, playlists, stations | `/v1/me/recent/played` | Same signal; only the `apple_music_api.sh recent-played` command reads it |
 | Heavy rotation | `/v1/me/history/heavy-rotation` | Repeated listening signal |
-| Library songs & artists | `/v1/me/library/songs`, `/artists` | Broad taste mapping |
+| Library songs & artists | `/v1/me/library/songs`, `/v1/me/library/artists` | Broad taste mapping |
 | Ratings (loved/disliked) | `/v1/me/ratings/songs` | Explicit preferences |
 | Ratings of albums, playlists, music videos | `/v1/me/ratings/{type}` | Read only, via `apple_music_api.sh ratings <type>` |
 | Recommendations | `/v1/me/recommendations` | Apple's inference data |
 | Replay summaries | `/v1/me/music-summaries` | Annual listening stats |
+| Replay milestones | `/v1/me/music-summaries/milestones` | Listening milestones for the year-in-review |
 | Recently added | `/v1/me/library/recently-added` | What the user is into right now |
 | Recent radio stations | `/v1/me/recent/radio-stations` | Light genre signal from station titles |
 | Storefront | `/v1/me/storefront` | Region detection |

@@ -1,6 +1,7 @@
 """The README's animated demo and the Spotify sample are generated from / run by the real scripts."""
 
 import importlib.util
+import re
 import xml.dom.minidom
 from pathlib import Path
 
@@ -82,3 +83,10 @@ def test_sample_spotify_export_parses_without_isrc():
     rows = import_playlist.parse_file(str(ROOT / "assets" / "sample-spotify-export.csv"))
     assert len(rows) == 4
     assert all(r["title"] and r["artist"] and r["isrc"] is None for r in rows)
+
+
+def test_a_long_later_request_is_not_clipped_by_the_viewbox():
+    long_request = "Make me a playlist for a very long rainy Sunday afternoon of reading by the window"
+    svg = mk.render([("Short", ["a", "b"]), (long_request, ["x"])])
+    width = int(re.search(r'viewBox="0 0 (\d+) ', svg).group(1))
+    assert width >= (len(long_request) + 2) * mk.CHAR_W

@@ -96,7 +96,7 @@ def test_every_account_writing_command_asks_for_confirmation():
 def _endpoint_pattern(path: str) -> re.Pattern:
     """A documented endpoint as a regex: `{id}`-style placeholders match one path segment."""
     parts = re.split(r"\{[^}]*\}", path)
-    return re.compile("^" + "[^/]+".join(re.escape(p) for p in parts) + r"(/.*)?$")
+    return re.compile("^" + "[^/]+".join(re.escape(p) for p in parts) + "$")
 
 
 def test_every_account_endpoint_the_scripts_call_is_documented():

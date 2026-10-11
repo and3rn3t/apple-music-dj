@@ -48,29 +48,47 @@ Report each finding as: file:line, what a reviewer would say, severity (high/med
 smallest fix. If a category is clean, say so in one line. Do not invent findings."""
 
 
-def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=True).stdout
 
 
-def shipped_files() -> list[str]:
+def shipped_files(root: Path = ROOT) -> list[str]:
     """The files `clawhub publish` would upload (one definition, shared with tests/test_packaging.py)."""
     spec = importlib.util.spec_from_file_location("test_packaging", ROOT / "tests" / "test_packaging.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.shipped_files(ROOT)
+    return module.shipped_files(root)
 
 
-def last_tag() -> str | None:
+def last_tag(root: Path = ROOT) -> str | None:
     try:
-        return _git("describe", "--tags", "--abbrev=0").strip() or None
+        return _git(root, "describe", "--tags", "--abbrev=0").strip() or None
     except subprocess.CalledProcessError:
         return None
 
 
-def shipped_changes(since: str, full: bool = False) -> str:
-    files = shipped_files()
+def _shipped_among(paths: list[str], root: Path) -> list[str]:
+    """The subset of `paths` the package would include (same rules as tests/test_packaging.py)."""
+    candidates = [p for p in paths if p and not any(part.startswith(".") for part in Path(p).parts)]
+    if not candidates:
+        return []
+    ignore = root / ".clawhubignore"
+    result = subprocess.run(["git", "-c", f"core.excludesFile={ignore}", "check-ignore", "--no-index", "-z", "--stdin"],
+                            cwd=root, input="\0".join(candidates) + "\0", capture_output=True, text=True)
+    ignored = {p for p in result.stdout.split("\0") if p}
+    return [p for p in candidates if p not in ignored]
+
+
+def shipped_paths(since: str, root: Path = ROOT) -> list[str]:
+    """Shipped files now, plus shipped files deleted or renamed away since `since` (so a removal shows up)."""
+    deleted = _git(root, "diff", "--name-only", "--no-renames", "--diff-filter=D", since, "--").split("\n")
+    return sorted(set(shipped_files(root)) | set(_shipped_among(deleted, root)))
+
+
+def shipped_changes(since: str, full: bool = False, root: Path = ROOT) -> str:
+    files = shipped_paths(since, root)
     args = ["diff", since if full else "--stat", *(["--"] if full else [since, "--"]), *files]
-    return _git(*args).strip()
+    return _git(root, *args).strip()
 
 
 def review_prompt(since: str | None, changes: str) -> str:

@@ -68,7 +68,7 @@ def line_class(line: str) -> str:
 
 
 def render(scenes: list[tuple[str, list[str]]], freeze: int | None = None) -> str:
-    longest = max(len(line) for _, body in scenes for line in body + ["› " + scenes[0][0]])
+    longest = max(len(line) for request, body in scenes for line in [f"› {request}", *body])
     width = round(max(longest, len(CAPTION)) * CHAR_W + 2 * PAD_X)
     rows = max(len(body) for _, body in scenes) + 2
     height = BAR_H + TOP + rows * LINE_H + FOOT_H

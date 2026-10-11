@@ -143,14 +143,19 @@ def check_verdict(slug: str, version: str, attempts: int = 4, interval: float = 
         if security.get("status") != "clean" or not security.get("passed"):
             raise CheckError(f"Security verdict for {slug}@{version} is {security.get('status')!r} "
                              f"({security.get('summary', 'no summary')}). See the audit page.")
-        reasons = [r for r in last.get("reasons", []) if r != "card.missing"]
-        if reasons:
-            raise CheckError(f"Verification reported: {', '.join(reasons)}")
+        all_reasons = last.get("reasons") or []
+        other = [r for r in all_reasons if r != "card.missing"]
+        if other:
+            raise CheckError(f"Verification reported: {', '.join(other)}")
         if last.get("decision") == "pass":
             return last
+        if "card.missing" not in all_reasons:
+            # Not passing, and not because of the card: never downgrade an unexplained failure
+            raise CheckError(f"Verification decision for {slug}@{version} was "
+                             f"{last.get('decision')!r} with no reason given.")
         if attempt < attempts - 1:
             sleep(interval)
-    last["_card_pending"] = True
+    last["_card_pending"] = True  # the only outstanding issue is the asynchronously generated card
     return last
 
 

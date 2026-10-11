@@ -258,6 +258,24 @@ class TestCheckVerdict:
         params = inspect.signature(rc.check_verdict).parameters
         assert params["attempts"].default * params["interval"].default <= 180
 
+    @pytest.mark.parametrize("payload", [
+        {"decision": "fail", "reasons": []},          # failed, but nothing says why
+        {"decision": "fail"},                         # reasons absent entirely
+        {"decision": "fail", "reasons": None},        # reasons null
+        {"decision": "error", "reasons": []},         # an unknown decision
+        {"reasons": []},                              # no decision at all
+    ])
+    def test_an_unexplained_failure_is_never_downgraded_to_card_pending(self, payload):
+        """Only an explicit card.missing may be treated as 'card pending' — Copilot review on #32."""
+        body = json.dumps({**payload, "security": {"status": "clean", "passed": True, "summary": "ok"}})
+        with pytest.raises(rc.CheckError, match="no reason given"):
+            rc.check_verdict("x", "3.4.5", run=FakeCLI(body), sleep=lambda s: pytest.fail("must not wait"))
+
+    def test_decision_pass_with_no_reasons_still_passes(self):
+        body = json.dumps({"decision": "pass", "reasons": [],
+                           "security": {"status": "clean", "passed": True, "summary": "ok"}})
+        assert "_card_pending" not in rc.check_verdict("x", "3.4.5", run=FakeCLI(body), sleep=lambda s: None)
+
     def test_a_missing_card_never_excuses_a_bad_security_verdict(self):
         cli = FakeCLI(verdict(status="suspicious", passed=False, decision="fail",
                               reasons=["card.missing", "security.status_not_clean"]))

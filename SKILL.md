@@ -20,7 +20,7 @@ description: >
   drift", "how has my taste changed", "import my playlist", "I didn't like track", "add the
   missing albums", "set up Apple Music tokens", "try the demo", "my taste code", "blend with a code", or OpenClaw
   in the context of music.
-version: 3.3.1
+version: 3.4.0
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
 license: MIT-0

@@ -342,12 +342,25 @@ def script_command(name: str) -> list[str]:
     return ["bash", path] if name.endswith(".sh") else [sys.executable, path]
 
 
+def _points_into_real_data(value: str) -> bool:
+    """True if `value`, read as a path (with `..` and symlinks resolved), is in the real data folder."""
+    if not value:
+        return False
+    try:
+        resolved = Path(value).expanduser().resolve()
+        real = REAL_APP_DIR.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return resolved == real or real in resolved.parents
+
+
 def check_args(args: list[str]) -> list[str]:
     """Swap DEMO_PROFILE for the demo profile and refuse paths into the real data folder."""
-    real = re.compile(re.escape(str(REAL_APP_DIR)) + r"(?=/|$)")
+    real_text = re.compile(re.escape(str(REAL_APP_DIR)) + r"(?=/|$)")
     out = []
     for a in args:
-        if real.search(a):
+        value = a.split("=", 1)[1] if a.startswith("--") and "=" in a else a
+        if real_text.search(a) or _points_into_real_data(value):
             raise SystemExit(f"ERROR: demo mode won't read or write your real data ({REAL_APP_DIR}). "
                              f"Use {PROFILE_TOKEN} for the demo profile.")
         out.append(a.replace(PROFILE_TOKEN, str(demo_profile_path())))
@@ -368,8 +381,20 @@ def ensure_profile(env: dict) -> None:
         raise SystemExit("ERROR: could not build the demo taste profile.")
 
 
-def start_server() -> MockAppleMusic:
+def prepare_demo_home() -> None:
+    """Create the sandbox, refusing a symlinked one (it could alias the real data folder)."""
+    inner = DEMO_HOME / ".apple-music-dj"
+    for d in (DEMO_HOME, inner):
+        if d.is_symlink():
+            raise SystemExit(f"ERROR: {d} is a symlink; demo mode needs a real folder there. "
+                             f"Remove the link and try again.")
     DEMO_HOME.mkdir(mode=0o700, exist_ok=True)
+    if DEMO_HOME.resolve() == REAL_APP_DIR.resolve() or REAL_APP_DIR.resolve() in DEMO_HOME.resolve().parents:
+        raise SystemExit(f"ERROR: {DEMO_HOME} resolves into {REAL_APP_DIR}; refusing to run the demo there.")
+
+
+def start_server() -> MockAppleMusic:
+    prepare_demo_home()
     return MockAppleMusic().start()
 
 
@@ -425,12 +450,20 @@ def cmd_tour() -> int:
         env = demo_env(srv.url)
         print("── Building a taste profile from the demo listener's history ──\n")
         ensure_profile(env)
+        failed = []
         for title, (script, *args) in TOUR:
             print(f"\n── {title} ──\n", flush=True)
             r = _run(script_command(script) + check_args(args), env, capture=True)
-            print(pretty(r.stdout) if r.returncode == 0 else r.stderr.rstrip())
+            if r.returncode == 0:
+                print(pretty(r.stdout))
+            else:
+                failed.append(script)
+                print(r.stderr.rstrip() or f"({script} exited {r.returncode})")
     finally:
         srv.stop()
+    if failed:
+        print(f"\n⚠️  {len(failed)} demo step(s) failed: {', '.join(failed)}", file=sys.stderr)
+        return 1
     print("\n── That's the demo ──")
     print("Ready for your own music? Run: python3 scripts/setup_auth.py  (see references/auth-setup.md)")
     return 0

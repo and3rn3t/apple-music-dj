@@ -80,6 +80,19 @@ class TestTokenPost:
         assert request(catcher, "POST", self.path(catcher), body, {"Origin": origin(catcher)})[0] == 400
         assert catcher.wait(0.05) is None
 
+    def test_simultaneous_posts_keep_exactly_one_token(self, catcher):
+        tokens = [f"tok-{i}" for i in range(12)]
+        threads = [threading.Thread(target=request, args=(catcher, "POST", self.path(catcher), {"token": t},
+                                                          {"Origin": origin(catcher)})) for t in tokens]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        first = catcher.wait(1)
+        assert first in tokens
+        time.sleep(0.05)
+        assert catcher.token == first  # no later POST overwrote it
+
     def test_oversized_body_is_rejected(self, catcher):
         big = {"token": "x" * (setup_auth.MAX_TOKEN_BYTES + 10)}
         assert request(catcher, "POST", self.path(catcher), big, {"Origin": origin(catcher)})[0] == 400
@@ -166,11 +179,33 @@ class TestStatus:
         assert setup_auth.main(["status"]) == 0
         assert "Renew" not in capsys.readouterr().out
 
+    def test_unreadable_age_record_is_explained(self, monkeypatch, capsys):
+        monkeypatch.setenv("APPLE_MUSIC_DEV_TOKEN", fake_jwt(90))
+        monkeypatch.setenv("APPLE_MUSIC_USER_TOKEN", "u")
+        monkeypatch.setattr(setup_auth, "check_user_token_age", lambda: None)
+        assert setup_auth.main(["status"]) == 1
+        assert "age couldn't be read" in capsys.readouterr().out
+
     def test_missing_tokens(self, monkeypatch, capsys):
         monkeypatch.delenv("APPLE_MUSIC_DEV_TOKEN", raising=False)
         monkeypatch.delenv("APPLE_MUSIC_USER_TOKEN", raising=False)
         assert setup_auth.main(["status"]) == 1
         assert "not set" in capsys.readouterr().out
+
+
+class TestKeyFile:
+    def test_unreadable_key_is_a_token_error(self, tmp_path, monkeypatch):
+        pytest.importorskip("jwt")
+        key = tmp_path / "AuthKey.p8"
+        key.write_text("x")
+
+        def deny(*a, **k):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr("builtins.open", deny)
+        from generate_dev_token import make_dev_token
+        with pytest.raises(TokenError, match="Can't read the key file"):
+            make_dev_token("K", "T", str(key))
 
 
 class TestUserTokenAge:

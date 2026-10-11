@@ -114,6 +114,7 @@ class TokenCatcher:
         self.page = render_page(dev_token)
         self.token: str | None = None
         self.done = threading.Event()
+        self._lock = threading.Lock()  # the server is threaded; two POSTs must not both "win"
         catcher = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -162,9 +163,10 @@ class TokenCatcher:
             token = None
         if not isinstance(token, str) or not token.strip() or any(c.isspace() for c in token):
             return 400, b"no token"
-        if not self.done.is_set():
-            self.token = token
-            self.done.set()
+        with self._lock:
+            if not self.done.is_set():
+                self.token = token
+                self.done.set()
         return 200, b"ok"
 
     def start(self) -> "TokenCatcher":
@@ -276,6 +278,9 @@ def cmd_status(_args) -> int:
         print("❌ APPLE_MUSIC_USER_TOKEN is not set")
     elif user:
         print(user["message"])
+    else:
+        print("⚠️  User token set, but its age couldn't be read or recorded "
+              "(check ~/.apple-music-dj/user_token_seen.json)")
     bad = (not dev or dev["warning"]) or (not user or user["warning"])
     if bad:
         print("Renew with: python3 scripts/setup_auth.py")

@@ -295,14 +295,14 @@ def check_token_expiry(warn_days: int = 14) -> dict | None:
                 "expired": True,
                 "days_remaining": 0,
                 "warning": True,
-                "message": "⛔ Dev token has EXPIRED. Regenerate with: python3 scripts/generate_dev_token.py",
+                "message": "⛔ Dev token has EXPIRED. Regenerate with: python3 scripts/setup_auth.py --new-dev-token",
             }
         elif days_remaining <= warn_days:
             return {
                 "expired": False,
                 "days_remaining": days_remaining,
                 "warning": True,
-                "message": f"⚠️  Dev token expires in {days_remaining} day(s). Consider regenerating soon.",
+                "message": f"⚠️  Dev token expires in {days_remaining} day(s). Regenerate: python3 scripts/setup_auth.py --new-dev-token",
             }
         else:
             return {

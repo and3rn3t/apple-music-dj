@@ -46,6 +46,48 @@ class TestSandbox:
             demo.check_args([f"--output={demo.REAL_APP_DIR}/taste_profile.json"])
         assert demo.check_args([str(demo.DEMO_HOME)]) == [str(demo.DEMO_HOME)]  # the sibling demo dir is fine
 
+    def test_dotdot_and_symlink_aliases_into_real_data_are_refused(self, tmp_path, monkeypatch):
+        real = tmp_path / "home" / ".apple-music-dj"
+        real.mkdir(parents=True)
+        demo_home = tmp_path / "home" / ".apple-music-dj-demo"
+        monkeypatch.setattr(demo, "REAL_APP_DIR", real)
+        monkeypatch.setattr(demo, "DEMO_HOME", demo_home)
+        alias = tmp_path / "alias"
+        alias.symlink_to(real)
+        for arg in (f"{demo_home}/../.apple-music-dj/taste_profile.json",
+                    f"--output={demo_home}/../.apple-music-dj/x.json", str(alias / "x.json")):
+            with pytest.raises(SystemExit, match="real data"):
+                demo.check_args([arg])
+        assert demo.check_args(["--size", "8", "Radiohead"]) == ["--size", "8", "Radiohead"]
+
+    @pytest.mark.parametrize("which", ["home", "inner"])
+    def test_symlinked_sandbox_is_refused(self, tmp_path, monkeypatch, which):
+        real = tmp_path / "real"
+        real.mkdir()
+        demo_home = tmp_path / "demo-home"
+        if which == "home":
+            demo_home.symlink_to(real)
+        else:
+            demo_home.mkdir()
+            (demo_home / ".apple-music-dj").symlink_to(real)
+        monkeypatch.setattr(demo, "DEMO_HOME", demo_home)
+        with pytest.raises(SystemExit, match="symlink"):
+            demo.prepare_demo_home()
+
+    def test_tour_reports_failed_steps(self, monkeypatch, capsys):
+        class Srv:
+            url = "http://127.0.0.1:1"
+
+            def stop(self):
+                pass
+
+        monkeypatch.setattr(demo, "start_server", Srv)
+        monkeypatch.setattr(demo, "ensure_profile", lambda env: None)
+        monkeypatch.setattr(demo, "_run", lambda *a, **k: demo.subprocess.CompletedProcess(a, 2, "", "boom"))
+        assert demo.cmd_tour() == 1
+        captured = capsys.readouterr()
+        assert "failed" in captured.err and "That's the demo" not in captured.out
+
     def test_profile_placeholder_is_substituted(self):
         assert demo.check_args(["--profile", "DEMO_PROFILE"]) == ["--profile", str(demo.demo_profile_path())]
 

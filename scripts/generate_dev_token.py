@@ -40,8 +40,12 @@ def make_dev_token(key_id: str, team_id: str, key_path: str, expiry: int = DEFAU
     if not os.path.isfile(key_path):
         raise TokenError(f"Key file not found: {os.path.basename(key_path)}\n"
                          "  Check that the path points to the .p8 file you downloaded from Apple.")
-    with open(key_path) as f:
-        private_key = f.read()
+    try:
+        with open(key_path) as f:
+            private_key = f.read()
+    except OSError as e:
+        raise TokenError(f"Can't read the key file {os.path.basename(key_path)}: {e.strerror or e}\n"
+                         "  Check that it exists and that you can read it.") from e
     now = int(time.time())
     try:
         token = jwt.encode(

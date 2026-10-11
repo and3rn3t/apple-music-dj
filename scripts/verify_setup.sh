@@ -154,11 +154,11 @@ if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" ]]; then
 
         if [[ "$remaining" -le 0 ]]; then
             echo "  $FAIL Dev token has EXPIRED!"
-            echo "       Regenerate with: python3 scripts/generate_dev_token.py"
+            echo "       Regenerate with: python3 scripts/setup_auth.py --new-dev-token"
             errors=$((errors + 1))
         elif [[ "$days_remaining" -le 14 ]]; then
             echo "  $WARN Dev token expires in ${days_remaining} day(s) — consider regenerating soon"
-            echo "       Regenerate with: python3 scripts/generate_dev_token.py"
+            echo "       Regenerate with: python3 scripts/setup_auth.py --new-dev-token"
             warnings=$((warnings + 1))
         else
             echo "  $PASS Dev token valid for ${days_remaining} more day(s)"

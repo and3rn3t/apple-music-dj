@@ -101,3 +101,18 @@ def test_skill_md_documents_the_safety_posture_near_the_top():
     body = (ROOT / "SKILL.md").read_text()
     glance = body.split("## At a glance", 1)[1].split("## Architecture", 1)[0]
     assert "Try saying" in glance and "Safety" in glance and "confirmed first" in glance
+
+
+def test_concert_prep_docs_match_the_script_which_previews_by_default():
+    body = (ROOT / "SKILL.md").read_text()
+    section = body.split("### Concert Prep Playlist", 1)[1].split("### ", 1)[0]
+    assert "Preview first" in section and "--create" in section and "only after they" in section
+    assert "Creates directly" not in body  # the old wording that promised an unconfirmed write
+    script = (ROOT / "scripts" / "concert_prep.sh").read_text()
+    assert "--create" in script and "Preview only" in script
+
+
+def test_skill_md_says_scheduled_jobs_run_unattended():
+    body = (ROOT / "SKILL.md").read_text()
+    assert "runs unattended and writes on its own" in body
+    assert "unattended once installed" in body.split("## At a glance", 1)[1].split("## Architecture", 1)[0]

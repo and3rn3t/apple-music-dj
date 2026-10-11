@@ -400,3 +400,137 @@ class TestOtherScripts:
     def test_setup_cron_lists_opt_in_job(self, api):
         out = api("setup_cron.py", "list", "--python", sys.executable).stdout
         assert "monthly-drift" in out and "opt-in" in out
+
+
+# ── Concert prep: preview by default, write only with --create ───
+
+class TestConcertPrep:
+    def test_default_run_previews_and_writes_nothing(self, api):
+        plan = _json(api("concert_prep.sh", "us", "Radiohead"))
+        assert api.mock.writes() == []
+        assert plan["created"] is False and plan["artist"] == "Radiohead"
+        assert plan["playlist_name"].startswith("Concert Prep · Radiohead")
+        assert [t["name"] for t in plan["tracks"]][:2] == ["Karma Police", "Paranoid Android"]  # top songs first
+        assert {t["source"] for t in plan["tracks"]} == {"top_song", "deep_cut"}
+        assert plan["track_count"] == len(plan["tracks"]) == plan["top_song_count"] + plan["deep_cut_count"]
+
+    def test_default_run_says_how_to_create(self, api):
+        assert "re-run with --create" in api("concert_prep.sh", "us", "Radiohead").stderr
+
+    def test_deep_cuts_exclude_top_songs_and_are_unique(self, api):
+        ids = [t["id"] for t in _json(api("concert_prep.sh", "us", "Radiohead"))["tracks"]]
+        assert len(ids) == len(set(ids))
+
+    def test_create_builds_exactly_the_previewed_playlist(self, api):
+        preview = _json(api("concert_prep.sh", "us", "Radiohead", "Show Night"))
+        assert api.mock.writes() == []
+        created = _json(api("concert_prep.sh", "us", "Radiohead", "Show Night", "--create"))
+        assert created["created"] is True
+        posts = [r for r in api.mock.writes() if r["path"] == "/v1/me/library/playlists"]
+        assert len(posts) == 1
+        body = posts[0]["body"]
+        assert body["attributes"]["name"] == "Show Night"
+        assert [t["id"] for t in body["relationships"]["tracks"]["data"]] == [t["id"] for t in preview["tracks"]]
+
+    def test_create_flag_works_in_any_position_and_names_may_contain_spaces(self, api):
+        api("concert_prep.sh", "--create", "us", "Radiohead", "My Concert Mix")
+        post = next(r for r in api.mock.writes() if r["path"] == "/v1/me/library/playlists")
+        assert post["body"]["attributes"]["name"] == "My Concert Mix"
+
+    def test_create_prints_a_single_json_document(self, api):
+        out = api("concert_prep.sh", "us", "Radiohead", "--create").stdout
+        assert json.loads(out)["created"] is True  # nothing else leaked onto stdout
+
+    def test_unknown_artist_fails_without_writing(self, api):
+        r = api("concert_prep.sh", "us", "Zzzz Nobody", "--create", check=False)
+        assert r.returncode == 1 and "Could not find artist" in r.stderr
+        assert api.mock.writes() == []
+
+    def test_missing_arguments_print_usage(self, api):
+        r = api("concert_prep.sh", "--create", check=False)
+        assert r.returncode != 0 and "Usage: concert_prep.sh" in r.stderr and api.mock.writes() == []
+
+
+# ── Nothing writes to the account unless explicitly asked ────────
+
+class TestNothingIsWrittenByDefault:
+    """The skill promises account changes are opt-in. These are the entry points that *can* write;
+    run bare, none of them may. (A reviewer found concert_prep.sh creating a playlist unprompted.)"""
+
+    CASES = [
+        ("concert prep", "concert_prep.sh", ["us", "Radiohead"]),
+        ("strategy: similar", "strategy_engine.py", ["--strategy", "similar", "--similar-to", "Radiohead",
+                                                    "--storefront", "us"]),
+        ("strategy: era", "strategy_engine.py", ["--strategy", "era", "--decade", "90s", "--storefront", "us"]),
+        ("strategy: trend", "strategy_engine.py", ["--strategy", "trend", "--storefront", "us"]),
+        ("gap analysis --add-missing", "catalog_explorer.py", ["gap-analysis", "{profile}", "us", "--add-missing", "2"]),
+        ("playlist health fix", "playlist_health.py", ["fix", "p.1", "--profile", "{profile}"]),
+    ]
+
+    @pytest.mark.parametrize("label,script,args", CASES, ids=[c[0] for c in CASES])
+    def test_bare_run_makes_no_writes(self, api, profile, label, script, args):
+        args = [str(profile) if a == "{profile}" else a for a in args]
+        if script == "strategy_engine.py":
+            args = ["--profile", str(profile), *args]
+        api(script, *args, check=False)
+        assert api.mock.writes() == [], f"{label} wrote to the account without being asked"
+
+    def test_new_releases_without_the_flag_writes_nothing(self, api, profile):
+        api("new_releases.sh", str(profile), "us", check=False)
+        assert api.mock.writes() == []
+
+    def test_import_preview_writes_nothing(self, api):
+        f = api.tmp / "list.txt"
+        f.write_text("Radiohead - Idioteque\n")
+        api("import_playlist.py", f, "--storefront", "us")
+        assert api.mock.writes() == []
+
+    def test_cron_install_without_confirm_changes_nothing(self, api):
+        r = api("setup_cron.py", "install", "--log-dir", api.tmp / "logs", "--profile", api.tmp / "p.json",
+                "--python", sys.executable, check=False)
+        assert r.returncode == 2 and not (api.tmp / "logs").exists()
+
+
+# ── The scheduled jobs actually run ──────────────────────────────
+
+class TestScheduledJobsActuallyRun:
+    """Two default cron jobs (new-releases, daily-drop) passed the wrong arguments and had failed
+    silently since v3.0 — cron only writes to a log. Run every job's real command."""
+
+    @staticmethod
+    def _run(api, command):
+        return subprocess.run(["sh", "-c", command], capture_output=True, text=True, env=api.env, timeout=120)
+
+    @pytest.fixture
+    def jobs(self, api, profile):
+        sys.path.insert(0, str(SCRIPTS))
+        import setup_cron
+        return setup_cron.build_job_defs(sys.executable, str(profile), "us", str(api.tmp / "logs"))
+
+    @pytest.mark.parametrize("name", ["weekly-mix", "new-releases", "daily-drop", "health-check"])
+    def test_default_job_command_succeeds(self, api, jobs, name):
+        r = self._run(api, jobs[name]["command"])
+        assert r.returncode == 0, f"{name} exited {r.returncode}\nSTDERR:\n{r.stderr[-600:]}"
+
+    def test_daily_drop_prints_one_pick(self, api, jobs):
+        pick = json.loads(self._run(api, jobs["daily-drop"]["command"]).stdout)
+        assert pick  # a real recommendation, not usage text
+
+    def test_new_releases_job_only_reports(self, api, jobs):
+        self._run(api, jobs["new-releases"]["command"])
+        assert api.mock.writes() == []  # the job has no --create-playlist
+
+    def test_weekly_mix_creates_its_playlist_because_the_user_installed_it(self, api, jobs):
+        self._run(api, jobs["weekly-mix"]["command"])
+        assert any(r["path"] == "/v1/me/library/playlists" for r in api.mock.writes())
+
+    def test_monthly_drift_job_works_once_an_earlier_snapshot_exists(self, api, jobs):
+        snaps = api.home / ".apple-music-dj" / "snapshots"
+        snaps.mkdir(parents=True, exist_ok=True)
+        (snaps / "2020-01-01.json").write_text(json.dumps({
+            "top_artists": [{"name": "Miles Davis", "weight": 1}], "genre_distribution": [{"genre": "Jazz", "weight": 1}],
+            "era_distribution": [{"decade": "1960s", "weight": 1}], "energy_profile": "chill",
+            "variety_score": 0.5, "mainstream_score": 0.5, "generated_at": "2020-01-01T00:00:00+00:00"}))
+        r = self._run(api, jobs["monthly-drift"]["command"])
+        assert r.returncode == 0, r.stderr[-400:]
+        assert "Taste drift: 2020-01-01" in r.stdout

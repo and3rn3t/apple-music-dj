@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.3] — Unreleased
+
+### Security
+
+Follow-up to the ClawHub audit of 3.2.2, which flagged that a documented workflow could write to the account without the confirmation the skill promises:
+
+- **`concert_prep.sh` now previews by default**: it prints the proposed playlist (name, description, track list) as JSON and writes nothing; `--create` is required to build it (the flag can go anywhere). Previously it created the playlist unconditionally. `SKILL.md` tells the agent to show the preview and re-run with `--create` only after a yes.
+- **"Nothing is written by default" is now tested** across every write-capable entry point (concert prep, similar/era/trend strategies, gap analysis, playlist health fix, new releases, playlist import, cron install).
+- `SKILL.md` is explicit that scheduled jobs run unattended (installing one is the approval), instead of implying every write is confirmed per run.
+
+### Fixed
+
+- **Two default cron jobs never worked since v3.0**: `new-releases` passed the storefront where `new_releases.sh` expects `<profile.json> <storefront>` (it exited 1), and `daily-drop` passed `--profile` to `daily_pick.py`, which takes positional `<profile.json> <storefront>` (it exited 2). Cron only writes to a log, so both failed silently. Both now run, and a new test executes every default job's real command.
+
 ## [3.2.2] — Unreleased
 
 ### Changed

@@ -119,14 +119,16 @@ def build_job_defs(python: str, profile: str, sf: str,
         "new-releases": {
             "description": "Check for new releases every Wednesday at 8 AM",
             "schedule": "0 8 * * 3",
-            "command": f"bash {new_releases} {sf}",
+            # new_releases.sh takes <profile.json> <storefront> (report only: no --create-playlist)
+            "command": f"bash {new_releases} {profile} {sf}",
             "log": f"{log_dir}/new-releases.log",
         },
         "daily-drop": {
             "description": "Surface a daily pick every day at 8:30 AM",
             "schedule": "30 8 * * *",
+            # daily_pick.py takes positional <profile.json> <storefront>
             "command": (
-                f"{python} {daily_pick} daily --profile {profile}"
+                f"{python} {daily_pick} daily {profile} {sf}"
             ),
             "log": f"{log_dir}/daily-drop.log",
         },

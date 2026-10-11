@@ -18,7 +18,7 @@ description: >
   song", "what should I listen to right now", "blend", "throwback", "[decade] playlist", "taste
   drift", "how has my taste changed", "import my playlist", "I didn't like track", "add the
   missing albums", or OpenClaw in the context of music.
-version: 3.2.2
+version: 3.2.3
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
@@ -85,8 +85,10 @@ ratings, Replay), builds a taste profile, and turns it into playlists and insigh
 subscription. Tokens live only in environment variables.
 
 **Safety:** read-only by default. Creating playlists, favoriting, rating, adding albums and
-scheduling cron jobs are opt-in and confirmed first; scheduled jobs additionally need a reviewed
-`--confirm` digest. Local data is owner-only (`~/.apple-music-dj/`). See `SECURITY.md`.
+scheduling cron jobs are opt-in and confirmed first (the scripts preview by default and write only
+with an explicit `--create` / `--yes` / `--confirm`). Scheduled jobs run unattended once installed,
+so installing one needs a reviewed `--confirm` digest. Local data is owner-only
+(`~/.apple-music-dj/`). See `SECURITY.md`.
 
 ## Architecture
 
@@ -357,9 +359,11 @@ Run: `python3 scripts/daily_pick.py now <profile.json> <storefront>`
 **Triggers:** "seeing [artist] live", "concert prep", "going to [artist] show",
 "setlist for [artist]", "get ready for [artist] concert"
 Builds a prep playlist: top songs (likely setlist material) + deep cuts to learn before
-the show. Creates directly in Apple Music library.
+the show. **Preview first:** by default the script writes nothing to Apple Music — it prints the
+proposed name, description and track list as JSON. Show that to the user and, only after they
+say yes, re-run the same command with `--create`.
 
-Run: `scripts/concert_prep.sh <storefront> <artist_name> [playlist_name]`
+Run: `scripts/concert_prep.sh <storefront> <artist_name> [playlist_name] [--create]`
 
 ### Personalized New Release Radar
 **Triggers:** "new releases", "what's new from my artists", "any new music",
@@ -392,14 +396,17 @@ Run: `scripts/new_releases.sh <profile.json> <storefront> [--create-playlist]`
 | "Take me on a rabbit hole from [artist]" | Artist chain exploration |
 | "Give me one song" | Daily song drop |
 | "What should I listen to right now?" | Context-aware instant pick |
-| "I'm seeing [artist] next week" | Concert prep playlist |
+| "I'm seeing [artist] next week" | Concert prep playlist (preview first, create on a yes) |
 | "Any new releases for me?" | Personalized new release scan |
 | "My year in review" | Year in review (previous year) |
 | "Set up weekly playlists" | Configure cron (see below) |
 
 ## Cron / Automated Playlists
 
-OpenClaw has first-class cron and heartbeat support. This skill can automate:
+OpenClaw has first-class cron and heartbeat support. This skill can automate the jobs below.
+Unlike interactive requests, **a scheduled job runs unattended and writes on its own** (the weekly
+mix creates its playlist without asking each time). Installing the job is the user's approval,
+which is why `setup_cron.py install` needs a reviewed `--confirm` digest — say so when setting one up.
 
 **Weekly Mix** (recommended default):
 ```
@@ -419,7 +426,8 @@ Schedule: Daily at 8:00 AM
 Task:
   1. scripts/new_releases.sh <profile> <storefront>
   2. If found: notify user with artist + album/single name
-  3. Optionally: --create-playlist to auto-create a playlist
+  3. Only if the user asked for scheduled playlist creation: add --create-playlist (the
+     built-in `new-releases` job reports only and never writes)
 ```
 
 **Daily Song Drop:**
@@ -639,7 +647,7 @@ stores, and transmits.
 → Context-aware pick. Time of day + taste → instant recommendation.
 
 **"I'm seeing Phoebe Bridgers next month"**
-→ Concert prep playlist. Top songs + deep cuts, created in Apple Music.
+→ Concert prep playlist. Show the preview (top songs + deep cuts); create it in Apple Music on a yes.
 
 **"Any new releases from my artists?"**
 → New release radar. Scan top artists + genre discoveries, report findings.

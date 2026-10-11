@@ -1,6 +1,7 @@
 """Tests for setup_cron.py — cron job management for Apple Music DJ."""
 
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -693,3 +694,30 @@ class TestEnforcedConfirmation:
         monkeypatch.setattr(sys, "argv", ["setup_cron.py", "remove", "--jobs", "weekly-mix"])
         sc.main()
         assert removed["sel"] == ["weekly-mix"]
+
+
+class TestJobArguments:
+    """new-releases and daily-drop passed the wrong arguments and failed silently from v3.0 until 3.2.3."""
+
+    def _defs(self):
+        return sc.build_job_defs("/usr/bin/python3", "/p/profile.json", "gb", "/tmp/logs")
+
+    def test_new_releases_gets_profile_then_storefront(self):
+        import shlex
+        argv = shlex.split(self._defs()["new-releases"]["command"])
+        assert argv[0] == "bash" and argv[1].endswith("new_releases.sh")
+        assert argv[2:] == ["/p/profile.json", "gb"]
+        assert "--create-playlist" not in argv  # the scheduled job reports; it doesn't write
+
+    def test_daily_drop_gets_positional_profile_then_storefront(self):
+        import shlex
+        argv = shlex.split(self._defs()["daily-drop"]["command"])
+        assert argv[1].endswith("daily_pick.py") and argv[2] == "daily"
+        assert argv[3:] == ["/p/profile.json", "gb"]
+        assert "--profile" not in argv  # daily_pick.py has no such option
+
+    def test_every_job_script_exists(self):
+        import shlex
+        for name, job in self._defs().items():
+            scripts = [t for t in shlex.split(job["command"].strip("()").split("&&")[0]) if t.endswith((".py", ".sh"))]
+            assert scripts and all(Path(t).is_file() for t in scripts), name

@@ -123,13 +123,13 @@ in the station *title* (e.g. "Alternative Radio") and treats them as a very ligh
 POST /v1/me/library?ids[albums]=ID1,ID2      (or ids[songs]=...)
 ```
 No request body; answers `202` with an empty body (not JSON — call `call_api(..., raw=True)`).
-Wrapper: `apple_music_api.sh add-to-library <albums|songs> <ids>`. **Writes to the account.**
+Wrapper: `apple_music_api.sh add-to-library <albums|songs> <ids> --yes`. **Writes to the account** (previews and exits 3 without `--yes`).
 
 ### Add to Favorites
 ```
 POST /v1/me/favorites?ids[songs]=ID1,ID2     (also albums, artists, playlists)
 ```
-Empty-body response. Wrapper: `apple_music_api.sh favorite <type> <ids>`. **Writes to the account.**
+Empty-body response. Wrapper: `apple_music_api.sh favorite <type> <ids> --yes`. **Writes to the account** (needs `--yes`).
 Apple documents only this write endpoint — there is no documented way to *read* favorites,
 so the profiler keeps using ratings (loved/disliked) as its explicit-preference signal.
 
@@ -138,7 +138,7 @@ so the profiler keeps using ratings (loved/disliked) as its explicit-preference 
 PUT    /v1/me/ratings/songs/{id}     body: {"type":"rating","attributes":{"value":1}}   (1 = love, -1 = dislike)
 DELETE /v1/me/ratings/songs/{id}
 ```
-Wrappers: `apple_music_api.sh rate <id> <1|-1>` and `unrate <id>`. **Writes to the account.**
+Wrappers: `apple_music_api.sh rate <id> <1|-1> --yes` and `unrate <id> --yes`. **Writes to the account** (need `--yes`).
 
 ---
 

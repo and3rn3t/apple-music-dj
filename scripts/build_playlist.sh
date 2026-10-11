@@ -51,7 +51,7 @@ case "$MODE" in
         "relationships": {"tracks": {"data": $tracks}}
       }' > "$TMPFILE"
 
-    if ! "$SCRIPT_DIR/apple_music_api.sh" create-playlist "$TMPFILE"; then
+    if ! "$SCRIPT_DIR/apple_music_api.sh" create-playlist "$TMPFILE" --yes; then
       echo "ERROR: Failed to create playlist '${NAME}'" >&2
       exit 1
     fi
@@ -78,7 +78,7 @@ case "$MODE" in
     trap 'rm -f "$TMPFILE"' EXIT
     jq -n --argjson tracks "$tracks_json" '{"data": $tracks}' > "$TMPFILE"
 
-    if ! "$SCRIPT_DIR/apple_music_api.sh" add-to-playlist "$PID" "$TMPFILE"; then
+    if ! "$SCRIPT_DIR/apple_music_api.sh" add-to-playlist "$PID" "$TMPFILE" --yes; then
       echo "ERROR: Failed to add tracks to playlist ${PID}" >&2
       exit 1
     fi
@@ -100,7 +100,7 @@ case "$MODE" in
     trap 'rm -f "$TMPFILE"' EXIT
     jq -n --argjson tracks "$tracks_json" '{"data": $tracks}' > "$TMPFILE"
 
-    if ! "$SCRIPT_DIR/apple_music_api.sh" remove-from-playlist "$PID" "$TMPFILE"; then
+    if ! "$SCRIPT_DIR/apple_music_api.sh" remove-from-playlist "$PID" "$TMPFILE" --yes; then
       echo "ERROR: Failed to remove tracks from playlist ${PID}" >&2
       exit 1
     fi

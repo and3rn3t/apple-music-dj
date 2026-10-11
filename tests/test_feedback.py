@@ -70,7 +70,7 @@ class TestRunRating:
         calls = []
         monkeypatch.setattr(fb, "call_api", lambda *a, **k: calls.append((a, k)) or "")
         out = fb.run_rating("dislike", ["s1", "s2"], str(profile_file))
-        assert calls == [(("rate", "s1", "-1"), {"raw": True}), (("rate", "s2", "-1"), {"raw": True})]
+        assert calls == [(("rate", "s1", "-1", "--yes"), {"raw": True}), (("rate", "s2", "-1", "--yes"), {"raw": True})]
         assert out["profile_updated"] is True
         saved = json.loads(profile_file.read_text())
         assert saved["disliked_song_ids"] == ["s1", "s2"] and saved["loved_track_ids"] == []
@@ -81,13 +81,13 @@ class TestRunRating:
         calls = []
         monkeypatch.setattr(fb, "call_api", lambda *a, **k: calls.append(a) or "{}")
         fb.run_rating("like", ["s1"], None)
-        assert calls == [("rate", "s1", "1")]
+        assert calls == [("rate", "s1", "1", "--yes")]
 
     def test_clear_uses_unrate(self, monkeypatch):
         calls = []
         monkeypatch.setattr(fb, "call_api", lambda *a, **k: calls.append(a) or "")
         fb.run_rating("clear", ["s1"], None)
-        assert calls == [("unrate", "s1")]
+        assert calls == [("unrate", "s1", "--yes")]
 
     def test_failed_calls_do_not_touch_profile(self, monkeypatch, profile_file):
         monkeypatch.setattr(fb, "call_api", lambda *a, **k: None)
@@ -121,21 +121,27 @@ class TestMain:
     def test_dislike_by_position(self, monkeypatch, history, capsys):
         rated = []
         monkeypatch.setattr(fb, "call_api", lambda *a, **k: rated.append(a) or "")
-        self._run(monkeypatch, "dislike", "--playlist-name", "Chill Mix", "--position", "2")
-        assert rated == [("rate", "c2", "-1")]
+        self._run(monkeypatch, "dislike", "--playlist-name", "Chill Mix", "--position", "2", "--yes")
+        assert rated == [("rate", "c2", "-1", "--yes")]
         assert json.loads(capsys.readouterr().out)["results"] == [{"id": "c2", "ok": True}]
 
     def test_ids_and_positions_combine(self, monkeypatch, history):
         rated = []
         monkeypatch.setattr(fb, "call_api", lambda *a, **k: rated.append(a[1]) or "")
-        self._run(monkeypatch, "like", "x1", "--position", "1")
+        self._run(monkeypatch, "like", "x1", "--position", "1", "--yes")
         assert rated == ["x1", "d1"]
 
     def test_failure_exits_nonzero(self, monkeypatch):
         monkeypatch.setattr(fb, "call_api", lambda *a, **k: None)
         with pytest.raises(SystemExit) as e:
-            self._run(monkeypatch, "dislike", "s1")
+            self._run(monkeypatch, "dislike", "s1", "--yes")
         assert e.value.code == 1
+
+    def test_without_yes_nothing_is_rated(self, monkeypatch, capsys):
+        monkeypatch.setattr(fb, "call_api", lambda *a, **k: pytest.fail("preview must not call the API"))
+        self._run(monkeypatch, "dislike", "s1")
+        out = json.loads(capsys.readouterr().out)
+        assert out["applied"] is False and out["song_ids"] == ["s1"]
 
     def test_info_does_not_rate(self, monkeypatch, capsys):
         monkeypatch.setattr(fb, "call_api", lambda cmd, *a, **k:
@@ -160,5 +166,5 @@ class TestMain:
     def test_missing_profile_file(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setattr(fb, "call_api", lambda *a, **k: pytest.fail("should stop before rating"))
         with pytest.raises(SystemExit):
-            self._run(monkeypatch, "dislike", "s1", "--profile", str(tmp_path / "nope.json"))
+            self._run(monkeypatch, "dislike", "s1", "--profile", str(tmp_path / "nope.json"), "--yes")
         assert "Profile not found" in capsys.readouterr().err

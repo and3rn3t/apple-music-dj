@@ -392,7 +392,7 @@ class TestAddMissing:
         out = ce.run_add_missing(many, 25, confirmed=True)
         assert len(out["added"]) == 25 and out["failed"] == []
         assert len(calls) == 3  # 10 + 10 + 5
-        cmd, kind, ids = calls[0][0]
+        cmd, kind, ids, yes = calls[0][0]
         assert (cmd, kind) == ("add-to-library", "albums") and len(ids.split(",")) == 10
         assert calls[0][1] == {"raw": True}
 

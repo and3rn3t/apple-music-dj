@@ -379,9 +379,19 @@ cmd_playlist_tracks() {
   _get "/v1/me/library/playlists/${pid}/tracks?limit=100" | jq .
 }
 
+# Every command that changes the user's account calls _confirm first. Without a trailing --yes
+# it only says what it WOULD do and exits 3, so a stray call can never edit a library.
+CONFIRMED=0
+_confirm() {
+  [[ "$CONFIRMED" == "1" ]] && return 0
+  echo "WOULD $1 — preview only, nothing was changed. Re-run with --yes to apply." >&2
+  exit 3
+}
+
 cmd_create_playlist() {
   local json_file="${1:?Usage: create-playlist <json_file>}"
   [[ ! -f "$json_file" ]] && { echo "ERROR: File not found: ${json_file}" >&2; exit 1; }
+  _confirm "create a playlist from ${json_file}"
   echo "Creating playlist..." >&2
   local resp
   resp=$(_post_file "/v1/me/library/playlists" "$json_file")
@@ -395,6 +405,7 @@ cmd_add_to_playlist() {
   local pid="${1:?Usage: add-to-playlist <playlist_id> <json_file>}"
   local json_file="${2:?Usage: add-to-playlist <playlist_id> <json_file>}"
   [[ ! -f "$json_file" ]] && { echo "ERROR: File not found: ${json_file}" >&2; exit 1; }
+  _confirm "add tracks to playlist ${pid}"
   echo "Adding tracks to playlist ${pid}..." >&2
   _post_file "/v1/me/library/playlists/${pid}/tracks" "$json_file"
   echo "✅ Tracks added." >&2
@@ -404,6 +415,7 @@ cmd_remove_from_playlist() {
   local pid="${1:?Usage: remove-from-playlist <playlist_id> <json_file>}"
   local json_file="${2:?Usage: remove-from-playlist <playlist_id> <json_file>}"
   [[ ! -f "$json_file" ]] && { echo "ERROR: File not found: ${json_file}" >&2; exit 1; }
+  _confirm "remove tracks from playlist ${pid}"
   echo "Removing tracks from playlist ${pid}..." >&2
   _delete "/v1/me/library/playlists/${pid}/tracks" "$json_file"
   echo "✅ Tracks removed." >&2
@@ -427,6 +439,7 @@ cmd_add_to_library() {
   local ids="${2:?Usage: add-to-library <albums|songs> <id,id,...>}"
   [[ "$type" == "albums" || "$type" == "songs" ]] || { echo "ERROR: type must be albums or songs" >&2; return 1; }
   _validate_ids "$ids" || return 1
+  _confirm "add ${type} ${ids} to your library"
   _post_empty "/v1/me/library?ids[${type}]=${ids}"
   echo "✅ Added ${type} to library." >&2
 }
@@ -455,6 +468,7 @@ cmd_favorite() {
   local ids="${2:?Usage: favorite <songs|albums|artists|playlists> <id,id,...>}"
   [[ "$type" =~ ^(songs|albums|artists|playlists)$ ]] || { echo "ERROR: invalid type: $type" >&2; return 1; }
   _validate_ids "$ids" || return 1
+  _confirm "add ${type} ${ids} to your favorites"
   _post_empty "/v1/me/favorites?ids[${type}]=${ids}"
   echo "✅ Added ${type} to favorites." >&2
 }
@@ -464,6 +478,7 @@ cmd_rate() {
   local value="${2:?Usage: rate <song_id> <1|-1>}"
   [[ "$value" == "1" || "$value" == "-1" ]] || { echo "ERROR: value must be 1 or -1" >&2; return 1; }
   _validate_ids "$id" || return 1
+  _confirm "set your rating of song ${id} to ${value}"
   local tmpfile rc=0
   tmpfile=$(mktemp "${TMPDIR:-/tmp}/am_rate_$$_XXXXXX")
   printf '{"type":"rating","attributes":{"value":%s}}' "$value" > "$tmpfile"
@@ -475,11 +490,17 @@ cmd_rate() {
 cmd_unrate() {
   local id="${1:?Usage: unrate <song_id>}"
   _validate_ids "$id" || return 1
+  _confirm "remove your rating of song ${id}"
   _delete_no_body "/v1/me/ratings/songs/${id}"
 }
 
 # ── Dispatch ──────────────────────────────────────────────────────
 cmd="${1:-help}"; shift 2>/dev/null || true
+_args=()
+for _a in "$@"; do
+  if [[ "$_a" == "--yes" ]]; then CONFIRMED=1; else _args+=("$_a"); fi
+done
+set -- ${_args[@]+"${_args[@]}"}
 
 case "$cmd" in
   verify)            cmd_verify ;;
@@ -534,15 +555,15 @@ Personalized (require both tokens):
   replay-summary [year]               Replay / Music Summaries
   replay-milestones [year]            Replay milestones
   playlist-tracks <playlist_id>       Tracks in a library playlist
-  create-playlist <json_file>         Create playlist from JSON spec
-  add-to-playlist <id> <json_file>    Add tracks to existing playlist
-  remove-from-playlist <id> <json>    Remove tracks from playlist
+  create-playlist <json_file>         Create playlist from JSON spec (writes! needs --yes)
+  add-to-playlist <id> <json_file>    Add tracks to existing playlist (writes! needs --yes)
+  remove-from-playlist <id> <json>    Remove tracks from playlist (writes! needs --yes)
   recently-added [limit]              Recently added library items
   recent-stations                     Recently played radio stations
-  add-to-library <type> <ids>         Add albums|songs to library (writes!)
-  favorite <type> <ids>               Add resources to favorites (writes!)
-  rate <song_id> <1|-1>               Love/dislike a song (writes!)
-  unrate <song_id>                    Remove a song rating (writes!)
+  add-to-library <type> <ids>         Add albums|songs to library (writes! needs --yes)
+  favorite <type> <ids>               Add resources to favorites (writes! needs --yes)
+  rate <song_id> <1|-1>               Love/dislike a song (writes! needs --yes)
+  unrate <song_id>                    Remove a song rating (writes! needs --yes)
 
 Catalog (require dev token only):
   search <storefront> <query> [types] Search catalog

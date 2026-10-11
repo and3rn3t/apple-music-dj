@@ -1190,7 +1190,7 @@ def favorite_tracks(tracks: list[dict]) -> dict:
     for i in range(0, len(ids), FAVORITE_BATCH_SIZE):
         batch = ids[i:i + FAVORITE_BATCH_SIZE]
         # raw=True: success is an empty body, which call_api can't parse as JSON
-        if call_api("favorite", "songs", ",".join(batch), raw=True) is None:
+        if call_api("favorite", "songs", ",".join(batch), "--yes", raw=True) is None:
             failed += len(batch)
         else:
             done += len(batch)

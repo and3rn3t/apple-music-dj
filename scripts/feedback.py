@@ -90,9 +90,9 @@ def rate_songs(action: str, song_ids: list[str]) -> list[dict]:
     results = []
     for sid in song_ids:
         if action == "clear":
-            resp = call_api("unrate", sid, raw=True)
+            resp = call_api("unrate", sid, "--yes", raw=True)
         else:
-            resp = call_api("rate", sid, RATING_VALUE[action], raw=True)
+            resp = call_api("rate", sid, RATING_VALUE[action], "--yes", raw=True)
         results.append({"id": sid, "ok": resp is not None})
     return results
 
@@ -126,6 +126,9 @@ def main():
     parser.add_argument("--position", type=int, nargs="+", default=[], help="1-based track position(s)")
     parser.add_argument("--profile", default=None, help="Taste profile JSON to update")
     parser.add_argument("--storefront", default="us", help="Storefront for `info` (default: us)")
+    parser.add_argument("--yes", action="store_true",
+                        help="Actually send the rating (and update --profile). Without it, like/dislike/clear "
+                             "only preview what they would change.")
     args = parser.parse_args()
 
     if args.playlist_name and not args.position:
@@ -149,6 +152,12 @@ def main():
     if args.profile and not Path(args.profile).exists():
         print(f"ERROR: Profile not found: {args.profile}", file=sys.stderr)
         sys.exit(1)
+
+    if not args.yes:
+        print(json.dumps({"action": args.action, "song_ids": song_ids, "applied": False,
+                          "note": "Preview only: nothing was rated and no profile was changed. "
+                                  "Re-run with --yes to apply."}, indent=2))
+        return
 
     result = run_rating(args.action, song_ids, args.profile)
     print(json.dumps(result, indent=2))

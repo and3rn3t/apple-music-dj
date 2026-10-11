@@ -92,10 +92,10 @@ class TestWrapper:
 
     def test_write_commands_send_the_right_requests(self, api):
         w = "apple_music_api.sh"
-        api(w, "add-to-library", "albums", "alb1,alb2")
-        api(w, "favorite", "songs", "s1,s2")
-        api(w, "rate", "s1", "-1")
-        api(w, "unrate", "s1")
+        api(w, "add-to-library", "albums", "alb1,alb2", "--yes")
+        api(w, "favorite", "songs", "s1,s2", "--yes")
+        api(w, "rate", "s1", "-1", "--yes")
+        api(w, "unrate", "s1", "--yes")
         got = [(r["method"], r["path"], r["query"], r["body"]) for r in api.mock.writes()]
         assert got == [
             ("POST", "/v1/me/library", {"ids[albums]": ["alb1,alb2"]}, None),
@@ -104,12 +104,30 @@ class TestWrapper:
             ("DELETE", "/v1/me/ratings/songs/s1", {}, None),
         ]
 
+    def test_write_commands_only_preview_without_yes(self, api):
+        """The wrapper itself refuses to change the account unless --yes is passed."""
+        w = "apple_music_api.sh"
+        ids = api.tmp / "ids.json"
+        ids.write_text(json.dumps({"data": [{"id": "s1", "type": "songs"}]}))
+        for args in (("add-to-library", "albums", "alb1"), ("favorite", "songs", "s1"), ("rate", "s1", "-1"),
+                     ("unrate", "s1"), ("create-playlist", ids), ("add-to-playlist", "p.1", ids),
+                     ("remove-from-playlist", "p.1", ids)):
+            res = api(w, *args, check=False)
+            assert res.returncode == 3 and "WOULD" in res.stderr and "--yes" in res.stderr, args
+        assert api.mock.writes() == []
+
+    def test_feedback_only_previews_without_yes(self, api, profile):
+        before = profile.read_text()
+        out = _json(api("feedback.py", "dislike", "s2", "--profile", profile))
+        assert out["applied"] is False and out["song_ids"] == ["s2"]
+        assert api.mock.writes() == [] and profile.read_text() == before
+
     def test_playlist_track_edits_exit_cleanly(self, api):
         """Direct (non-subshell) helper calls used to trip an unbound-variable RETURN trap."""
         ids = api.tmp / "ids.json"
         ids.write_text(json.dumps({"data": [{"id": "s1", "type": "songs"}]}))
-        api("apple_music_api.sh", "add-to-playlist", "p.1", ids)
-        api("apple_music_api.sh", "remove-from-playlist", "p.1", ids)
+        api("apple_music_api.sh", "add-to-playlist", "p.1", ids, "--yes")
+        api("apple_music_api.sh", "remove-from-playlist", "p.1", ids, "--yes")
 
     def test_input_validation_blocks_before_any_request(self, api):
         for args in (("favorite", "foo", "1"), ("add-to-library", "songs", "a;b"),
@@ -122,13 +140,13 @@ class TestWrapper:
         w = "apple_music_api.sh"
         api(w, "verify")
         api(w, "heavy-rotation")                    # read path (runs in a pipeline subshell)
-        api(w, "favorite", "songs", "s1")           # write path (runs in the main shell)
-        api(w, "rate", "s1", "1")
-        api(w, "unrate", "s1")
+        api(w, "favorite", "songs", "s1", "--yes")  # write path (runs in the main shell)
+        api(w, "rate", "s1", "1", "--yes")
+        api(w, "unrate", "s1", "--yes")
         api(w, "replay-summary", "2023", check=False)   # server answers 404
         assert list(api.tmpdir.glob("am_*")) == []
 
-    @pytest.mark.parametrize("command", [["heavy-rotation"], ["favorite", "songs", "s1"]])
+    @pytest.mark.parametrize("command", [["heavy-rotation"], ["favorite", "songs", "s1", "--yes"]])
     @pytest.mark.parametrize("sig", [signal.SIGINT, signal.SIGTERM])
     def test_interrupt_cleans_up_token_files(self, api, command, sig):
         """Ctrl-C (signal to the whole process group) mid-request must not leave tokens in $TMPDIR."""
@@ -215,7 +233,7 @@ class TestWrapper:
         threading.Thread(target=server.serve_forever, daemon=True).start()
         port = server.server_address[1]
         env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{port}"}
-        proc = subprocess.Popen(["bash", str(SCRIPTS / "apple_music_api.sh"), "favorite", "songs", "s1"],
+        proc = subprocess.Popen(["bash", str(SCRIPTS / "apple_music_api.sh"), "favorite", "songs", "s1", "--yes"],
                                 env=env, stderr=subprocess.DEVNULL)
         try:
             deadline = time.time() + 10
@@ -381,7 +399,7 @@ class TestOtherScripts:
         assert [t["id"] for t in _json(api("import_playlist.py", f, "--storefront", "us"))["tracks"]] == ["s4"]
 
     def test_feedback_dislike_updates_api_and_profile(self, api, profile):
-        out = _json(api("feedback.py", "dislike", "s2", "--profile", profile))
+        out = _json(api("feedback.py", "dislike", "s2", "--profile", profile, "--yes"))
         assert out["results"] == [{"id": "s2", "ok": True}] and out["profile_updated"] is True
         put = next(r for r in api.mock.writes() if r["method"] == "PUT")
         assert put["path"] == "/v1/me/ratings/songs/s2" and put["body"]["attributes"]["value"] == -1
@@ -394,7 +412,7 @@ class TestOtherScripts:
         first_id = history[-1]["track_ids"][0]
         info = _json(api("feedback.py", "info", "--playlist-name", "Pos Test", "--position", "1"))
         assert info[0]["id"] == first_id and info[0]["name"]
-        api("feedback.py", "dislike", "--playlist-name", "Pos Test", "--position", "1")
+        api("feedback.py", "dislike", "--playlist-name", "Pos Test", "--position", "1", "--yes")
         assert next(r for r in api.mock.writes() if r["method"] == "PUT")["path"].endswith(first_id)
 
     def test_setup_cron_lists_opt_in_job(self, api):

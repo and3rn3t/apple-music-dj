@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.2.4] — Unreleased
+## [3.2.5] — Unreleased
+
+### Security
+
+ClawHub's review of 3.2.4 said some account-changing commands could "directly alter playlists or ratings without an enforced confirmation step". Fair: the safeguards lived in the callers.
+
+- **`apple_music_api.sh` now enforces confirmation itself.** `create-playlist`, `add-to-playlist`, `remove-from-playlist`, `add-to-library`, `favorite`, `rate` and `unrate` only print `WOULD …` and exit 3 unless `--yes` is passed. The scripts that already gate their own writes (`--create`, `--yes`, `--apply`, `--confirm`) pass it after that gate.
+- **`feedback.py like|dislike|clear` previews by default** and needs `--yes` to rate songs or touch the profile.
+
+## [3.2.4] — 2026-10-11
 
 ### Security
 

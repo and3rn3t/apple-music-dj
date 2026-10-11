@@ -332,7 +332,7 @@ def add_albums_to_library(albums: list[dict]) -> dict:
         batch = albums[i:i + ADD_BATCH_SIZE]
         # raw=True: Apple answers 202 with an empty body, which isn't JSON.
         # "" means success; None means the call failed.
-        resp = call_api("add-to-library", "albums", ",".join(a["id"] for a in batch), raw=True)
+        resp = call_api("add-to-library", "albums", ",".join(a["id"] for a in batch), "--yes", raw=True)
         (failed if resp is None else added).extend(batch)
     return {"added": added, "failed": failed}
 

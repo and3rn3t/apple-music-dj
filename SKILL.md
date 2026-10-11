@@ -18,7 +18,7 @@ description: >
   song", "what should I listen to right now", "blend", "throwback", "[decade] playlist", "taste
   drift", "how has my taste changed", "import my playlist", "I didn't like track", "add the
   missing albums", or OpenClaw in the context of music.
-version: 3.2.4
+version: 3.2.5
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
@@ -320,7 +320,7 @@ Show the user the exact / fuzzy / unmatched counts and list the unmatched ones.
 **Triggers:** "I didn't like track 7", "thumbs down that song", "I loved track 3", "never play that again"
 Rates the song in Apple Music and updates the cached profile so later playlists skip it
 immediately: `python3 scripts/feedback.py dislike --playlist-name "<name>" --position 7 --profile <profile.json>`
-(or pass song IDs; `like` and `clear` also exist). Positions are 1-based within playlists the DJ
+(or pass song IDs; `like` and `clear` also exist). Without `--yes` it only previews; add `--yes` once the user has confirmed. Positions are 1-based within playlists the DJ
 created; omit `--playlist-name` for the most recent one. **This writes a rating to the user's account**,
 so only do it on the user's explicit say-so, and name the song and the rating you are about to write
 when it isn't obvious which track they mean.

@@ -978,7 +978,7 @@ class TestFavoriteTracks:
         out = se.favorite_tracks([{"id": str(i)} for i in range(30)] + [{"name": "no id"}])
         assert out == {"favorited": 30, "failed": 0}
         assert [len(c[0][2].split(",")) for c in calls] == [25, 5]
-        assert calls[0][0][:2] == ("favorite", "songs") and calls[0][1] == {"raw": True}
+        assert calls[0][0][:2] == ("favorite", "songs") and calls[0][0][-1] == "--yes" and calls[0][1] == {"raw": True}
 
     def test_counts_failures(self, monkeypatch):
         monkeypatch.setattr(se, "call_api", lambda *a, **k: None)

@@ -240,10 +240,29 @@ class TestCheckVerdict:
         rc.check_verdict("x", "3.4.5", interval=30, run=cli, sleep=slept.append)
         assert len(cli.calls) == 3 and slept == [30, 30]
 
-    def test_a_card_that_never_appears_eventually_fails(self):
-        with pytest.raises(rc.CheckError, match="card was still not generated after 3 checks"):
-            rc.check_verdict("x", "3.4.5", attempts=3, run=FakeCLI(verdict(decision="fail", reasons=["card.missing"])),
-                             sleep=lambda s: None)
+    def test_a_card_that_never_appears_is_a_warning_not_a_failure(self):
+        """ClawHub generates the card asynchronously (30+ minutes at times). A clean release must not
+        fail its run over it — that made the green-audit 3.2.3 publish show a red X."""
+        cli = FakeCLI(verdict(decision="fail", reasons=["card.missing"]))
+        result = rc.check_verdict("x", "3.4.5", attempts=3, run=cli, sleep=lambda s: None)
+        assert result["_card_pending"] is True and len(cli.calls) == 3
+        assert result["security"]["status"] == "clean"
+
+    def test_a_card_that_arrives_in_time_is_not_flagged_pending(self):
+        cli = FakeCLI(verdict(decision="fail", reasons=["card.missing"]), verdict())
+        assert "_card_pending" not in rc.check_verdict("x", "3.4.5", run=cli, sleep=lambda s: None)
+
+    def test_default_wait_is_short(self):
+        """The default must not hold a runner for a long time chasing a card."""
+        import inspect
+        params = inspect.signature(rc.check_verdict).parameters
+        assert params["attempts"].default * params["interval"].default <= 180
+
+    def test_a_missing_card_never_excuses_a_bad_security_verdict(self):
+        cli = FakeCLI(verdict(status="suspicious", passed=False, decision="fail",
+                              reasons=["card.missing", "security.status_not_clean"]))
+        with pytest.raises(rc.CheckError, match="Security verdict"):
+            rc.check_verdict("x", "3.4.5", run=cli, sleep=lambda s: None)
 
     @pytest.mark.parametrize("status", ["suspicious", "malicious", "pending", None])
     def test_a_non_clean_verdict_fails_immediately_without_retrying(self, status):
@@ -309,6 +328,18 @@ class TestMain:
         rc.main(["write-config"])
         out = capsys.readouterr()
         assert "super-secret-value" not in out.out + out.err
+
+    def test_check_verdict_cli_warns_but_exits_zero_while_the_card_is_pending(self, monkeypatch, capsys):
+        monkeypatch.setattr(rc, "check_verdict", lambda slug, version: {
+            "security": {"summary": "fine"}, "_card_pending": True})
+        assert rc.main(["check-verdict", "--slug", "s", "--version", "1.0.0"]) == 0
+        out = capsys.readouterr().out
+        assert "security verdict is clean" in out and "::warning::" in out and "skill card" in out
+
+    def test_check_verdict_cli_is_quiet_when_the_card_exists(self, monkeypatch, capsys):
+        monkeypatch.setattr(rc, "check_verdict", lambda slug, version: {"security": {"summary": "fine"}})
+        assert rc.main(["check-verdict", "--slug", "s", "--version", "1.0.0"]) == 0
+        assert "::warning::" not in capsys.readouterr().out
 
     def test_subcommands_wired_to_the_cli_helpers(self, monkeypatch, capsys):
         monkeypatch.setattr(rc, "check_whoami", lambda expect: expect)

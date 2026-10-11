@@ -9,7 +9,8 @@ Standard library only. Kept out of scripts/ so it is never packaged into the ski
   write-config                   write the ClawHub CLI config from $CLAWHUB_TOKEN (0600)
   check-whoami --expect HANDLE   fail unless `clawhub whoami` reports HANDLE
   wait-for-version --slug S --version V   poll until V is ClawHub's latest
-  check-verdict --slug S --version V      fail unless ClawHub's security verdict passes
+  check-verdict --slug S --version V      fail unless ClawHub's security verdict is clean
+                                          (a not-yet-generated skill card only warns)
 """
 
 import argparse
@@ -123,10 +124,14 @@ def wait_for_version(slug: str, version: str, timeout: float = 1200, interval: f
         sleep(interval)
 
 
-def check_verdict(slug: str, version: str, attempts: int = 10, interval: float = 30,
+def check_verdict(slug: str, version: str, attempts: int = 4, interval: float = 30,
                   run=subprocess.run, sleep=time.sleep) -> dict:
-    """Pass only if ClawHub's security verdict is clean. The generated skill card can lag behind
-    the scans, so a result whose *only* problem is `card.missing` is retried."""
+    """Fail unless ClawHub's security verdict is clean.
+
+    ClawHub generates the skill card asynchronously and it can lag the scans by 30+ minutes, so a
+    result whose *only* problem is `card.missing` is retried briefly and then reported as
+    `_card_pending` — a warning, not a failure: the card is metadata, not a safety property, and a
+    release whose security verdict is clean must not show a red run because of it."""
     last: dict = {}
     for attempt in range(attempts):
         result = _run(["skill", "verify", slug, "--version", version], run)
@@ -145,8 +150,8 @@ def check_verdict(slug: str, version: str, attempts: int = 10, interval: float =
             return last
         if attempt < attempts - 1:
             sleep(interval)
-    raise CheckError(f"{slug}@{version} is clean, but ClawHub's skill card was still not generated "
-                     f"after {attempts} checks.")
+    last["_card_pending"] = True
+    return last
 
 
 # ── CLI ──────────────────────────────────────────────────────────
@@ -186,7 +191,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{args.slug}@{args.version} is now the latest version on ClawHub.")
         elif args.cmd == "check-verdict":
             result = check_verdict(args.slug, args.version)
-            print(f"ClawHub verification passed: {result['security'].get('summary', '')}")
+            print(f"ClawHub security verdict is clean: {result['security'].get('summary', '')}")
+            if result.get("_card_pending"):
+                print("::warning::ClawHub hasn't generated the skill card yet (it does so asynchronously, "
+                      "sometimes 30+ minutes after publishing). The security verdict is clean; check "
+                      "`clawhub skill verify` later.")
     except KeyError as e:
         print(f"::error::Missing environment variable {e}", file=sys.stderr)
         return 1

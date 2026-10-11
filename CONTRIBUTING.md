@@ -89,7 +89,9 @@ Maintainers only. Releases are published by CI; the manual route below is the fa
    Approving is the real decision: publishing accepts ClawHub's **MIT-0** license terms
    automatically (the CLI sends `acceptLicenseTerms: true`). The repo itself stays MIT.
 5. It publishes a clean `git archive` of the release commit, waits for ClawHub's scans to finish,
-   and fails the run unless the security verdict is clean.
+   and fails the run unless the security verdict is clean. ClawHub generates the skill card
+   asynchronously (sometimes 30+ minutes later), so a card that isn't there yet only produces a
+   warning; check `clawhub skill verify apple-music-dj` later.
 
 Run the workflow manually from the Actions tab for a **dry run** (the default): it does every check
 and `clawhub publish --dry-run`, and publishes nothing.

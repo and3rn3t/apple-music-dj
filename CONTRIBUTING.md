@@ -89,7 +89,8 @@ Maintainers only. Releases are published by CI; the manual route below is the fa
    Approving is the real decision: publishing accepts ClawHub's **MIT-0** license terms
    automatically (the CLI sends `acceptLicenseTerms: true`). The repo itself stays MIT.
 5. It publishes a clean `git archive` of the release commit, waits for ClawHub's scans to finish,
-   and reports ClawHub's verdict. A **malicious** verdict (or one it can't recognize) fails the run.
+   and reports ClawHub's verdict. A **malicious** or **blocked** verdict (or one it can't recognize, or any
+   unexpected verification reason) fails the run.
    A **suspicious** verdict only produces a warning with the reviewer's summary: ClawHub's LLM review
    is not stable (identical code has flipped between benign and suspicious on re-scans), and the
    version is already published, so a red run would change nothing on the registry. Read the audit

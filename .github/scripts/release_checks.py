@@ -9,8 +9,10 @@ Standard library only. Kept out of scripts/ so it is never packaged into the ski
   write-config                   write the ClawHub CLI config from $CLAWHUB_TOKEN (0600)
   check-whoami --expect HANDLE   fail unless `clawhub whoami` reports HANDLE
   wait-for-version --slug S --version V   poll until V is ClawHub's latest
-  check-verdict --slug S --version V      fail on a malicious verdict; warn on suspicious or a
-                                          not-yet-generated skill card
+  check-verdict --slug S --version V      fail on a malicious or blocked verdict, an unrecognized
+                                          status, or any unexpected verification reason; warn
+                                          (exit 0) on a suspicious verdict or a skill card that
+                                          isn't generated yet
 """
 
 import argparse
@@ -125,6 +127,21 @@ def wait_for_version(slug: str, version: str, timeout: float = 1200, interval: f
 
 
 HARD_FAIL_STATUSES = {"malicious", "blocked"}
+# The only reasons a *suspicious* result may carry and still be reported as a warning; anything else
+# (e.g. signature.invalid) is a real verification failure and stays one.
+SUSPICIOUS_ALLOWED_REASONS = {"security.status_not_clean", "card.missing"}
+
+
+def workflow_data(text: str) -> str:
+    """Escape text for a GitHub Actions workflow command (`::warning::...`), as the runner does.
+    Without it, ClawHub-supplied text containing a newline followed by `::error::...` could forge
+    annotations or other workflow commands."""
+    return str(text).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def one_line(text: str) -> str:
+    """Flatten ClawHub-supplied text for a plain log line, so it can't start a new line with `::`."""
+    return " ".join(str(text).split())
 
 
 def check_verdict(slug: str, version: str, attempts: int = 4, interval: float = 30,
@@ -149,16 +166,20 @@ def check_verdict(slug: str, version: str, attempts: int = 4, interval: float = 
             raise CheckError(f"Couldn't read `clawhub skill verify` output: {result.stdout[:200]!r}") from None
         security = last.get("security", {})
         status, verdict = security.get("status"), security.get("verdict")
-        if status in HARD_FAIL_STATUSES or verdict in HARD_FAIL_STATUSES:
-            raise CheckError(f"Security verdict for {slug}@{version} is {status or verdict!r} "
+        hard = next((v for v in (status, verdict) if v in HARD_FAIL_STATUSES), None)
+        if hard:  # report the field that actually matched, not an unrelated one
+            raise CheckError(f"Security verdict for {slug}@{version} is {hard!r} "
                              f"({security.get('summary', 'no summary')}). See the audit page.")
-        if status == "suspicious" or (verdict == "suspicious" and status != "clean"):
+        all_reasons = last.get("reasons") or []
+        if status == "suspicious":  # `status` is the canonical field; a verdict alone never downgrades
+            unexpected = [r for r in all_reasons if r not in SUSPICIOUS_ALLOWED_REASONS]
+            if unexpected:
+                raise CheckError(f"Verification reported: {', '.join(unexpected)}")
             last["_suspicious"] = True
             return last
         if status != "clean" or not security.get("passed"):
             raise CheckError(f"Security verdict for {slug}@{version} is {status!r} "
                              f"({security.get('summary', 'no summary')}); expected clean. See the audit page.")
-        all_reasons = last.get("reasons") or []
         other = [r for r in all_reasons if r != "card.missing"]
         if other:
             raise CheckError(f"Verification reported: {', '.join(other)}")
@@ -213,20 +234,21 @@ def main(argv: list[str] | None = None) -> int:
             result = check_verdict(args.slug, args.version)
             summary = result["security"].get("summary", "")
             if result.get("_suspicious"):
-                print(f"::warning::ClawHub's review of {args.slug}@{args.version} says 'suspicious' (its reviews "
-                      f"are not stable between runs, and this version is already published): {summary} "
-                      f"Read the audit page and decide whether anything needs changing.")
+                print("::warning::" + workflow_data(
+                    f"ClawHub's review of {args.slug}@{args.version} says 'suspicious' (its reviews "
+                    f"are not stable between runs, and this version is already published): {summary} "
+                    f"Read the audit page and decide whether anything needs changing."))
                 return 0
-            print(f"ClawHub security verdict is clean: {summary}")
+            print(f"ClawHub security verdict is clean: {one_line(summary)}")
             if result.get("_card_pending"):
                 print("::warning::ClawHub hasn't generated the skill card yet (it does so asynchronously, "
                       "sometimes 30+ minutes after publishing). The security verdict is clean; check "
                       "`clawhub skill verify` later.")
     except KeyError as e:
-        print(f"::error::Missing environment variable {e}", file=sys.stderr)
+        print(f"::error::{workflow_data(f'Missing environment variable {e}')}", file=sys.stderr)
         return 1
     except CheckError as e:
-        print(f"::error::{e}", file=sys.stderr)
+        print(f"::error::{workflow_data(e)}", file=sys.stderr)
         return 1
     return 0
 

@@ -276,6 +276,44 @@ class TestCheckVerdict:
                            "security": {"status": "clean", "passed": True, "summary": "ok"}})
         assert "_card_pending" not in rc.check_verdict("x", "3.4.5", run=FakeCLI(body), sleep=lambda s: None)
 
+    # -- suspicious results get the same scrutiny as clean ones (Copilot review on #33) --
+
+    def _payload(self, status, verdict=None, reasons=("security.status_not_clean",), decision="fail"):
+        return json.dumps({"decision": decision, "reasons": list(reasons),
+                           "security": {"status": status, "verdict": verdict, "passed": False, "summary": "s"}})
+
+    def test_an_unknown_status_with_a_suspicious_verdict_still_fails_closed(self):
+        with pytest.raises(rc.CheckError, match="expected clean"):
+            rc.check_verdict("x", "3.4.5", run=FakeCLI(self._payload("mystery", verdict="suspicious")),
+                             sleep=lambda s: None)
+
+    def test_a_suspicious_verdict_field_alone_never_downgrades_a_status(self):
+        with pytest.raises(rc.CheckError, match="expected clean"):
+            rc.check_verdict("x", "3.4.5", run=FakeCLI(self._payload("pending", verdict="suspicious")),
+                             sleep=lambda s: None)
+
+    @pytest.mark.parametrize("extra", ["signature.invalid", "provenance.mismatch", "anything.else"])
+    def test_a_suspicious_result_with_another_failure_is_not_a_warning(self, extra):
+        body = self._payload("suspicious", "suspicious", reasons=["security.status_not_clean", extra])
+        with pytest.raises(rc.CheckError, match=f"Verification reported: {extra}"):
+            rc.check_verdict("x", "3.4.5", run=FakeCLI(body), sleep=lambda s: pytest.fail("must not wait"))
+
+    def test_suspicious_with_only_the_expected_reasons_is_a_warning(self):
+        body = self._payload("suspicious", "suspicious", reasons=["security.status_not_clean", "card.missing"])
+        assert rc.check_verdict("x", "3.4.5", run=FakeCLI(body), sleep=lambda s: None)["_suspicious"] is True
+
+    # -- the hard-failure message names the field that actually matched --
+
+    @pytest.mark.parametrize("status,verdict,shown", [("clean", "malicious", "malicious"),
+                                                      ("blocked", "benign", "blocked"),
+                                                      ("malicious", "malicious", "malicious")])
+    def test_the_blocking_reason_is_the_field_that_matched(self, status, verdict, shown):
+        with pytest.raises(rc.CheckError) as err:
+            rc.check_verdict("x", "3.4.5", run=FakeCLI(self._payload(status, verdict)), sleep=lambda s: None)
+        assert f"is '{shown}'" in str(err.value)
+        if status == "clean":
+            assert "is 'clean'" not in str(err.value)
+
     def test_a_missing_card_never_excuses_a_malicious_verdict(self):
         cli = FakeCLI(verdict(status="malicious", passed=False, decision="fail",
                               reasons=["card.missing", "security.status_not_clean"]))
@@ -329,6 +367,52 @@ class TestCheckVerdict:
 
 
 # ── command line ─────────────────────────────────────────────────
+
+class TestWorkflowCommandSafety:
+    """Text from ClawHub is printed into the Actions log. A newline followed by `::error::...` in it
+    would be run as a workflow command, so everything derived from it is escaped (Copilot, #33)."""
+
+    FORGED = "fine.\n::error::forged annotation\n::add-mask::secret\r::warning::more"
+
+    def test_workflow_data_escapes_what_the_runner_escapes(self):
+        assert rc.workflow_data("a%b\r\nc") == "a%25b%0D%0Ac"
+
+    def test_one_line_flattens_whitespace(self):
+        assert rc.one_line("a\n::error::b\r\n  c") == "a ::error::b c"
+
+    def _no_line_starts_a_command(self, text):
+        bad = [ln for ln in text.splitlines() if ln.startswith("::") and not ln.startswith(("::warning::", "::error::"))]
+        forged = [ln for ln in text.splitlines() if ln.startswith("::error::forged") or ln.startswith("::add-mask::")]
+        return not bad and not forged
+
+    def test_a_suspicious_summary_cannot_forge_commands(self, monkeypatch, capsys):
+        monkeypatch.setattr(rc, "check_verdict", lambda slug, version: {
+            "security": {"summary": self.FORGED}, "_suspicious": True})
+        assert rc.main(["check-verdict", "--slug", "s", "--version", "1.0.0"]) == 0
+        out = capsys.readouterr().out
+        assert out.count("\n") == 1  # exactly one physical line: the single ::warning:: command
+        assert out.startswith("::warning::") and "%0A::error::forged annotation" in out
+        assert self._no_line_starts_a_command(out)
+
+    def test_a_clean_summary_cannot_forge_commands_either(self, monkeypatch, capsys):
+        monkeypatch.setattr(rc, "check_verdict", lambda slug, version: {"security": {"summary": self.FORGED}})
+        assert rc.main(["check-verdict", "--slug", "s", "--version", "1.0.0"]) == 0
+        out = capsys.readouterr().out
+        assert out.count("\n") == 1 and not any(ln.startswith("::") for ln in out.splitlines())
+
+    def test_error_messages_are_escaped(self, monkeypatch, capsys):
+        def boom(slug, version):
+            raise rc.CheckError("Security verdict is 'malicious' (" + self.FORGED + ")")
+        monkeypatch.setattr(rc, "check_verdict", boom)
+        assert rc.main(["check-verdict", "--slug", "s", "--version", "1.0.0"]) == 1
+        err = capsys.readouterr().err
+        assert err.count("\n") == 1 and err.startswith("::error::") and "%0A::error::forged annotation" in err
+
+    def test_the_help_text_describes_every_failure_mode(self):
+        doc = rc.__doc__
+        for term in ("malicious", "blocked", "unrecognized", "suspicious"):
+            assert term in doc
+
 
 class TestMain:
     def test_versions(self, capsys):

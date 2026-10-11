@@ -72,6 +72,33 @@ scripts/apple_music_api.sh recently-added 5
 The mock's response shapes follow Apple's docs but are not verified against the real
 service, so it complements a live run rather than replacing one.
 
+## Publishing to ClawHub
+
+Maintainers only. A few things learned the hard way:
+
+- Use a **recent CLI** (`pnpm add -g clawhub@latest`; 0.7.0's fixed 15 s request timeout can't upload
+  this skill). Check you're logged in with `clawhub whoami`.
+- **The CLI reads `.clawhubignore`, not `.clawignore`.** Both files exist and must stay identical
+  (`tests/test_packaging.py` enforces it); otherwise tests and dev files get uploaded.
+- **Publish from a clean export of `main`**, not your working folder (local `.venv`, caches and
+  untracked files would otherwise be eligible):
+  ```bash
+  git checkout main && git pull
+  rm -rf /tmp/amdj && mkdir -p /tmp/amdj && git archive HEAD | tar -x -C /tmp/amdj
+  clawhub publish /tmp/amdj --slug apple-music-dj --name "Apple Music DJ" --version X.Y.Z \
+    --source-repo and3rn3t/apple-music-dj --source-commit "$(git rev-parse HEAD)" --source-ref main \
+    --changelog "..."
+  ```
+  `--dry-run` previews without publishing.
+- **Publishing accepts ClawHub's MIT-0 license terms automatically** (the CLI sends
+  `acceptLicenseTerms: true` with no prompt). The repo itself stays MIT.
+- The version must be bumped in `pyproject.toml`, `SKILL.md` and `clawhub.json`, and CI green on the
+  merge commit. The new version appears as `latest` only after ClawHub's security scans finish
+  (a few minutes); `clawhub inspect apple-music-dj` shows it, and the audit is at
+  `clawhub.ai/<owner>/skills/apple-music-dj/security-audit`.
+- Keep example commands in `SKILL.md` free of flag names that read like secrets (an earlier
+  `--seed "<value>"` example was flagged as a crypto seed phrase on the command line).
+
 ## Making Changes
 
 1. Create a feature branch: `git checkout -b feature/my-change`

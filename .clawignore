@@ -1,4 +1,5 @@
-# Files excluded from OpenClaw skill packaging
+# Files excluded from OpenClaw skill packaging.
+# KEEP IN SYNC with .clawhubignore (the ClawHub CLI reads that name; tests/test_packaging.py enforces it).
 
 # Version control
 
@@ -50,3 +51,5 @@ pyproject.toml
 
 CONTRIBUTING.md
 CHANGELOG.md
+renovate.json
+Makefile

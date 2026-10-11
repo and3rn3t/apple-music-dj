@@ -1,0 +1,55 @@
+# Files excluded from the ClawHub package (`clawhub publish` reads THIS name, not .clawignore).
+# KEEP IN SYNC with .clawignore (tests/test_packaging.py enforces it).
+
+# Version control
+
+.git/
+.gitignore
+
+# Environment & secrets
+
+.env
+.env.*
+*.p8
+*.pem
+
+# OS files
+
+.DS_Store
+Thumbs.db
+
+# Editor files
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python artifacts
+
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Cache (generated at runtime)
+
+.apple-music-dj/
+
+# Testing & dev
+
+tests/
+.pytest_cache/
+.mypy_cache/
+.venv/
+pyproject.toml
+
+# Dev files
+
+CONTRIBUTING.md
+CHANGELOG.md
+renovate.json
+Makefile

@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: test coverage coverage-html lint ruff
+.PHONY: test coverage coverage-html lint ruff audit demo-svg
 
 ## Run all tests
 test:
@@ -25,3 +25,11 @@ lint:
 	@for f in scripts/*.py; do $(PYTHON) -c "import py_compile; py_compile.compile('$$f', doraise=True)"; done
 	@for f in scripts/*.sh; do bash -n "$$f"; done
 	@echo "All scripts OK"
+
+## Pre-publish self-audit: trust checks, shipped changes since the last tag, and a review prompt
+audit:
+	$(PYTHON) .github/scripts/self_audit.py
+
+## Regenerate the README's animated demo (assets/demo-tour.svg) from the real `demo.py tour`
+demo-svg:
+	$(PYTHON) .github/scripts/make_demo_svg.py

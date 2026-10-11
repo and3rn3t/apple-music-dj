@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.2] — Unreleased
+
+### Added
+
+- **Animated demo in the README** (`assets/demo-tour.svg`): a terminal replay of the real `demo.py tour` output (taste card, songs like Radiohead, a 90s throwback, a daily pick, a compatibility score). It plays on GitHub, shows a still when the viewer prefers reduced motion, and is regenerated with `make demo-svg`.
+- **"Moving from Spotify?" section** in the README, `references/spotify-import.md` (how to get a playlist out of Spotify, what exact / fuzzy / unmatched mean, limits) and `assets/sample-spotify-export.csv` to try the importer with no account.
+- **Pre-publish self-audit** (`make audit`): runs the trust, listing and packaging checks, lists the published files that changed since the last tag and prints a review prompt covering ClawHub's concerns. `CONTRIBUTING.md` makes it step 0 of a release.
+- `tests/test_trust_claims.py` now also checks that every `/v1/me/...` endpoint the scripts call is listed in `SKILL.md`'s read and write tables.
+
+### Fixed
+
+- **Docs no longer say Spotify CSV exports carry ISRC codes.** Exportify's files have title and artist columns but no ISRC, so such imports are matched by a strict title + artist search (reported as "fuzzy"). The importer was already doing this; the README, `SKILL.md` and the script's docstring now say so.
+- **Two read endpoints were missing from the privacy tables**: `apple_music_api.sh recent-played` (`/v1/me/recent/played`) and `ratings <type>` for albums, playlists and music videos. Both are read-only; found by the new endpoint check.
+
 ## [3.3.1] — 2026-10-11
 
 ### Changed

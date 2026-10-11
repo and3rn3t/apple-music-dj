@@ -9,9 +9,11 @@ broader listing tags.
 
 ## Now — listing and launch
 
-- [ ] **Demo GIF / short video at the top of the README and listing.** 20–30 s: say "songs like
-      Phoebe Bridgers" in OpenClaw → the playlist appears in Apple Music on an iPhone. Record the
-      no-account version with `demo.py tour` too, for people without tokens.
+- [x] **Animated demo in the README** — a replay of `demo.py tour` (`assets/demo-tour.svg`,
+      regenerate with `make demo-svg`).
+- [ ] **Screen recording for the listing.** 20–30 s: say "songs like Phoebe Bridgers" in OpenClaw →
+      the playlist appears in Apple Music on an iPhone. Needs a real device and account, so it is
+      recorded by hand.
 - [ ] **Publish 3.3.0 to ClawHub** and check the security verdict comes back *Pass*; once it is
       stable, add a "ClawHub: Pass" badge to the README.
 - [ ] **Submit to the community "Awesome OpenClaw Skills" list** (Music / Media section).
@@ -31,9 +33,9 @@ broader listing tags.
       "Send me your code" is a much easier ask than a file.
 - [ ] **Monthly recap / "Wrapped"-style year in review** as a shareable card, timed for December,
       with a ready-made caption. Builds on `listening_insights.py` and the snapshots.
-- [ ] **Spotify-switcher landing section.** Lead a README section and listing line with "Moving
-      from Spotify? Bring your playlists" (`import_playlist.py`), plus a short guide on exporting
-      Spotify playlists to CSV.
+- [x] **Spotify-switcher section** in the README plus `references/spotify-import.md`, with a sample
+      export to try. Still open: a line for the ClawHub listing description (keep
+      `tests/test_listing.py`'s opening-sentence limits in mind).
 
 ## Later — remove the remaining setup friction
 
@@ -58,9 +60,9 @@ read as a risk, rather than waiting to be flagged.
 
 - [x] Claims in `SKILL.md` (hosts, env vars, stored files, no risky constructs, every account write
       confirmed) are enforced by `tests/test_trust_claims.py`.
-- [ ] **Self-audit before each publish.** Run `SKILL.md` and `scripts/` through a review prompt
-      that mimics ClawHub's concerns (undisclosed writes, unattended actions, credentials, network
-      destinations, shell injection) and fix what it flags before the release is published.
+- [x] **Self-audit before each publish:** `make audit` runs the trust checks, lists the shipped files
+      changed since the last tag and prints a review prompt for ClawHub's concerns (see
+      `CONTRIBUTING.md`). The model review itself stays manual: CI holds no model key.
 - [ ] **Log the verdict per version.** `release_checks.check_verdict` already reads it; keep a
       short table (version → verdict → what changed) to see which edits cause a "Review" flip.
 - [ ] Enable GitHub private vulnerability reporting (repo settings → Security) and point

@@ -359,9 +359,10 @@ Card: `python3 scripts/taste_drift.py > drift.json` then
 
 ### Import a Playlist
 **Triggers:** "import my Spotify playlist", "move this playlist to Apple Music", "rebuild this list in Apple Music"
-Rebuilds a playlist from a CSV (e.g. an Exportify export with ISRC codes) or a text file of
-`Artist - Title` lines. Matches by ISRC first, then a strict title + artist search; anything
-unclear is reported as unmatched instead of guessed.
+Rebuilds a playlist from a CSV (e.g. a Spotify export from a tool like Exportify) or a text file of
+`Artist - Title` lines. Matches by ISRC when the CSV has that column, otherwise by a strict title +
+artist search; anything unclear is reported as unmatched instead of guessed. The user's steps for
+getting a playlist out of Spotify are in `references/spotify-import.md`.
 
 Preview: `python3 scripts/import_playlist.py <file>`
 Create: `python3 scripts/import_playlist.py <file> --create --name "<name>"` (writes to the library — confirm first)
@@ -592,6 +593,7 @@ some bands in that orbit" — not "Here's an awesome playlist just for you!"
 | `references/api-reference.md` | Need endpoint details, formats, genre IDs |
 | `references/playlist-strategies.md` | Before executing any playlist strategy |
 | `references/troubleshooting.md` | User hits errors, things aren't working |
+| `references/spotify-import.md` | User wants to move a Spotify playlist to Apple Music |
 
 ## Privacy & Data Disclosure
 
@@ -603,9 +605,11 @@ stores, and transmits.
 | Data | Endpoint | Purpose |
 |---|---|---|
 | Recently played tracks | `/v1/me/recent/played/tracks` | Current taste signal |
+| Recently played albums, playlists, stations | `/v1/me/recent/played` | Same signal; only the `apple_music_api.sh recent-played` command reads it |
 | Heavy rotation | `/v1/me/history/heavy-rotation` | Repeated listening signal |
 | Library songs & artists | `/v1/me/library/songs`, `/artists` | Broad taste mapping |
 | Ratings (loved/disliked) | `/v1/me/ratings/songs` | Explicit preferences |
+| Ratings of albums, playlists, music videos | `/v1/me/ratings/{type}` | Read only, via `apple_music_api.sh ratings <type>` |
 | Recommendations | `/v1/me/recommendations` | Apple's inference data |
 | Replay summaries | `/v1/me/music-summaries` | Annual listening stats |
 | Recently added | `/v1/me/library/recently-added` | What the user is into right now |

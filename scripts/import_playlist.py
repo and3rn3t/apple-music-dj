@@ -3,8 +3,8 @@
 import_playlist.py — Rebuild a playlist from another service in Apple Music.
 
 Input is either
-  - a CSV (e.g. a Spotify export from Exportify) with an ISRC column and/or
-    title + artist columns, or
+  - a CSV (e.g. a Spotify export from Exportify) with title + artist columns and/or
+    an ISRC column, or
   - a text file with one "Artist - Title" per line (blank lines and # comments ignored).
 
 Matching: ISRC first (exact, batched), then a strict title + artist search.

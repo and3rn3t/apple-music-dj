@@ -21,7 +21,7 @@ Built as an [OpenClaw](https://openclaw.ai) skill, on [ClawHub](https://clawhub.
 - **🎵 8 Playlist Strategies** — Deep cuts, mood/activity, trend radar, constellation discovery, playlist refresh, **songs-like-X seed**, **decade throwbacks**, and **two-person blends**
 - **🌊 Energy-arc sequencing** — Playlists build, peak and wind down (or rise/fall for workouts and sleep) instead of just spacing artists out
 - **📈 Taste Drift** — Dated snapshots show how your genres, artists and listener archetype change over time
-- **📥 Playlist Import** — Rebuild a Spotify (CSV) or plain-text playlist in Apple Music, matched by ISRC
+- **📥 Playlist Import** — Rebuild a Spotify (CSV) or plain-text playlist in Apple Music, matched by ISRC when the export has it, otherwise by title + artist
 - **👍 Feedback loop** — "I didn't like track 7" rates the song down and keeps it out of future playlists
 - **🃏 Taste DNA Card** — Shareable visual summary of your listener identity
 - **🎯 Compatibility Scoring** — How well does your taste match an artist (or another listener)?
@@ -62,6 +62,8 @@ tokens when it needs them.
 
 ## 🧪 Try it first (no account needed)
 
+![Animated replay of the no-account demo: a taste card, songs like Radiohead, a 90s throwback, a daily pick and a compatibility score](assets/demo-tour.svg)
+
 ```bash
 python3 scripts/demo.py tour
 ```
@@ -76,6 +78,21 @@ python3 scripts/demo.py run strategy_engine.py --strategy mood --mood focus --pr
 ```
 
 Or just ask OpenClaw: *"Show me what the Apple Music DJ can do."*
+
+## 🔁 Moving from Spotify?
+
+Bring your playlists with you. Export one as a CSV (or just paste `Artist - Title` lines into a text
+file) and preview the match before anything is created:
+
+```bash
+python3 scripts/import_playlist.py my-playlist.csv                          # preview, writes nothing
+python3 scripts/import_playlist.py my-playlist.csv --create --name "From Spotify"
+```
+
+Tracks are matched by ISRC when your export has it, otherwise by a strict title + artist search;
+anything unclear is listed as unmatched, never guessed. Try it with no account on the included
+sample: `python3 scripts/demo.py run import_playlist.py assets/sample-spotify-export.csv --storefront us`.
+Step-by-step: [`references/spotify-import.md`](references/spotify-import.md).
 
 ## ⚡ 5 Minutes to First Playlist
 

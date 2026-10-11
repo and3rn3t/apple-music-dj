@@ -74,6 +74,12 @@ scripts/apple_music_api.sh recently-added 5
 The mock's response shapes follow Apple's docs but are not verified against the real
 service, so it complements a live run rather than replacing one.
 
+### Regenerating the README demo
+
+`assets/demo-tour.svg` is an animated replay of `scripts/demo.py tour`. When the tour's output
+changes, run `make demo-svg` and commit the result (`tests/test_demo_assets.py` checks it is valid and
+has the real scenes).
+
 ## Publishing to ClawHub
 
 Maintainers only. Releases are published by CI; the manual route below is the fallback.
@@ -82,6 +88,12 @@ Maintainers only. Releases are published by CI; the manual route below is the fa
 
 `.github/workflows/publish-clawhub.yml` publishes when you **publish a GitHub release**:
 
+0. **Run `make audit` first.** ClawHub's reviewer sees only the published files (not `tests/` or this
+   changelog), and its verdict has flipped on identical code, so fix what it could flag before
+   publishing. The command runs the trust-claim, listing and packaging checks, lists the shipped
+   files that changed since the last tag, and prints a review prompt. Give the prompt and the diff
+   (`make audit` explains how; `--full` embeds it) to a model or a second pair of eyes, and fix
+   what comes back.
 1. Bump the version in `SKILL.md`, `pyproject.toml` and `clawhub.json` (they must agree), add a
    `## [X.Y.Z]` section to `CHANGELOG.md`, and merge to `main`.
 2. Publish a GitHub release tagged `vX.Y.Z` on that commit.

@@ -91,3 +91,24 @@ def test_every_account_writing_command_asks_for_confirmation():
     assert len(writing) >= 7, writing  # create/add/remove playlist, add-to-library, favorite, rate, unrate
     unconfirmed = [name for name, body in bodies if name in writing and "_confirm" not in body]
     assert not unconfirmed, f"write commands without _confirm: {unconfirmed}"
+
+
+def _endpoint_pattern(path: str) -> re.Pattern:
+    """A documented endpoint as a regex: `{id}`-style placeholders match one path segment."""
+    parts = re.split(r"\{[^}]*\}", path)
+    return re.compile("^" + "[^/]+".join(re.escape(p) for p in parts) + r"(/.*)?$")
+
+
+def test_every_account_endpoint_the_scripts_call_is_documented():
+    """The Data read / Data written tables must list each /v1/me/... endpoint the scripts can reach."""
+    documented = set(re.findall(r"`(/v1/me/[^`\s]*)`", SKILL))
+    assert len(documented) > 10
+    called = set()
+    for path in SCRIPTS:
+        for _, line in code_lines(path):
+            for found in re.findall(r"/v1/me/[A-Za-z0-9_/${}\-]*", line):
+                called.add(re.sub(r"\$\{[^}]*\}", "{id}", found.rstrip("/")))
+    assert len(called) > 10
+    patterns = [_endpoint_pattern(d) for d in documented]
+    undocumented = sorted(c for c in called if not any(p.match(c) for p in patterns))
+    assert not undocumented, f"called by scripts but missing from SKILL.md's tables: {undocumented}"

@@ -1,23 +1,24 @@
 ---
 name: apple-music-dj
 description: >
-  Ultimate personalization engine for Apple Music. Analyzes listening history, Apple Music Replay
-  stats, library data, and taste patterns to create intelligent playlists directly in the user's
-  Apple Music library via the MusicKit API. Supports deep cuts discovery, mood/activity playlists,
-  trend scouting, constellation discovery ("surprise me"), playlist refresh/evolution,
-  automated weekly curation via cron, taste DNA cards, compatibility scoring, listening insights,
-  catalog gap analysis, album deep dives, artist rabbit holes, daily song drops, concert prep,
-  and personalized new release radar. Use this skill whenever the user mentions Apple Music,
-  playlists, music recommendations, listening habits, music taste, "what should I listen to",
-  discovering new music, mood playlists, workout playlists, deep cuts, hidden gems, trending music,
-  "surprise me", refreshing a playlist, or anything related to curating their music experience.
-  Also trigger on: "DJ", "mix", "playlist for", "music for", "songs like", "similar to",
-  "what's hot", "new releases for me", "taste DNA", "taste card", "compatibility", "how compatible",
-  "year in review", "listening stats", "what have I missed", "album deep dive", "rabbit hole",
-  "concert prep", "seeing [artist] live", "daily song", "what should I listen to right now",
-  "songs like", "blend", "throwback", "[decade] playlist", "taste drift", "import my playlist",
-  "I didn't like track", "add the missing albums", or OpenClaw in the context of music.
-version: 3.2.1
+  Your AI Apple Music curator. Builds playlists from your real listening history, finds songs
+  like any artist or song, makes decade throwbacks and two-person blends, shows how your taste
+  changes over time, and rebuilds playlists from a Spotify export or text list. Anything that
+  changes your account is opt-in and confirmed first. Also covers mood and activity playlists,
+  deep cuts, trending picks, taste DNA cards, compatibility scores, listening insights and year
+  in review, catalog gap analysis, album deep dives, artist rabbit holes, daily song drops,
+  concert prep, a new release radar, and scheduled weekly curation via cron. Use whenever the
+  user mentions Apple Music, playlists, music recommendations, listening habits, music taste,
+  "what should I listen to", discovering new music, mood or workout playlists, deep cuts, hidden
+  gems, trending music, "surprise me", refreshing a playlist, or anything related to curating
+  their music experience. Also trigger on: "DJ", "mix", "playlist for", "music for", "songs
+  like", "similar to", "more like", "what's hot", "new releases for me", "taste DNA", "taste
+  card", "compatibility", "how compatible", "year in review", "listening stats", "what have I
+  missed", "album deep dive", "rabbit hole", "concert prep", "seeing [artist] live", "daily
+  song", "what should I listen to right now", "blend", "throwback", "[decade] playlist", "taste
+  drift", "how has my taste changed", "import my playlist", "I didn't like track", "add the
+  missing albums", or OpenClaw in the context of music.
+version: 3.2.2
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
@@ -29,6 +30,9 @@ tags:
   - personalization
   - musickit
   - discovery
+  - listening-history
+  - taste-profile
+  - playlist-import
 category: music
 icon: assets/icon.svg
 metadata:
@@ -55,10 +59,34 @@ metadata:
 
 An intelligent Apple Music personalization engine for OpenClaw. Reads your listening history,
 Replay stats, ratings, and library to build a deep taste profile — then generates playlists
-using eight strategies, surfaces insights about your listening, and writes everything directly
-to your Apple Music library. Also includes shareable Taste DNA Cards, compatibility scoring,
-catalog gap analysis, album deep dives, artist rabbit holes, daily song drops, concert prep
-playlists, and personalized new release radar.
+using eight strategies, surfaces insights about your listening, and creates the playlists you
+ask for in your own Apple Music library. Also includes shareable Taste DNA Cards, compatibility
+scoring, catalog gap analysis, album deep dives, artist rabbit holes, daily song drops, concert
+prep playlists, and personalized new release radar.
+
+## At a glance
+
+**What it does:** reads your Apple Music listening (recently played, heavy rotation, library,
+ratings, Replay), builds a taste profile, and turns it into playlists and insights.
+
+**Try saying**
+
+| You say | You get |
+|---|---|
+| "Analyze my taste" | A Taste DNA profile and a shareable card |
+| "Songs like Phoebe Bridgers" | A playlist of similar artists, filtered through your taste |
+| "Make me a 90s throwback" | A decade playlist built from your own artists |
+| "Blend my taste with my sister's" | One playlist for two listeners |
+| "How has my taste changed since spring?" | A drift report from your saved snapshots |
+| "Import this Spotify playlist" | A matched Apple Music playlist (preview first) |
+| "I didn't like track 7" | Rated down and kept out of future playlists |
+
+**What it needs:** an Apple Developer account (for a MusicKit token) and an Apple Music
+subscription. Tokens live only in environment variables.
+
+**Safety:** read-only by default. Creating playlists, favoriting, rating, adding albums and
+scheduling cron jobs are opt-in and confirmed first; scheduled jobs additionally need a reviewed
+`--confirm` digest. Local data is owner-only (`~/.apple-music-dj/`). See `SECURITY.md`.
 
 ## Architecture
 

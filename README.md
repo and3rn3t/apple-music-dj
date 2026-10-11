@@ -144,9 +144,75 @@ apple-music-dj/
     └── verify_setup.sh         # Setup verification checker
 ```
 
-## 📸 Screenshots & Examples
+## 📸 Sample output
 
-> _Coming soon — taste cards, playlist examples, and compatibility scores._
+> The examples below use a **fictional listener profile** and a **small demo catalog** so you can see
+> the shape of the results. Yours come from your own Apple Music data.
+
+### Taste DNA Card
+
+![Sample Taste DNA card](assets/sample-taste-card.svg)
+
+<details>
+<summary>Text version (<code>taste_card.py --format text</code>)</summary>
+
+```
+╔══════════════════════════════════════╗
+║          🎧  TASTE DNA CARD          ║
+╠══════════════════════════════════════╣
+  Archetype: Deep Catalog Digger
+  You live in the deep end — album tracks, B-sides, and artists most people haven't heard of.
+
+  ── TOP GENRES ──
+  Alternative......... █████░░░░░░░░░░░░░░░ 27%
+  Indie............... ███░░░░░░░░░░░░░░░░░ 19%
+  Electronic.......... ███░░░░░░░░░░░░░░░░░ 16%
+  Hip-Hop/Rap......... ██░░░░░░░░░░░░░░░░░░ 10%
+
+  ── TOP ARTISTS ──
+   1. Radiohead
+   2. Phoebe Bridgers
+   3. Tame Impala
+   4. Björk
+
+  ── STATS ──
+  Energy:     Balanced
+  Variety:    78%
+  Mainstream: 27%
+╚══════════════════════════════════════╝
+```
+
+</details>
+
+### "Songs like Radiohead"
+
+`strategy_engine.py --strategy similar --similar-to "Radiohead"` picks the artist's best songs plus
+similar artists' top songs, then scores them against your own taste:
+
+```
+Like Radiohead · Oct 2026
+ 1. Starlight — Muse                   Fans of Radiohead tend to love Muse.
+ 2. Champagne Supernova — Oasis        Fans of Radiohead tend to love Oasis.
+ 3. Paranoid Android — Radiohead       One of Radiohead's best.
+ 4. Wonderwall — Oasis                 Fans of Radiohead tend to love Oasis.
+ 5. Supermassive Black Hole — Muse     Fans of Radiohead tend to love Muse.
+```
+
+### How has your taste changed?
+
+Every fresh profile build saves a small dated snapshot; `taste_drift.py` compares two of them:
+
+```
+Taste drift: 2026-07-12 → 2026-10-11 (91 days)
+
+Your taste moved toward Electronic (+10%) and away from Alternative (−7%). Khruangbin and 1 more
+entered your top 20. You've gone from a Genre Drifter to a Deep Catalog Digger.
+
+Rising:   Electronic +10%, Ambient +2%
+Falling:  Alternative −7%, Singer/Songwriter −7%, Indie −3%
+New top artists:     Khruangbin, Boards of Canada
+Fell out of top 20:  Big Thief, Bon Iver
+```
 
 ## 🔒 Privacy
 

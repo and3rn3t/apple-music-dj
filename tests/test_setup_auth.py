@@ -48,20 +48,20 @@ class TestPage:
         assert '</script><x>' not in page and "\\u003c/script>" in page
         assert setup_auth.MUSICKIT_JS in page
 
-    def test_page_served_only_on_the_secret_path(self, catcher):
-        status, body = request(catcher, "GET", f"/{catcher.secret}/")
+    def test_page_served_only_on_the_one_time_path(self, catcher):
+        status, body = request(catcher, "GET", f"/{catcher.nonce}/")
         assert status == 200 and b"Connect Apple Music" in body and b"dev.tok.en" in body
         assert request(catcher, "GET", "/")[0] == 404
         assert request(catcher, "GET", "/wrong/")[0] == 404
 
     def test_foreign_host_header_is_refused(self, catcher):
         """A DNS-rebinding page would arrive with its own Host name."""
-        assert request(catcher, "GET", f"/{catcher.secret}/", headers={"Host": "evil.example"})[0] == 404
+        assert request(catcher, "GET", f"/{catcher.nonce}/", headers={"Host": "evil.example"})[0] == 404
 
 
 class TestTokenPost:
     def path(self, c):
-        return f"/{c.secret}/token"
+        return f"/{c.nonce}/token"
 
     def test_same_origin_post_delivers_the_token(self, catcher):
         status, _ = request(catcher, "POST", self.path(catcher), {"token": "user-123"},
@@ -126,7 +126,7 @@ class TestSetupFlow:
             def start(self):
                 super().start()
                 if token:
-                    threading.Thread(target=lambda: request(self, "POST", f"/{self.secret}/token",
+                    threading.Thread(target=lambda: request(self, "POST", f"/{self.nonce}/token",
                                                             {"token": token}, {"Origin": origin(self)})).start()
                 return self
 

@@ -104,12 +104,13 @@ def render_page(dev_token: str, version: str = "3") -> bytes:
 class TokenCatcher:
     """A one-shot server on 127.0.0.1 that serves the sign-in page and receives the user token.
 
-    Only requests for the random secret path, with a loopback Host header (no DNS rebinding) and,
+    Only requests for the random one-time path, with a loopback Host header (no DNS rebinding) and,
     for the POST, a same-origin Origin header, are answered. The first valid token wins.
     """
 
     def __init__(self, dev_token: str, port: int = 0):
-        self.secret = secrets.token_urlsafe(24)
+        # A one-time path segment, so only the browser tab we open (or the user pastes) finds the page
+        self.nonce = secrets.token_urlsafe(24)
         self.page = render_page(dev_token)
         self.token: str | None = None
         self.done = threading.Event()
@@ -132,33 +133,39 @@ class TokenCatcher:
                 return self.headers.get("Host", "") in catcher.hosts
 
             def do_GET(self):
-                if not self._host_ok() or self.path != f"/{catcher.secret}/":
-                    return self._reply(404, b"not found")
-                self._reply(200, catcher.page, "text/html; charset=utf-8")
+                if self._host_ok() and self.path == f"/{catcher.nonce}/":
+                    self._reply(200, catcher.page, "text/html; charset=utf-8")
+                else:
+                    self._reply(404, b"not found")
 
             def do_POST(self):
-                if (not self._host_ok() or self.path != f"/{catcher.secret}/token"
-                        or self.headers.get("Origin") not in catcher.origins):
-                    return self._reply(403, b"forbidden")
-                length = int(self.headers.get("Content-Length") or 0)
-                if not 0 < length <= MAX_TOKEN_BYTES:
-                    return self._reply(400, b"bad request")
-                try:
-                    token = json.loads(self.rfile.read(length)).get("token")
-                except (ValueError, AttributeError):
-                    token = None
-                if not isinstance(token, str) or not token.strip() or any(c.isspace() for c in token):
-                    return self._reply(400, b"no token")
-                if not catcher.done.is_set():
-                    catcher.token = token
-                    catcher.done.set()
-                self._reply(200, b"ok")
+                status, body = catcher.accept(self)
+                self._reply(status, body)
 
         self._server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
         bound = self._server.server_address[1]
         self.hosts = {f"127.0.0.1:{bound}", f"localhost:{bound}"}
         self.origins = {f"http://{h}" for h in self.hosts}
-        self.url = f"http://127.0.0.1:{bound}/{self.secret}/"
+        self.url = f"http://127.0.0.1:{bound}/{self.nonce}/"
+
+    def accept(self, req: BaseHTTPRequestHandler) -> tuple[int, bytes]:
+        """Validate a token POST; the first valid token wins."""
+        if (req.headers.get("Host", "") not in self.hosts or req.path != f"/{self.nonce}/token"
+                or req.headers.get("Origin") not in self.origins):
+            return 403, b"forbidden"
+        length = int(req.headers.get("Content-Length") or 0)
+        if not 0 < length <= MAX_TOKEN_BYTES:
+            return 400, b"bad request"
+        try:
+            token = json.loads(req.rfile.read(length)).get("token")
+        except (ValueError, AttributeError):
+            token = None
+        if not isinstance(token, str) or not token.strip() or any(c.isspace() for c in token):
+            return 400, b"no token"
+        if not self.done.is_set():
+            self.token = token
+            self.done.set()
+        return 200, b"ok"
 
     def start(self) -> "TokenCatcher":
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
@@ -229,9 +236,10 @@ def cmd_setup(args) -> int:
     print("\n2/2  Music User Token: sign in with Apple in your browser.", file=sys.stderr)
     catcher = TokenCatcher(dev_token, args.port).start()
     try:
-        print(f"     Open this link if a browser doesn't appear:\n     {catcher.url}", file=sys.stderr)
-        if not args.no_browser:
-            webbrowser.open(catcher.url)
+        opened = not args.no_browser and webbrowser.open(catcher.url)
+        if not opened:
+            # The link is a loopback address with a one-time path; it's only useful on this machine
+            print(f"     Open this link in your browser:\n     {catcher.url}", file=sys.stderr)
         print(f"     Waiting up to {args.timeout}s… (Ctrl-C to cancel)", file=sys.stderr)
         user_token = catcher.wait(args.timeout)
     except KeyboardInterrupt:

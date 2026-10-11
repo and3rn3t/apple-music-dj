@@ -30,6 +30,7 @@ if sys.version_info < (3, 10):
     )
 
 import argparse
+import contextlib
 import os
 import re
 import shutil
@@ -439,9 +440,8 @@ def cmd_serve(port: int) -> int:
     srv = MockAppleMusic(port).start()
     print(f"Mock Apple Music API on {srv.url}  (Ctrl-C to stop)", flush=True)
     try:
-        threading.Event().wait()
-    except KeyboardInterrupt:
-        pass
+        with contextlib.suppress(KeyboardInterrupt):  # Ctrl-C is the normal way to stop
+            threading.Event().wait()
     finally:
         srv.stop()
     return 0

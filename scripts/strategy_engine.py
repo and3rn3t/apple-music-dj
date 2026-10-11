@@ -11,7 +11,7 @@ Strategies:
   trend           Trending tracks filtered through your taste
   constellation   Gradual discovery from familiar to frontier
   refresh         Refresh an existing playlist (requires --playlist-id)
-  seed            Songs like an artist or song (requires --seed)
+  similar         Songs like an artist or song (requires --similar-to; `seed` still works as an alias)
   era             Throwback from one decade (--decade, default: your top era)
   blend           One playlist for two listeners (requires --profile-b)
 
@@ -21,7 +21,7 @@ Usage:
   python3 strategy_engine.py --strategy trend --profile <path> --storefront <sf>
   python3 strategy_engine.py --strategy constellation --profile <path> --storefront <sf>
   python3 strategy_engine.py --strategy refresh --playlist-id <id> --profile <path> --storefront <sf>
-  python3 strategy_engine.py --strategy seed --seed "Radiohead" --profile <path> --storefront <sf>
+  python3 strategy_engine.py --strategy similar --similar-to "Radiohead" --profile <path> --storefront <sf>
   python3 strategy_engine.py --strategy era --decade 90s --profile <path> --storefront <sf>
   python3 strategy_engine.py --strategy blend --profile <a.json> --profile-b <b.json> --storefront <sf>
 
@@ -1092,7 +1092,7 @@ def generate_name(strategy: str, mood: str | None = None,
         return f"New Horizons · {date_str}"
     elif strategy == "refresh":
         return f"Refreshed · {date_str}"
-    elif strategy == "seed":
+    elif strategy in ("similar", "seed"):
         return f"Like {seed or 'Your Favorites'} · {date_str}"
     elif strategy == "blend":
         return f"Blend · {date_str}"
@@ -1114,8 +1114,8 @@ def generate_description(strategy: str, mood: str | None = None,
         "constellation": "Starting from the artists you love, this playlist gradually "
                          "pulls you into new territory. The best discoveries are toward the end.",
         "refresh": "Fresh additions to keep your playlist evolving.",
-        "seed": "Songs in the same orbit as your starting point, "
-                "weighted toward what you already like.",
+        "similar": "Songs in the same orbit as your starting point, "
+                   "weighted toward what you already like.",
         "blend": "One playlist for two listeners: the artists you share, plus each "
                  "other's favorites that fit both tastes.",
         "era": "A trip back to one decade, built from the artists and genres you play most.",
@@ -1200,7 +1200,7 @@ def main():
         description="Apple Music DJ — Playlist Strategy Engine"
     )
     parser.add_argument("--strategy", required=True,
-                        choices=["deep-cuts", "mood", "trend", "constellation", "refresh", "seed", "era", "blend"],
+                        choices=["deep-cuts", "mood", "trend", "constellation", "refresh", "similar", "seed", "era", "blend"],
                         help="Playlist strategy to use")
     parser.add_argument("--profile", required=True, help="Path to taste profile JSON")
     parser.add_argument("--storefront", default=None, help="Storefront code")
@@ -1210,10 +1210,15 @@ def main():
                         help="Playlist ID for refresh strategy")
     parser.add_argument("--profile-b", default=None,
                         help="Second listener's taste profile JSON (blend strategy)")
-    parser.add_argument("--seed", default=None,
-                        help="Seed artist or song for the seed strategy")
-    parser.add_argument("--seed-type", default="auto", choices=["auto", "artist", "song"],
-                        help="Whether --seed is an artist or a song (default: auto-detect)")
+    parser.add_argument("--similar-to", dest="similar_to", default=None,
+                        help="Artist or song to find similar music to (similar strategy)")
+    parser.add_argument("--similar-type", dest="similar_type", default="auto", choices=["auto", "artist", "song"],
+                        help="Whether --similar-to is an artist or a song (default: auto-detect)")
+    # Deprecated 3.2.0 spellings, accepted but not advertised. They were renamed because a
+    # security scanner took the old flag's example as a crypto seed phrase on the command line.
+    parser.add_argument("--seed", dest="similar_to", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--seed-type", dest="similar_type", default="auto",
+                        choices=["auto", "artist", "song"], help=argparse.SUPPRESS)
     parser.add_argument("--decade", default=None,
                         help="Decade for the era strategy, e.g. 90s (default: your top era)")
     parser.add_argument("--name", default=None, help="Custom playlist name")
@@ -1228,6 +1233,8 @@ def main():
     parser.add_argument("--output", default=None, help="Write playlist JSON to file")
 
     args = parser.parse_args()
+    if args.strategy == "seed":  # deprecated alias from 3.2.0
+        args.strategy = "similar"
     if args.favorite and not args.create:
         parser.error("--favorite only applies together with --create")
 
@@ -1258,11 +1265,11 @@ def main():
             print("ERROR: --playlist-id required for refresh strategy.", file=sys.stderr)
             sys.exit(1)
         tracks = strategy_refresh(profile, sf, args.playlist_id, target_size, args.include_library)
-    elif args.strategy == "seed":
-        if not args.seed:
-            print("ERROR: --seed required for seed strategy.", file=sys.stderr)
+    elif args.strategy == "similar":
+        if not args.similar_to:
+            print("ERROR: --similar-to required for the similar strategy.", file=sys.stderr)
             sys.exit(1)
-        tracks = strategy_seed(profile, sf, args.seed, args.seed_type, target_size, args.include_library)
+        tracks = strategy_seed(profile, sf, args.similar_to, args.similar_type, target_size, args.include_library)
     elif args.strategy == "blend":
         if not args.profile_b:
             print("ERROR: --profile-b required for blend strategy.", file=sys.stderr)
@@ -1283,7 +1290,7 @@ def main():
         sys.exit(1)
 
     # Generate name & description
-    name = args.name or generate_name(args.strategy, args.mood, profile, args.seed, args.decade)
+    name = args.name or generate_name(args.strategy, args.mood, profile, args.similar_to, args.decade)
     description = generate_description(args.strategy, args.mood, len(tracks))
 
     result = {

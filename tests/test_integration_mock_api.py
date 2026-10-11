@@ -302,16 +302,16 @@ class TestStrategies:
         return _json(api("strategy_engine.py", "--profile", profile, "--storefront", "us", *args))
 
     def test_seed_artist(self, api, profile):
-        plan = self._plan(api, profile, "--strategy", "seed", "--seed", "Radiohead", "--size", "10")
+        plan = self._plan(api, profile, "--strategy", "similar", "--similar-to", "Radiohead", "--size", "10")
         artists = {t["artist"] for t in plan["tracks"]}
         assert "Oasis" in artists or "Muse" in artists  # came in via similar-artists
         assert plan["name"].startswith("Like Radiohead")
         assert api.mock.writes() == []
 
     def test_seed_excludes_library_songs(self, api, profile):
-        ids = {t["id"] for t in self._plan(api, profile, "--strategy", "seed", "--seed", "Radiohead")["tracks"]}
+        ids = {t["id"] for t in self._plan(api, profile, "--strategy", "similar", "--similar-to", "Radiohead")["tracks"]}
         assert not ids & {"s1", "s4"}
-        ids = {t["id"] for t in self._plan(api, profile, "--strategy", "seed", "--seed", "Radiohead",
+        ids = {t["id"] for t in self._plan(api, profile, "--strategy", "similar", "--similar-to", "Radiohead",
                                            "--include-library")["tracks"]}
         assert ids & {"s1", "s4"}
 
@@ -331,15 +331,15 @@ class TestStrategies:
         assert energies == sorted(energies, reverse=True)
 
     def test_create_and_favorite_write_what_was_asked(self, api, profile):
-        api("strategy_engine.py", "--profile", profile, "--storefront", "us", "--strategy", "seed",
-            "--seed", "Radiohead", "--create", "--favorite", "--name", "Live Test")
+        api("strategy_engine.py", "--profile", profile, "--storefront", "us", "--strategy", "similar",
+            "--similar-to", "Radiohead", "--create", "--favorite", "--name", "Live Test")
         writes = [(r["method"], r["path"]) for r in api.mock.writes()]
         assert ("POST", "/v1/me/library/playlists") in writes
         assert ("POST", "/v1/me/favorites") in writes
         created = next(r for r in api.mock.writes() if r["path"] == "/v1/me/library/playlists")
         assert created["body"]["attributes"]["name"] == "Live Test"
         history = json.loads((api.home / ".apple-music-dj" / "playlist_history.json").read_text())
-        assert history[-1]["name"] == "Live Test" and history[-1]["strategy"] == "seed"
+        assert history[-1]["name"] == "Live Test" and history[-1]["strategy"] == "similar"
 
     def test_favorite_without_create_is_refused(self, api, profile):
         r = api("strategy_engine.py", "--profile", profile, "--strategy", "trend", "--favorite", check=False)
@@ -388,8 +388,8 @@ class TestOtherScripts:
         assert "s2" in json.loads(profile.read_text())["disliked_song_ids"]
 
     def test_feedback_by_position_after_create_and_info(self, api, profile):
-        api("strategy_engine.py", "--profile", profile, "--storefront", "us", "--strategy", "seed",
-            "--seed", "Radiohead", "--create", "--name", "Pos Test")
+        api("strategy_engine.py", "--profile", profile, "--storefront", "us", "--strategy", "similar",
+            "--similar-to", "Radiohead", "--create", "--name", "Pos Test")
         history = json.loads((api.home / ".apple-music-dj" / "playlist_history.json").read_text())
         first_id = history[-1]["track_ids"][0]
         info = _json(api("feedback.py", "info", "--playlist-name", "Pos Test", "--position", "1"))

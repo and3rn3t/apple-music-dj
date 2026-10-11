@@ -71,7 +71,10 @@ Automation is **opt-in**: nothing is scheduled unless you run `setup_cron.py ins
 `monthly-drift` job additionally has to be named with `--jobs`. Because a crontab entry keeps running
 until removed, the installer is deliberately strict:
 
-- `install --dry-run` prints the exact crontab lines and changes nothing — review them first.
+- **Installing requires confirmation, enforced in code.** `install --dry-run` prints the exact
+  crontab lines and a short digest of them; `install` only proceeds when re-run with
+  `--confirm <digest>`. A bare `install` changes nothing and exits 2, and a digest only matches the
+  lines it was printed for, so approving one set of jobs/paths can't authorize another.
 - `--jobs` must name at least one known job (an empty value is an error, never "all jobs"; unknown
   names are rejected up front, including for `remove`).
 - `--profile`, `--log-dir`, `--python`, `--storefront` and `--jobs` are validated: paths must not

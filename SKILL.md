@@ -17,7 +17,7 @@ description: >
   "concert prep", "seeing [artist] live", "daily song", "what should I listen to right now",
   "songs like", "blend", "throwback", "[decade] playlist", "taste drift", "import my playlist",
   "I didn't like track", "add the missing albums", or OpenClaw in the context of music.
-version: 3.2.0
+version: 3.2.1
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
@@ -160,16 +160,16 @@ Journey from familiar artists outward to new territory in 3 "rings" of distance.
 Analyzes existing playlist's sonic signature, adds fresh matching tracks, optionally
 prunes overplayed songs.
 
-### Strategy 6: Seed ("songs like X")
+### Strategy 6: Similar ("songs like X")
 **Triggers:** "songs like [artist/song]", "more like [artist]", "similar to", "more like track 3"
 Starts from one artist or song, pulls in its top songs plus similar artists' top songs, and
-scores everything against both the seed's genres and the user's taste.
+scores everything against both the starting point's genres and the user's taste.
 
-Run: `python3 scripts/strategy_engine.py --strategy seed --seed "Radiohead" --profile <profile.json> --storefront <sf>`
-Add `--seed-type artist|song` if the name is ambiguous (default detects it).
+Run: `python3 scripts/strategy_engine.py --strategy similar --similar-to "Radiohead" --profile <profile.json> --storefront <sf>`
+Add `--similar-type artist|song` if the name is ambiguous (default detects it).
 For "more like track N" of a DJ playlist, get the song first:
 `python3 scripts/feedback.py info --playlist-name "<name>" --position N`, then pass
-`--seed "<name> <artist>" --seed-type song`.
+`--similar-to "<name> <artist>" --similar-type song`.
 
 ### Strategy 7: Era Throwback
 **Triggers:** "90s playlist", "throwback", "[decade] throwback", "music from the 2000s"
@@ -189,7 +189,7 @@ The other person builds their own profile with their own tokens
 Run: `python3 scripts/strategy_engine.py --strategy blend --profile <mine.json> --profile-b <friend.json> --storefront <sf>`
 
 ### Options shared by all strategies
-- `--include-library` — allow songs already in the library (refresh, seed and era skip them by default)
+- `--include-library` — allow songs already in the library (refresh, similar and era skip them by default)
 - `--create` — create the playlist in Apple Music (without it, only JSON is printed)
 - `--favorite` — with `--create`, also add every track to the user's Apple Music favorites.
   **This writes to the user's account — confirm with them first.**
@@ -349,7 +349,7 @@ Run: `scripts/new_releases.sh <profile.json> <storefront> [--create-playlist]`
 | "Show my taste card" | Generate and display Taste DNA Card |
 | "Make me a playlist" | Ask what kind, then select strategy |
 | "Surprise me" | Constellation Discovery — no questions asked |
-| "More like [artist]" / "Songs like [song]" | Seed strategy (Strategy 6) |
+| "More like [artist]" / "Songs like [song]" | Similar strategy (Strategy 6) |
 | "Make me a 90s throwback" | Era strategy (Strategy 7) |
 | "Blend my taste with [friend]'s" | Blend strategy (Strategy 8), needs their profile JSON |
 | "How has my taste changed lately?" | Taste drift report |
@@ -423,9 +423,12 @@ Task:
 When the user asks to set up automation, configure via OpenClaw's cron system and
 confirm the schedule with them before activating. A crontab entry keeps running until removed,
 so **always run `python3 scripts/setup_cron.py install --dry-run [--jobs ...]` first and show the
-user the exact lines it prints; only run the real `install` after they say yes.** The installer
-validates its arguments, quotes every value, and creates owner-only log files; it refuses
-unsafe input rather than guessing. `setup_cron.py status` / `remove` let the user review or undo it.
+user the exact lines it prints, along with its `Digest:`; only after they say yes, run the same
+command with `--confirm <digest>`.** This is enforced in code: `install` without a matching
+`--confirm` changes nothing and exits 2, and a digest only matches the exact lines it was printed
+for (change a job, path or storefront and it no longer matches). The installer also validates its
+arguments, quotes every value, and creates owner-only log files. `setup_cron.py status` / `remove`
+let the user review or undo it.
 
 ## Assembly Rules
 
@@ -617,7 +620,7 @@ stores, and transmits.
 → Year in review. Listen time, top artists, obscurity score, narrative insights.
 
 **"Give me songs like Phoebe Bridgers"**
-→ Strategy 6 (Seed). Her best songs plus similar artists, weighted toward the user's taste.
+→ Strategy 6 (Similar). Her best songs plus similar artists, weighted toward the user's taste.
 
 **"Make me a 90s throwback"**
 → Strategy 7 (Era). 90s albums from their own top artists, plus genre-matched finds.

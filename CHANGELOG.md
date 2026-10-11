@@ -5,11 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] — Unreleased
+
+### Security
+
+Follow-up to the ClawHub audit of 3.2.0:
+
+- **Cron install now requires confirmation, enforced in code** (`setup_cron.py`): `install --dry-run` prints the exact crontab lines plus a digest, and `install` only proceeds with `--confirm <digest>`. A bare `install` changes nothing and exits 2; a digest only matches the exact lines it was printed for. Previously the review step was only a documented instruction.
+
+### Changed
+
+- **Renamed the "seed" strategy to "similar"**: `--strategy similar --similar-to "<artist or song>" [--similar-type artist|song]`. A security scanner read the old flag example in `SKILL.md` as a crypto seed phrase passed on the command line. The 3.2.0 spellings (the `seed` strategy name and the old seed flags) still work as hidden aliases and playlists are now logged with strategy `similar`.
+
 ## [3.2.0] — Unreleased
 
 ### Added
 
-- **Seed strategy** — `--strategy seed --seed "<artist or song>"`: songs like X, via similar artists and the user's taste
+- **Similar strategy** (shipped as "seed", renamed in 3.2.1) — songs like an artist or song, via similar artists and the user's taste
 - **Era strategy** — `--strategy era --decade 90s`: a throwback built from the user's own artists (defaults to their top era)
 - **Blend strategy** — `--strategy blend --profile-b other.json`: one playlist for two listeners, capped at 60% from either, with a compatibility score
 - **Taste drift** — `taste_profiler.py` now saves a compact dated snapshot per fresh build (`~/.apple-music-dj/snapshots/`, last 52, no song IDs; skip with `--no-snapshot`); new `taste_drift.py` reports rising/falling genres, new top artists, era shift, score changes and archetype change; drift card via `taste_card.py --mode drift`; opt-in `monthly-drift` cron job

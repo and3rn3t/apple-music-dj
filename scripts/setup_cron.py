@@ -12,7 +12,8 @@ Generates and installs crontab entries for recurring jobs:
 Usage:
   python3 setup_cron.py list                    Show planned cron jobs
   python3 setup_cron.py install [--jobs J,...]  Install selected (or all) jobs
-  python3 setup_cron.py install --dry-run       Print the exact crontab lines; change nothing
+  python3 setup_cron.py install --dry-run       Print the exact crontab lines + a digest; change nothing
+  python3 setup_cron.py install --confirm DIGEST  Install exactly the lines that digest was printed for
   python3 setup_cron.py remove  [--jobs J,...]  Remove selected (or all) jobs
   python3 setup_cron.py status                  Show currently installed jobs
 
@@ -33,6 +34,7 @@ if sys.version_info < (3, 10):
 
 import argparse
 import errno
+import hashlib
 import os
 import re
 import shlex
@@ -167,6 +169,18 @@ def format_cron_line(job: dict, name: str) -> str:
     return line
 
 
+# ── Enforced confirmation ────────────────────────────────────────
+
+def install_digest(lines: list[str]) -> str:
+    """Short digest of the exact crontab lines an install would add (order-insensitive).
+
+    `install` only proceeds when given the digest that `--dry-run` printed, so what gets
+    scheduled is provably what was reviewed — a skill instruction ("show the user first") is
+    not a control; this is.
+    """
+    return hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest()[:12]
+
+
 # ── Private log files ────────────────────────────────────────────
 
 def prepare_logs(log_dir: str, log_paths: list[str]) -> None:
@@ -263,16 +277,38 @@ def cmd_list(job_defs: dict[str, dict]):
 
 
 def cmd_install(job_defs: dict[str, dict], selected: list[str],
-                log_dir: str, dry_run: bool = False):
-    """Install selected cron jobs (or, with dry_run, only print the exact crontab lines)."""
+                log_dir: str, dry_run: bool = False, confirm: str | None = None):
+    """Install selected cron jobs.
+
+    Nothing is installed unless `confirm` equals the digest of the exact lines (printed by
+    `--dry-run`, or by a bare `install`, which then exits 2 without changing anything).
+    """
     known = [n for n in selected if n in job_defs]
+    for name in selected:
+        if name not in job_defs:
+            print(f"WARNING: Unknown job '{name}', skipping.", file=sys.stderr)
+    if not known:
+        print("ERROR: No valid jobs selected.", file=sys.stderr)
+        sys.exit(1)
     try:
         new_lines = {name: format_cron_line(job_defs[name], name) for name in known}
-        if dry_run:
-            print("Dry run — these lines WOULD be added to your crontab (nothing was changed):\n")
+        digest = install_digest(list(new_lines.values()))
+        if dry_run or confirm is None:
+            title = ("Dry run — these lines WOULD be added to your crontab (nothing was changed):"
+                     if dry_run else "Confirmation required — these lines would be added to your crontab:")
+            print(f"{title}\n")
             for name in known:
                 print(new_lines[name])
+            print(f"\nDigest: {digest}")
+            print(f"To install exactly these lines, re-run the same command with:  --confirm {digest}")
+            if not dry_run:
+                print("Nothing was installed (no --confirm given).", file=sys.stderr)
+                sys.exit(2)
             return
+        if confirm.strip().lower() != digest:
+            raise ValueError("--confirm doesn't match the lines this command would install (different jobs, "
+                             "paths or storefront than the ones that were reviewed). Run --dry-run again "
+                             "and confirm the digest it prints.")
         prepare_logs(log_dir, [job_defs[n]["log"] for n in known])
     except (ValueError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -293,10 +329,7 @@ def cmd_install(job_defs: dict[str, dict], selected: list[str],
             filtered.append(line)
 
     # Add new lines
-    for name in selected:
-        if name not in job_defs:
-            print(f"WARNING: Unknown job '{name}', skipping.", file=sys.stderr)
-            continue
+    for name in known:
         filtered.append(new_lines[name])
         print(f"  ✅ {name}: {job_defs[name]['schedule']}")
 
@@ -378,7 +411,9 @@ def main():
     parser.add_argument("--python", default=None,
                         help="Path to python3 executable")
     parser.add_argument("--dry-run", action="store_true",
-                        help="install: print the exact crontab lines without installing anything")
+                        help="install: print the exact crontab lines and a digest, without installing anything")
+    parser.add_argument("--confirm", default=None, metavar="DIGEST",
+                        help="install: required to install; the digest printed by --dry-run for these exact lines")
 
     args = parser.parse_args()
     config = load_config()
@@ -391,6 +426,8 @@ def main():
         profile = validate_path(args.profile or str(APP_DIR / "profile.json"), "--profile")
         # `is not None`: an explicit but empty --jobs must be rejected, not treated as "all"
         jobs = validate_job_names(args.jobs) if args.jobs is not None else None
+        if args.confirm is not None and not re.fullmatch(r"[0-9a-f]{12}", args.confirm.strip().lower()):
+            raise ValueError("--confirm expects the 12-character digest printed by --dry-run.")
     except ValueError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
@@ -414,7 +451,7 @@ def main():
         if not args.profile:
             print("WARNING: Using default profile path. "
                   "Specify --profile for a custom location.", file=sys.stderr)
-        cmd_install(job_defs, selected, log_dir, dry_run=args.dry_run)
+        cmd_install(job_defs, selected, log_dir, dry_run=args.dry_run, confirm=args.confirm)
     elif args.command == "remove":
         cmd_remove(job_defs, selected if jobs is not None else all_names)
     elif args.command == "status":

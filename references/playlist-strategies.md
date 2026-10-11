@@ -158,7 +158,7 @@ Stick with it — the best discoveries are toward the end."
 
 ---
 
-## Strategy 6: Seed ("songs like X")
+## Strategy 6: Similar ("songs like X")
 
 ### Philosophy
 

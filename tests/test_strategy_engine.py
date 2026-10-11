@@ -688,14 +688,15 @@ class TestStrategyEra:
 
 class TestNamingSeedEra:
     def test_seed_name(self):
-        assert se.generate_name("seed", seed="Radiohead").startswith("Like Radiohead")
+        assert se.generate_name("similar", seed="Radiohead").startswith("Like Radiohead")
+        assert se.generate_name("seed", seed="Radiohead").startswith("Like Radiohead")  # old alias
 
     def test_era_name(self):
         assert se.generate_name("era", decade="1990s").startswith("1990s Throwback")
         assert se.generate_name("era").startswith("Throwback")
 
     def test_descriptions(self):
-        assert "orbit" in se.generate_description("seed", track_count=5)
+        assert "orbit" in se.generate_description("similar", track_count=5)
         assert "decade" in se.generate_description("era", track_count=5)
 
 
@@ -987,15 +988,39 @@ class TestMainCli:
 
     def test_seed_requires_seed(self, cli):
         with pytest.raises(SystemExit):
-            cli["run"]("--strategy", "seed")
+            cli["run"]("--strategy", "similar")
 
     def test_seed_runs_with_args(self, cli, monkeypatch, capsys):
         seen = {}
         monkeypatch.setattr(se, "strategy_seed", lambda p, sf, seed, st, n, inc:
                             seen.update(seed=seed, st=st, inc=inc) or cli["tracks"])
-        cli["run"]("--strategy", "seed", "--seed", "Radiohead", "--seed-type", "artist", "--include-library")
+        cli["run"]("--strategy", "similar", "--similar-to", "Radiohead", "--similar-type", "artist", "--include-library")
         assert seen == {"seed": "Radiohead", "st": "artist", "inc": True}
         assert json.loads(capsys.readouterr().out)["name"].startswith("Like Radiohead")
+
+    def test_old_seed_spellings_still_work(self, cli, monkeypatch, capsys):
+        """3.2.0 shipped --strategy seed / --seed / --seed-type; they were renamed, not removed."""
+        seen = {}
+        monkeypatch.setattr(se, "strategy_seed", lambda p, sf, seed, st, n, inc:
+                            seen.update(seed=seed, st=st) or cli["tracks"])
+        cli["run"]("--strategy", "seed", "--seed", "Björk", "--seed-type", "song")
+        assert seen == {"seed": "Björk", "st": "song"}
+        out = json.loads(capsys.readouterr().out)
+        assert out["strategy"] == "similar" and out["name"].startswith("Like Björk")
+
+    def test_old_spellings_are_not_advertised(self, capsys):
+        import sys as _sys
+        _sys.argv = ["strategy_engine.py", "--help"]
+        with pytest.raises(SystemExit):
+            se.main()
+        helptext = capsys.readouterr().out
+        assert "--similar-to" in helptext and "--similar-type" in helptext
+        assert "--seed" not in helptext and "--seed-type" not in helptext
+
+    def test_similar_requires_similar_to(self, cli, capsys):
+        with pytest.raises(SystemExit):
+            cli["run"]("--strategy", "similar")
+        assert "--similar-to required" in capsys.readouterr().err
 
     def test_era_defaults_to_top_era_and_validates(self, cli, monkeypatch, capsys):
         seen = {}

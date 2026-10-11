@@ -8,6 +8,11 @@ import pytest
 import setup_cron as sc
 
 
+def confirm_for(defs, names):
+    """The digest `install --dry-run` would print for these jobs (what --confirm must equal)."""
+    return sc.install_digest([sc.format_cron_line(defs[n], n) for n in names])
+
+
 # ── build_job_defs ───────────────────────────────────────────────
 
 class TestBuildJobDefs:
@@ -135,7 +140,7 @@ class TestCmdInstall:
         set_calls = []
         monkeypatch.setattr(sc, "set_crontab", lambda c: (set_calls.append(c), True)[-1])
         defs = sc.build_job_defs("/usr/bin/python3", "/p.json", "us", str(tmp_path))
-        sc.cmd_install(defs, ["weekly-mix"], str(tmp_path))
+        sc.cmd_install(defs, ["weekly-mix"], str(tmp_path), confirm=confirm_for(defs, ["weekly-mix"]))
         assert len(set_calls) == 1
         assert "weekly-mix" in set_calls[0]
 
@@ -145,26 +150,36 @@ class TestCmdInstall:
         set_calls = []
         monkeypatch.setattr(sc, "set_crontab", lambda c: (set_calls.append(c), True)[-1])
         defs = sc.build_job_defs("/usr/bin/python3", "/p.json", "us", str(tmp_path))
-        sc.cmd_install(defs, ["weekly-mix"], str(tmp_path))
+        sc.cmd_install(defs, ["weekly-mix"], str(tmp_path), confirm=confirm_for(defs, ["weekly-mix"]))
         # Should have replaced — only one weekly-mix line
         lines = [ln for ln in set_calls[0].splitlines() if "weekly-mix" in ln]
         assert len(lines) == 1
         assert "old-cmd" not in set_calls[0]
 
-    def test_skips_unknown_job(self, monkeypatch, tmp_path, capsys):
+    def test_warns_about_unknown_jobs_but_installs_the_known_ones(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
-        monkeypatch.setattr(sc, "set_crontab", lambda c: True)
+        set_calls = []
+        monkeypatch.setattr(sc, "set_crontab", lambda c: (set_calls.append(c), True)[-1])
         defs = sc.build_job_defs("/usr/bin/python3", "/p.json", "us", str(tmp_path))
-        sc.cmd_install(defs, ["nonexistent-job"], str(tmp_path))
-        captured = capsys.readouterr()
-        assert "Unknown job" in captured.err
+        sc.cmd_install(defs, ["nonexistent-job", "weekly-mix"], str(tmp_path),
+                       confirm=confirm_for(defs, ["weekly-mix"]))
+        assert "Unknown job 'nonexistent-job'" in capsys.readouterr().err
+        assert len(set_calls) == 1 and "weekly-mix" in set_calls[0]
+
+    def test_only_unknown_jobs_is_an_error(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        defs = sc.build_job_defs("/usr/bin/python3", "/p.json", "us", str(tmp_path))
+        with pytest.raises(SystemExit) as e:
+            sc.cmd_install(defs, ["nonexistent-job"], str(tmp_path), confirm="0" * 12)
+        assert e.value.code == 1 and "No valid jobs selected" in capsys.readouterr().err
 
     def test_exits_on_set_failure(self, monkeypatch, tmp_path):
         monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
         monkeypatch.setattr(sc, "set_crontab", lambda c: False)
         defs = sc.build_job_defs("/usr/bin/python3", "/p.json", "us", str(tmp_path))
-        with pytest.raises(SystemExit):
-            sc.cmd_install(defs, ["weekly-mix"], str(tmp_path))
+        with pytest.raises(SystemExit) as e:
+            sc.cmd_install(defs, ["weekly-mix"], str(tmp_path), confirm=confirm_for(defs, ["weekly-mix"]))
+        assert e.value.code == 1
 
 
 # ── cmd_remove ───────────────────────────────────────────────────
@@ -241,8 +256,18 @@ class TestMain:
         ])
         monkeypatch.setattr("setup_cron.load_config", lambda: {})
         monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
-        monkeypatch.setattr(sc, "set_crontab", lambda c: True)
+        installed = []
+        monkeypatch.setattr(sc, "set_crontab", lambda c: (installed.append(c), True)[-1])
+        # Review first (a dry run prints the digest), then install exactly what was reviewed
+        monkeypatch.setattr(sys, "argv", ["setup_cron.py", "install", "--jobs", "weekly-mix",
+                                          "--log-dir", str(tmp_path), "--dry-run"])
         sc.main()
+        digest = next(ln.split()[-1] for ln in capsys.readouterr().out.splitlines() if ln.startswith("Digest:"))
+        assert installed == []
+        monkeypatch.setattr(sys, "argv", ["setup_cron.py", "install", "--jobs", "weekly-mix",
+                                          "--log-dir", str(tmp_path), "--confirm", digest])
+        sc.main()
+        assert len(installed) == 1 and "weekly-mix" in installed[0]
 
     def test_main_remove(self, monkeypatch, capsys):
         monkeypatch.setattr(sys, "argv", ["setup_cron.py", "remove", "--jobs", "weekly-mix"])
@@ -483,7 +508,8 @@ class TestInstallSafety:
 
         monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
         monkeypatch.setattr(sc, "set_crontab", fake_set)
-        sc.cmd_install(self._defs(log_dir), ["weekly-mix"], str(log_dir))
+        defs = self._defs(log_dir)
+        sc.cmd_install(defs, ["weekly-mix"], str(log_dir), confirm=confirm_for(defs, ["weekly-mix"]))
         assert seen["files"] == {"weekly-mix.log": 0o600} and _mode(log_dir) == 0o700
 
     def test_install_aborts_without_touching_crontab_on_unsafe_log_dir(self, tmp_path, monkeypatch, capsys):
@@ -493,16 +519,19 @@ class TestInstallSafety:
         link.symlink_to(target)
         monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
         monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        defs = self._defs(link)
         with pytest.raises(SystemExit):
-            sc.cmd_install(self._defs(link), ["weekly-mix"], str(link))
+            sc.cmd_install(defs, ["weekly-mix"], str(link), confirm=confirm_for(defs, ["weekly-mix"]))
         assert "symlink" in capsys.readouterr().err
 
     def test_unknown_jobs_do_not_create_log_files(self, tmp_path, monkeypatch):
         log_dir = tmp_path / "logs"
         monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
         monkeypatch.setattr(sc, "set_crontab", lambda c: True)
-        sc.cmd_install(self._defs(log_dir), ["nonexistent-job"], str(log_dir))
-        assert list(log_dir.iterdir()) == []
+        defs = self._defs(log_dir)
+        sc.cmd_install(defs, ["nonexistent-job", "weekly-mix"], str(log_dir),
+                       confirm=confirm_for(defs, ["weekly-mix"]))
+        assert [p.name for p in log_dir.iterdir()] == ["weekly-mix.log"]
 
 
 class TestMainRejectsUnsafeInput:
@@ -558,3 +587,109 @@ class TestMainRejectsUnsafeInput:
                   "--profile", str(tmp_path / "p.json"))
         out = capsys.readouterr().out
         assert "weekly-mix" in out and "umask 077;" in out and not (tmp_path / "l").exists()
+
+
+# ── Enforced confirmation (the code, not just the docs, requires review) ─────
+
+class TestEnforcedConfirmation:
+    def _defs(self, tmp_path, profile="/p/profile.json", sf="us"):
+        return sc.build_job_defs("/usr/bin/python3", profile, sf, str(tmp_path / "logs"))
+
+    def test_digest_is_short_hex_deterministic_and_order_insensitive(self):
+        d = sc.install_digest(["a", "b"])
+        assert len(d) == 12 and int(d, 16) >= 0
+        assert d == sc.install_digest(["a", "b"]) == sc.install_digest(["b", "a"])
+
+    def test_digest_changes_with_anything_that_changes_the_installed_lines(self, tmp_path):
+        names = ["weekly-mix"]
+        base = confirm_for(self._defs(tmp_path), names)
+        assert confirm_for(self._defs(tmp_path, profile="/other/profile.json"), names) != base
+        assert confirm_for(self._defs(tmp_path, sf="gb"), names) != base
+        assert confirm_for(self._defs(tmp_path), ["weekly-mix", "daily-drop"]) != base
+        assert confirm_for(self._defs(tmp_path / "elsewhere"), names) != base  # log path is in the line
+
+    def test_install_without_confirm_changes_nothing_and_exits_2(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        defs = self._defs(tmp_path)
+        with pytest.raises(SystemExit) as e:
+            sc.cmd_install(defs, ["weekly-mix"], str(tmp_path / "logs"))
+        cap = capsys.readouterr()
+        assert e.value.code == 2
+        assert sc.format_cron_line(defs["weekly-mix"], "weekly-mix") in cap.out
+        assert f"--confirm {confirm_for(defs, ['weekly-mix'])}" in cap.out
+        assert "Nothing was installed" in cap.err
+        assert not (tmp_path / "logs").exists()
+
+    def test_wrong_digest_is_rejected(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        defs = self._defs(tmp_path)
+        with pytest.raises(SystemExit) as e:
+            sc.cmd_install(defs, ["weekly-mix"], str(tmp_path / "logs"), confirm="0" * 12)
+        assert e.value.code == 1 and "doesn't match" in capsys.readouterr().err
+        assert not (tmp_path / "logs").exists()
+
+    def test_digest_for_other_jobs_cannot_be_replayed(self, tmp_path, monkeypatch):
+        """Approving weekly-mix must not authorize installing something else."""
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        defs = self._defs(tmp_path)
+        approved = confirm_for(defs, ["weekly-mix"])
+        with pytest.raises(SystemExit):
+            sc.cmd_install(defs, ["daily-drop"], str(tmp_path / "logs"), confirm=approved)
+        with pytest.raises(SystemExit):
+            sc.cmd_install(self._defs(tmp_path, profile="/evil/profile.json"), ["weekly-mix"],
+                           str(tmp_path / "logs"), confirm=approved)
+
+    def test_correct_digest_installs_case_and_whitespace_insensitive(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
+        installed = []
+        monkeypatch.setattr(sc, "set_crontab", lambda c: (installed.append(c), True)[-1])
+        defs = self._defs(tmp_path)
+        digest = confirm_for(defs, ["weekly-mix"])
+        sc.cmd_install(defs, ["weekly-mix"], str(tmp_path / "logs"), confirm=f"  {digest.upper()} ")
+        assert len(installed) == 1
+
+    def test_dry_run_wins_even_with_a_confirm(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        defs = self._defs(tmp_path)
+        sc.cmd_install(defs, ["weekly-mix"], str(tmp_path / "logs"), dry_run=True,
+                       confirm=confirm_for(defs, ["weekly-mix"]))
+        assert "nothing was changed" in capsys.readouterr().out
+
+    def test_cli_bare_install_exits_2_and_install_with_confirm_works(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(sc, "load_config", lambda: {})
+        installed = []
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
+        monkeypatch.setattr(sc, "set_crontab", lambda c: (installed.append(c), True)[-1])
+        args = ["install", "--jobs", "weekly-mix,daily-drop", "--log-dir", str(tmp_path / "l"),
+                "--profile", str(tmp_path / "p.json")]
+        monkeypatch.setattr(sys, "argv", ["setup_cron.py", *args])
+        with pytest.raises(SystemExit) as e:
+            sc.main()
+        assert e.value.code == 2 and installed == []
+        digest = next(ln.split()[-1] for ln in capsys.readouterr().out.splitlines() if ln.startswith("Digest:"))
+        monkeypatch.setattr(sys, "argv", ["setup_cron.py", *args, "--confirm", digest])
+        sc.main()
+        assert len(installed) == 1 and "weekly-mix" in installed[0] and "daily-drop" in installed[0]
+
+    @pytest.mark.parametrize("bad", ["", "abc", "z" * 12, "0" * 11, "0" * 13, "$(id)"])
+    def test_cli_rejects_malformed_confirm_before_touching_anything(self, tmp_path, monkeypatch, capsys, bad):
+        monkeypatch.setattr(sc, "load_config", lambda: {})
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: pytest.fail("must not read crontab"))
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("must not write crontab"))
+        monkeypatch.setattr(sys, "argv", ["setup_cron.py", "install", "--confirm", bad,
+                                          "--log-dir", str(tmp_path / "l")])
+        with pytest.raises(SystemExit) as e:
+            sc.main()
+        assert e.value.code == 1 and "12-character digest" in capsys.readouterr().err
+
+    def test_remove_still_needs_no_confirmation(self, monkeypatch):
+        removed = {}
+        monkeypatch.setattr(sc, "load_config", lambda: {})
+        monkeypatch.setattr(sc, "cmd_remove", lambda defs, selected: removed.setdefault("sel", selected))
+        monkeypatch.setattr(sys, "argv", ["setup_cron.py", "remove", "--jobs", "weekly-mix"])
+        sc.main()
+        assert removed["sel"] == ["weekly-mix"]

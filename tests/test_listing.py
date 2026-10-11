@@ -136,3 +136,38 @@ def test_skill_md_discloses_that_editing_a_playlist_can_remove_tracks():
 def test_docs_name_apply_not_auto_for_the_health_fix():
     for path in (ROOT / "SKILL.md", ROOT / "README.md", *sorted((ROOT / "references").glob("*.md"))):
         assert "playlist_health.py fix" not in path.read_text() or "--auto" not in path.read_text(), path.name
+
+
+def _openclaw_block(key: str) -> str:
+    """The indented block under `metadata.openclaw.<key>:` (plain text; no YAML dependency in CI)."""
+    fm = frontmatter()
+    match = re.search(rf"^    {key}:\n((?:      .*\n)+)", fm + "\n", re.M)
+    assert match, f"metadata.openclaw.{key} missing"
+    return match.group(1)
+
+
+def _env_vars() -> dict[str, str]:
+    """envVars entries as {name: required-value}."""
+    block = _openclaw_block("envVars")
+    return dict(re.findall(r"- name: (\S+)\n\s+required: (\S+)", block))
+
+
+def test_tokens_are_optional_so_the_skill_loads_for_the_demo():
+    """OpenClaw hides a skill whose requires.env vars are unset, which would hide the no-token demo."""
+    assert not re.search(r"^\s+env:", _openclaw_block("requires"), re.M)
+    declared = _env_vars()
+    for token in ("APPLE_MUSIC_DEV_TOKEN", "APPLE_MUSIC_USER_TOKEN"):
+        assert declared[token] == "false"
+    assert frontmatter_value("    primaryEnv") == "APPLE_MUSIC_DEV_TOKEN"
+    clawhub = json.loads((ROOT / "clawhub.json").read_text())
+    assert "env" not in clawhub["requires"]
+    assert {v["name"] for v in clawhub["envVars"]} == {"APPLE_MUSIC_DEV_TOKEN", "APPLE_MUSIC_USER_TOKEN"}
+
+
+def test_every_apple_env_var_the_scripts_read_is_declared():
+    """ClawHub's review flags env vars the code reads but the frontmatter doesn't declare."""
+    declared = set(_env_vars())
+    used = set()
+    for path in sorted((ROOT / "scripts").glob("*.[ps][yh]")):
+        used |= set(re.findall(r"\b(APPLE_[A-Z0-9_]+)\b", path.read_text()))
+    assert used - declared == set(), f"undeclared env vars: {sorted(used - declared)}"

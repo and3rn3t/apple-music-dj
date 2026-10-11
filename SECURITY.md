@@ -84,6 +84,13 @@ Include:
 
 ## Demo mode (`demo.py`)
 
+The Apple tokens are declared in `SKILL.md` under `metadata.openclaw.envVars` with
+`required: false`, not in `requires.env`. OpenClaw hides a skill whose `requires.env` variables are
+missing, which would keep new users from ever reaching the demo. This doesn't loosen anything: each
+script that calls Apple still refuses to run without both tokens (`require_env_tokens`,
+`apple_music_api.sh`), and every environment variable the scripts read is declared there.
+
+
 - The sample API listens on `127.0.0.1` only, for the duration of one command (`serve` aside).
 - The scripts it runs get a sandbox `HOME` (`~/.apple-music-dj-demo/`), placeholder tokens, and an
   environment with every real `APPLE_*` variable removed, so a real token can't reach even the

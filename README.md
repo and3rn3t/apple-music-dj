@@ -40,8 +40,8 @@ Built as an [OpenClaw](https://openclaw.ai) skill, on [ClawHub](https://clawhub.
 
 | Requirement | Details |
 |---|---|
-| **Apple Developer Account** | [$99/year](https://developer.apple.com/programs/) — needed for MusicKit API access |
-| **Apple Music subscription** | Active subscription on your Apple ID |
+| **Apple Developer Account** | [$99/year](https://developer.apple.com/programs/) — needed for MusicKit API access (not for the demo) |
+| **Apple Music subscription** | Active subscription on your Apple ID (not for the demo) |
 | **Python** | 3.10+ (no pip packages needed for core features; `PyJWT` + `cryptography` only to sign a developer token) |
 | **OpenClaw** | [openclaw.ai](https://openclaw.ai) · [docs](https://docs.openclaw.ai) |
 | **CLI tools** | `curl`, `jq` (usually pre-installed on macOS) |
@@ -56,7 +56,9 @@ openclaw skills install apple-music-dj
 git clone https://github.com/and3rn3t/apple-music-dj.git ~/.openclaw/workspace/skills/apple-music-dj
 ```
 
-Start a new OpenClaw session afterwards so the skill loads.
+Start a new OpenClaw session afterwards so the skill loads. It loads even before you've set up
+any tokens, so you can ask it for the demo first; anything that reads your own music asks for the
+tokens when it needs them.
 
 ## 🧪 Try it first (no account needed)
 

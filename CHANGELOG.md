@@ -22,6 +22,7 @@ Easier to try, easier to set up.
 - `SKILL.md` tells the agent to offer the demo when tokens are missing and to have the user run `setup_auth.py` in their own terminal; the description mentions the demo and adds "set up Apple Music tokens" and "try the demo" triggers.
 - Missing- or expired-token messages now point to `setup_auth.py` (and the demo) instead of the manual steps; `troubleshooting.md` no longer shows a wrong `generate_dev_token.py` invocation.
 - `generate_dev_token.py` exposes `make_dev_token()` for reuse; its CLI is unchanged.
+- **The Apple tokens are no longer hard requirements in the skill metadata.** They move from `requires.env` to `metadata.openclaw.envVars` with `required: false` (ClawHub's documented form for optional variables), so OpenClaw loads the skill before setup and the agent can offer the demo. Scripts still check for the tokens at run time. All other `APPLE_*` variables the scripts read are now declared there too, with descriptions; `clawhub.json` mirrors the change.
 
 ## [3.2.5] — Unreleased
 

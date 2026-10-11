@@ -42,14 +42,39 @@ icon: assets/icon.svg
 metadata:
   openclaw:
     requires:
-      env:
-        - APPLE_MUSIC_DEV_TOKEN
-        - APPLE_MUSIC_USER_TOKEN
       bins:
         - curl
         - jq
         - python3
     primaryEnv: APPLE_MUSIC_DEV_TOKEN
+    envVars:
+      - name: APPLE_MUSIC_DEV_TOKEN
+        required: false
+        description: MusicKit developer token (JWT). Needed for anything that reads your Apple Music; not for the demo. scripts/setup_auth.py creates it.
+      - name: APPLE_MUSIC_USER_TOKEN
+        required: false
+        description: Music User Token from signing in with Apple. Needed for your own listening data and playlists; not for the demo. scripts/setup_auth.py gets it.
+      - name: APPLE_MUSIC_STOREFRONT
+        required: false
+        description: Two-letter storefront code (e.g. us) to override region auto-detection.
+      - name: APPLE_KEY_ID
+        required: false
+        description: MusicKit key ID, read only by setup_auth.py / generate_dev_token.py to sign a developer token.
+      - name: APPLE_TEAM_ID
+        required: false
+        description: Apple Developer Team ID, read only by setup_auth.py / generate_dev_token.py.
+      - name: APPLE_PRIVATE_KEY_PATH
+        required: false
+        description: Path to your MusicKit .p8 signing key, read only by setup_auth.py / generate_dev_token.py. Never sent anywhere.
+      - name: APPLE_TOKEN_EXPIRY
+        required: false
+        description: Developer-token lifetime in seconds for generate_dev_token.py (default and maximum 180 days).
+      - name: APPLE_MUSIC_API_BASE
+        required: false
+        description: Testing/demo hook pointing the API wrapper at a local mock. Loopback addresses only; anything else is refused.
+      - name: APPLE_MUSIC_DJ_DEMO
+        required: false
+        description: Set by demo.py for the scripts it runs, to mark demo mode. Not meant to be set by hand.
     platforms:
       - macos
       - linux
@@ -85,8 +110,8 @@ ratings, Replay), builds a taste profile, and turns it into playlists and insigh
 | "Import this Spotify playlist" | A matched Apple Music playlist (preview first) |
 | "I didn't like track 7" | Rated down and kept out of future playlists |
 
-**What it needs:** an Apple Developer account (for a MusicKit token) and an Apple Music
-subscription. `scripts/setup_auth.py` gets both tokens in one step (sign in with Apple in the
+**What it needs:** for your own music, an Apple Developer account (for a MusicKit token) and an
+Apple Music subscription. The skill loads without tokens so it can offer the demo first. `scripts/setup_auth.py` gets both tokens in one step (sign in with Apple in the
 browser). Tokens live in environment variables.
 
 **No account yet?** `python3 scripts/demo.py tour` runs the real scripts against a fictional
@@ -130,7 +155,11 @@ User Request
 
 ## Prerequisites
 
-Two environment variables must be set. If they're missing:
+Two environment variables are needed for anything that reads or changes the user's Apple Music:
+`APPLE_MUSIC_DEV_TOKEN` and `APPLE_MUSIC_USER_TOKEN`. They are declared as optional (`envVars`,
+`required: false`) rather than in `requires.env`, so OpenClaw still loads this skill for someone
+who hasn't set them up yet; this section is how you handle that. Every script that talks to
+Apple checks for them at run time and stops with a pointer to `setup_auth.py`. If they're missing:
 
 1. **Offer the demo first** so the user sees what they'd get: run `python3 scripts/demo.py tour`
    and show the output. It needs no tokens, uses a fictional listener and a local sample catalog,
@@ -583,8 +612,9 @@ stores, and transmits.
 | Recent radio stations | `/v1/me/recent/radio-stations` | Light genre signal from station titles |
 | Storefront | `/v1/me/storefront` | Region detection |
 
-**Requirements.** Needed: `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN`, `curl`, `jq`, `python3`
-(3.10+). Optional, each used by one feature only: `APPLE_MUSIC_STOREFRONT` (override region
+**Requirements.** Always needed: `curl`, `jq`, `python3` (3.10+). Needed for your own music (not for
+the demo): `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN` — declared under `envVars` with
+`required: false` so the skill stays loadable before setup, and checked by each script at run time. Optional, each used by one feature only: `APPLE_MUSIC_STOREFRONT` (override region
 detection); `crontab` (scheduling); and for generating a developer token yourself with
 `setup_auth.py` or `generate_dev_token.py`, `APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_PRIVATE_KEY_PATH` (your MusicKit
 `.p8` signing key, read only by that script and never sent anywhere) plus the `PyJWT` and

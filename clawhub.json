@@ -26,10 +26,18 @@
       "curl",
       "jq",
       "python3"
-    ],
-    "env": [
-      "APPLE_MUSIC_DEV_TOKEN",
-      "APPLE_MUSIC_USER_TOKEN"
     ]
-  }
+  },
+  "envVars": [
+    {
+      "name": "APPLE_MUSIC_DEV_TOKEN",
+      "required": false,
+      "description": "MusicKit developer token. Needed for your own music; not for the demo."
+    },
+    {
+      "name": "APPLE_MUSIC_USER_TOKEN",
+      "required": false,
+      "description": "Music User Token. Needed for your own music; not for the demo."
+    }
+  ]
 }

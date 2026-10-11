@@ -3,10 +3,10 @@
 setup_cron.py — Automation scheduler for Apple Music DJ.
 
 Generates and installs crontab entries for recurring jobs:
-  weekly-mix        Generate a fresh playlist every Monday morning
-  new-releases      Check for new releases from favourite artists weekly
-  daily-drop        Surface a daily pick recommendation
-  health-check      Scan playlists for removed/stale tracks monthly
+  weekly-mix        Generate a fresh playlist every Monday morning (opt-in: --jobs weekly-mix; it WRITES)
+  new-releases      Check for new releases from favourite artists weekly (report only)
+  daily-drop        Surface a daily pick recommendation (report only)
+  health-check      Scan playlists for removed/stale tracks monthly (report only)
   monthly-drift     Snapshot taste + report drift monthly (opt-in: --jobs monthly-drift)
 
 Usage:
@@ -108,13 +108,14 @@ def build_job_defs(python: str, profile: str, sf: str,
 
     return {
         "weekly-mix": {
-            "description": "Generate a fresh playlist every Monday at 7 AM",
+            "description": "Generate a fresh playlist every Monday at 7 AM (writes to your library; opt-in)",
             "schedule": "0 7 * * 1",
             "command": (
                 f"{python} {strategy} --strategy trend "
                 f"--profile {profile} --storefront {sf} --create"
             ),
             "log": f"{log_dir}/weekly-mix.log",
+            "optional": True,  # the only default-schedulable job that writes, so it must be named
         },
         "new-releases": {
             "description": "Check for new releases every Wednesday at 8 AM",
@@ -403,7 +404,7 @@ def main():
     parser.add_argument("command", choices=["list", "install", "remove", "status"],
                         help="Action to perform")
     parser.add_argument("--jobs", default=None,
-                        help="Comma-separated job names (default: all except opt-in jobs)")
+                        help="Comma-separated job names (default: the report-only jobs; weekly-mix and monthly-drift are opt-in)")
     parser.add_argument("--profile", default=None,
                         help="Path to taste profile JSON")
     parser.add_argument("--storefront", default=None,

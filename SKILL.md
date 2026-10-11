@@ -410,11 +410,14 @@ Run: `scripts/new_releases.sh <profile.json> <storefront> [--create-playlist]`
 ## Cron / Automated Playlists
 
 OpenClaw has first-class cron and heartbeat support. This skill can automate the jobs below.
-Unlike interactive requests, **a scheduled job runs unattended and writes on its own** (the weekly
-mix creates its playlist without asking each time). Installing the job is the user's approval,
-which is why `setup_cron.py install` needs a reviewed `--confirm` digest — say so when setting one up.
+Unlike interactive requests, **a scheduled job runs unattended and writes on its own** if it is a
+writing job. By default `setup_cron.py install` only schedules the report-only jobs (new releases,
+daily drop, health check). The **weekly mix creates a playlist in the library without asking**, so it is opt-in: it is installed only when named
+(`--jobs weekly-mix`). Installing any job is the user's approval, which is why `install` needs a
+reviewed `--confirm` digest — say so when setting one up, and tell the user plainly that the weekly
+mix will create playlists without asking each time.
 
-**Weekly Mix** (recommended default):
+**Weekly Mix** (opt-in — install with `setup_cron.py install --jobs weekly-mix`):
 ```
 Schedule: Every Sunday at 9:00 AM (user's local time)
 Task:
@@ -557,6 +560,14 @@ stores, and transmits.
 | Recently added | `/v1/me/library/recently-added` | What the user is into right now |
 | Recent radio stations | `/v1/me/recent/radio-stations` | Light genre signal from station titles |
 | Storefront | `/v1/me/storefront` | Region detection |
+
+**Requirements.** Needed: `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN`, `curl`, `jq`, `python3`
+(3.10+). Optional, each used by one feature only: `APPLE_MUSIC_STOREFRONT` (override region
+detection); `crontab` (scheduling); and for generating a developer token yourself with
+`generate_dev_token.py`, `APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_PRIVATE_KEY_PATH` (your MusicKit
+`.p8` signing key, read only by that script and never sent anywhere) plus the `PyJWT` and
+`cryptography` packages. **License:** MIT (see `LICENSE`); ClawHub distributes published skills
+under MIT-0.
 
 **Data written to the user's account (only on request — always confirm first):**
 

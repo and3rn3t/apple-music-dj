@@ -13,6 +13,11 @@ ClawHub's review of 3.2.4 said some account-changing commands could "directly al
 
 - **`apple_music_api.sh` now enforces confirmation itself.** `create-playlist`, `add-to-playlist`, `remove-from-playlist`, `add-to-library`, `favorite`, `rate` and `unrate` only print `WOULD …` and exit 3 unless `--yes` is passed. The scripts that already gate their own writes (`--create`, `--yes`, `--apply`, `--confirm`) pass it after that gate.
 - **`feedback.py like|dislike|clear` previews by default** and needs `--yes` to rate songs or touch the profile.
+- **`weekly-mix` is now opt-in** (`setup_cron.py install --jobs weekly-mix`). It is the one scheduled job that writes to your library unattended; a plain `install` now schedules only the report-only jobs. Existing crontab entries are untouched.
+
+### Changed
+
+- SKILL.md now lists the optional requirements (`APPLE_MUSIC_STOREFRONT`, `crontab`, the `.p8` key variables and PyJWT for `generate_dev_token.py`) and notes ClawHub's MIT-0 distribution.
 
 ## [3.2.4] — 2026-10-11
 

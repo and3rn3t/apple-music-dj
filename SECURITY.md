@@ -69,8 +69,9 @@ Include:
 
 ## Scheduled jobs (cron)
 
-Automation is **opt-in**: nothing is scheduled unless you run `setup_cron.py install`, and the
-`monthly-drift` job additionally has to be named with `--jobs`. Because a crontab entry keeps running
+Automation is **opt-in**: nothing is scheduled unless you run `setup_cron.py install`. The default
+set is report-only (new releases, daily drop, health check). The two jobs that write or snapshot
+(`weekly-mix`, which creates a playlist unattended, and `monthly-drift`) have to be named with `--jobs`. Because a crontab entry keeps running
 until removed, the installer is deliberately strict:
 
 - **Installing requires confirmation, enforced in code.** `install --dry-run` prints the exact

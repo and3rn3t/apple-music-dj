@@ -322,7 +322,7 @@ class TestMonthlyDrift:
 
     def test_other_jobs_not_optional(self):
         defs = sc.build_job_defs("/usr/bin/python3", "/p.json", "us", "/tmp")
-        assert [n for n, j in defs.items() if j.get("optional")] == ["monthly-drift"]
+        assert [n for n, j in defs.items() if j.get("optional")] == ["weekly-mix", "monthly-drift"]
 
     def test_list_marks_opt_in(self, monkeypatch, capsys):
         monkeypatch.setattr(sc, "get_installed_jobs", lambda: [])
@@ -587,7 +587,15 @@ class TestMainRejectsUnsafeInput:
         self._run(monkeypatch, "install", "--dry-run", "--log-dir", str(tmp_path / "l"),
                   "--profile", str(tmp_path / "p.json"))
         out = capsys.readouterr().out
-        assert "weekly-mix" in out and "umask 077;" in out and not (tmp_path / "l").exists()
+        assert "daily-drop" in out and "umask 077;" in out and not (tmp_path / "l").exists()
+        assert "weekly-mix" not in out and "--create" not in out  # the writing job must be named
+
+    def test_weekly_mix_installs_only_when_named(self, monkeypatch, capsys, tmp_path):
+        monkeypatch.setattr(sc, "get_current_crontab", lambda: "")
+        monkeypatch.setattr(sc, "set_crontab", lambda c: pytest.fail("dry run"))
+        self._run(monkeypatch, "install", "--dry-run", "--jobs", "weekly-mix", "--log-dir", str(tmp_path / "l"),
+                  "--profile", str(tmp_path / "p.json"))
+        assert "--create" in capsys.readouterr().out
 
 
 # ── Enforced confirmation (the code, not just the docs, requires review) ─────

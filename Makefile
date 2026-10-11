@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: test coverage coverage-html lint ruff audit demo-svg
+.PHONY: test coverage coverage-html lint ruff actionlint ci audit demo-svg
 
 ## Run all tests
 test:
@@ -19,6 +19,14 @@ coverage-html:
 ruff:
 	$(PYTHON) -m ruff check scripts tests .github/scripts
 	shellcheck scripts/*.sh
+
+## Lint the GitHub Actions workflows (same check as CI's actionlint job)
+actionlint:
+	actionlint
+
+## Everything CI checks, in one command: ruff + ShellCheck, tests with the coverage floor, workflows
+ci: ruff coverage actionlint
+	@echo "CI checks passed"
 
 ## Syntax-check all scripts
 lint:

@@ -40,7 +40,11 @@ Thanks for your interest in contributing! Here's how to get started.
 - `PyJWT` is the only exception (for token generation)
 - Functions use `snake_case`, classes use `PascalCase`
 - Run tests before submitting: `python3 -m pytest tests/ -v`
-- Lint before submitting: `make ruff` (needs `pip install ruff` and ShellCheck)
+- One-time setup: `pip install ruff pytest pytest-cov` (the `dev` extras in `pyproject.toml`), install
+  ShellCheck and actionlint (`brew install shellcheck actionlint`), then `pre-commit install --hook-type
+  pre-commit --hook-type commit-msg` so ruff, ShellCheck and the conventional-commit check run on every commit
+- Before submitting: `make ci` runs everything CI checks (ruff, ShellCheck, tests with the 80% coverage
+  floor, actionlint); `make ruff` is the quick lint-only run
 
 ### Testing Changes
 

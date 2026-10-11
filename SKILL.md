@@ -361,7 +361,8 @@ Run: `python3 scripts/daily_pick.py now <profile.json> <storefront>`
 Builds a prep playlist: top songs (likely setlist material) + deep cuts to learn before
 the show. **Preview first:** by default the script writes nothing to Apple Music — it prints the
 proposed name, description and track list as JSON. Show that to the user and, only after they
-say yes, re-run the same command with `--create`.
+say yes, re-run the same command with `--create`. If the preview shows `"name_exists": true`, a
+playlist with that name is already in the library and creation would be skipped — pick another name.
 
 Run: `scripts/concert_prep.sh <storefront> <artist_name> [playlist_name] [--create]`
 

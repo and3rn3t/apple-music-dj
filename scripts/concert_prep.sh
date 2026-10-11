@@ -84,12 +84,20 @@ top_count=$(echo "$top_json" | jq 'length')
 deep_count=$(echo "$deep_json" | jq 'length')
 DESC="Get ready for ${artist_name} live. ${top_count} essential tracks + ${deep_count} deep cuts to know before the show."
 
+# build_playlist.sh quietly skips (exit 0) when a playlist with this name already exists, so look
+# first: both the preview and the result must say so instead of claiming something was created.
+name_exists=false
+existing=$("$API" library-playlists 100 2>/dev/null \
+  | jq -r --arg n "$PLAYLIST_NAME" '[.data[]? | select(.attributes.name == $n)] | length' 2>/dev/null || echo 0)
+[[ "${existing:-0}" -gt 0 ]] && name_exists=true
+
 plan=$(jq -n --arg artist "$artist_name" --arg artist_id "$artist_id" --arg name "$PLAYLIST_NAME" \
-  --arg desc "$DESC" --argjson top "$top_json" --argjson deep "$deep_json" '
+  --arg desc "$DESC" --argjson top "$top_json" --argjson deep "$deep_json" \
+  --argjson name_exists "$name_exists" '
   { artist: $artist, artist_id: $artist_id, playlist_name: $name, description: $desc,
     top_song_count: ($top | length), deep_cut_count: ($deep | length),
     track_count: (($top | length) + ($deep | length)),
-    tracks: ($top + $deep), created: false }')
+    tracks: ($top + $deep), name_exists: $name_exists, created: false }')
 
 # ── Preview only (the default): show the plan, write nothing ─────
 if [[ "$CREATE" -ne 1 ]]; then
@@ -97,6 +105,19 @@ if [[ "$CREATE" -ne 1 ]]; then
   echo "" >&2
   echo "👀 Preview only — nothing was added to Apple Music." >&2
   echo "   ${PLAYLIST_NAME} (${total} tracks). To build it, re-run with --create." >&2
+  if [[ "$name_exists" == "true" ]]; then
+    echo "   ⚠️  A playlist named '${PLAYLIST_NAME}' already exists, so --create would skip it." >&2
+    echo "      Pass a different playlist name as the third argument." >&2
+  fi
+  exit 0
+fi
+
+# ── Explicit --create, but the name is taken: don't pretend anything was created ─
+if [[ "$name_exists" == "true" ]]; then
+  echo "$plan" | jq --arg r "A playlist named \"${PLAYLIST_NAME}\" already exists; nothing was created. Choose another name." \
+    '.skipped_reason = $r'
+  echo "" >&2
+  echo "⚠️  A playlist named '${PLAYLIST_NAME}' already exists — nothing was created." >&2
   exit 0
 fi
 

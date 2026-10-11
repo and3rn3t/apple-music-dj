@@ -441,6 +441,29 @@ class TestConcertPrep:
         out = api("concert_prep.sh", "us", "Radiohead", "--create").stdout
         assert json.loads(out)["created"] is True  # nothing else leaked onto stdout
 
+    def test_preview_reports_whether_the_name_is_already_taken(self, api):
+        assert _json(api("concert_prep.sh", "us", "Radiohead", "Show Night"))["name_exists"] is False
+        api("concert_prep.sh", "us", "Radiohead", "Show Night", "--create")
+        again = api("concert_prep.sh", "us", "Radiohead", "Show Night")
+        assert _json(again)["name_exists"] is True
+        assert "already exists" in again.stderr and "would skip it" in again.stderr
+
+    def test_create_with_a_taken_name_does_not_claim_success(self, api):
+        """build_playlist.sh skips quietly (exit 0) when the name exists; created must stay false."""
+        first = _json(api("concert_prep.sh", "us", "Radiohead", "Show Night", "--create"))
+        assert first["created"] is True and first["name_exists"] is False
+        second = api("concert_prep.sh", "us", "Radiohead", "Show Night", "--create")
+        result = _json(second)
+        assert result["created"] is False and "already exists" in result["skipped_reason"]
+        assert "Concert prep playlist created" not in second.stderr
+        posts = [r for r in api.mock.writes() if r["path"] == "/v1/me/library/playlists"]
+        assert len(posts) == 1  # the second run never even attempted a write
+
+    def test_a_different_name_is_not_blocked(self, api):
+        api("concert_prep.sh", "us", "Radiohead", "Show Night", "--create")
+        other = _json(api("concert_prep.sh", "us", "Radiohead", "Another Night", "--create"))
+        assert other["created"] is True and other["name_exists"] is False
+
     def test_unknown_artist_fails_without_writing(self, api):
         r = api("concert_prep.sh", "us", "Zzzz Nobody", "--create", check=False)
         assert r.returncode == 1 and "Could not find artist" in r.stderr

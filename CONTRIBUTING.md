@@ -83,12 +83,15 @@ Maintainers only. A few things learned the hard way:
 - **Publish from a clean export of `main`**, not your working folder (local `.venv`, caches and
   untracked files would otherwise be eligible):
   ```bash
-  git checkout main && git pull
-  rm -rf /tmp/amdj && mkdir -p /tmp/amdj && git archive HEAD | tar -x -C /tmp/amdj
+  git fetch origin main
+  SHA=$(git rev-parse origin/main)   # the reviewed, merged commit — not whatever your local branch has
+  rm -rf /tmp/amdj && mkdir -p /tmp/amdj && git archive "$SHA" | tar -x -C /tmp/amdj
   clawhub publish /tmp/amdj --slug apple-music-dj --name "Apple Music DJ" --version X.Y.Z \
-    --source-repo and3rn3t/apple-music-dj --source-commit "$(git rev-parse HEAD)" --source-ref main \
+    --source-repo and3rn3t/apple-music-dj --source-commit "$SHA" --source-ref main \
     --changelog "..."
   ```
+  Use the same `$SHA` for the archive and `--source-commit`: `git checkout main && git pull` is not
+  enough, because a locally-ahead or divergent `main` would publish unreviewed commits.
   `--dry-run` previews without publishing.
 - **Publishing accepts ClawHub's MIT-0 license terms automatically** (the CLI sends
   `acceptLicenseTerms: true` with no prompt). The repo itself stays MIT.

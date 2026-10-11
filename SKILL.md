@@ -609,7 +609,7 @@ under MIT-0.
 | `scripts/_common.py` | Python | Shared utilities (API calls, profile loading, search) |
 | `scripts/apple_music_api.sh` | Bash | API wrapper — all endpoints, retry logic |
 | `scripts/taste_profiler.py` | Python | Taste DNA profiler with caching |
-| `scripts/build_playlist.sh` | Bash | Playlist creation & refresh (create or add tracks) |
+| `scripts/build_playlist.sh` | Bash | Playlist creation & refresh (create or add tracks); previews unless `--yes` is the last argument |
 | `scripts/generate_dev_token.py` | Python | Developer JWT generator |
 | `scripts/taste_card.py` | Python | Shareable Taste DNA Card (SVG/text) |
 | `scripts/compatibility.py` | Python | Taste compatibility scoring (artist or profile) |

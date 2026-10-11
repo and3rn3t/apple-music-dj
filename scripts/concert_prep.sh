@@ -128,7 +128,7 @@ echo "$plan" | jq -r '.tracks[].id' > "$TMPIDS"
 
 echo "🎧 Building playlist: ${PLAYLIST_NAME} (${total} tracks)" >&2
 # build_playlist.sh prints the API response; keep stdout to the single plan JSON below
-if ! "$SCRIPT_DIR/build_playlist.sh" create "$PLAYLIST_NAME" "$DESC" "$TMPIDS" > /dev/null; then
+if ! "$SCRIPT_DIR/build_playlist.sh" create "$PLAYLIST_NAME" "$DESC" "$TMPIDS" --yes > /dev/null; then
   echo "ERROR: Failed to create concert prep playlist" >&2
   exit 1
 fi

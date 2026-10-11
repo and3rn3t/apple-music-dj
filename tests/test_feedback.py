@@ -143,6 +143,12 @@ class TestMain:
         out = json.loads(capsys.readouterr().out)
         assert out["applied"] is False and out["song_ids"] == ["s1"]
 
+    def test_preview_needs_no_credentials(self, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv", ["feedback.py", "dislike", "s1"])
+        monkeypatch.setattr(fb, "require_env_tokens", lambda: pytest.fail("a preview makes no API call"))
+        fb.main()
+        assert json.loads(capsys.readouterr().out)["applied"] is False
+
     def test_info_does_not_rate(self, monkeypatch, capsys):
         monkeypatch.setattr(fb, "call_api", lambda cmd, *a, **k:
             {"data": [{"attributes": {"name": "N", "artistName": "A"}}]} if cmd == "song-detail"

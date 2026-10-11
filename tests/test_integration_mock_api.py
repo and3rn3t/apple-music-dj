@@ -116,6 +116,16 @@ class TestWrapper:
             assert res.returncode == 3 and "WOULD" in res.stderr and "--yes" in res.stderr, args
         assert api.mock.writes() == []
 
+    def test_build_playlist_only_previews_without_yes(self, api):
+        ids = api.tmp / "ids.txt"
+        ids.write_text("s1\ns2\n")
+        for args in (("create", "Nope", "desc", ids), ("refresh", "p.1", ids), ("remove", "p.1", ids)):
+            res = api("build_playlist.sh", *args, check=False)
+            assert res.returncode == 3 and "WOULD" in res.stderr, args
+        assert api.mock.writes() == []
+        api("build_playlist.sh", "refresh", "p.1", ids, "--yes")
+        assert [r["method"] for r in api.mock.writes()] == ["POST"]
+
     def test_feedback_only_previews_without_yes(self, api, profile):
         before = profile.read_text()
         out = _json(api("feedback.py", "dislike", "s2", "--profile", profile))

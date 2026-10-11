@@ -144,8 +144,8 @@ def main():
     if not song_ids:
         parser.error("give song IDs, or --position")
 
-    require_env_tokens()
     if args.action == "info":
+        require_env_tokens()
         print(json.dumps(track_info(song_ids, args.storefront), indent=2))
         return
 
@@ -159,6 +159,7 @@ def main():
                                   "Re-run with --yes to apply."}, indent=2))
         return
 
+    require_env_tokens()  # only the confirmed apply path calls the API
     result = run_rating(args.action, song_ids, args.profile)
     print(json.dumps(result, indent=2))
     failed = [r["id"] for r in result["results"] if not r["ok"]]

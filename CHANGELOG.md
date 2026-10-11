@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ClawHub's review of 3.2.4 said some account-changing commands could "directly alter playlists or ratings without an enforced confirmation step". Fair: the safeguards lived in the callers.
 
 - **`apple_music_api.sh` now enforces confirmation itself.** `create-playlist`, `add-to-playlist`, `remove-from-playlist`, `add-to-library`, `favorite`, `rate` and `unrate` only print `WOULD …` and exit 3 unless `--yes` is passed. The scripts that already gate their own writes (`--create`, `--yes`, `--apply`, `--confirm`) pass it after that gate.
-- **`feedback.py like|dislike|clear` previews by default** and needs `--yes` to rate songs or touch the profile.
+- **`build_playlist.sh create|refresh|remove` also preview** unless `--yes` is the last argument (its callers pass it after their own gates), so the helper is no longer a way around the wrapper check.
+- **`feedback.py like|dislike|clear` previews by default** and needs `--yes` to rate songs or touch the profile; a preview needs no credentials.
 - **`weekly-mix` is now opt-in** (`setup_cron.py install --jobs weekly-mix`). It is the one scheduled job that writes to your library unattended; a plain `install` now schedules only the report-only jobs. Existing crontab entries are untouched.
 
 ### Changed

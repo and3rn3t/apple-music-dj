@@ -205,7 +205,7 @@ def cmd_fix(args) -> dict:
                 try:
                     subprocess.run(
                         [str(SCRIPT_DIR / "build_playlist.sh"), "remove",
-                         args.playlist_id, ids_file],
+                         args.playlist_id, ids_file, "--yes"],
                         capture_output=True, text=True, timeout=30,
                     )
                     actions_taken.append(f"Removed {extras} duplicate(s) of {dup['id']}")
@@ -243,7 +243,7 @@ def cmd_fix(args) -> dict:
                 try:
                     subprocess.run(
                         [str(SCRIPT_DIR / "build_playlist.sh"), "refresh",
-                         args.playlist_id, ids_file],
+                         args.playlist_id, ids_file, "--yes"],
                         capture_output=True, text=True, timeout=30,
                     )
                     actions_taken.append(

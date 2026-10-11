@@ -1136,8 +1136,8 @@ def check_playlist_exists(name: str) -> str | None:
             for pl in data.get("data", []):
                 if pl.get("attributes", {}).get("name") == name:
                     return pl.get("id")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"WARN: Couldn't check for an existing playlist named '{name}': {e}", file=sys.stderr)
     return None
 
 
@@ -1284,6 +1284,9 @@ def main():
             print(f"ERROR: {e}", file=sys.stderr)
             sys.exit(1)
         tracks = strategy_era(profile, sf, args.decade, target_size, args.include_library)
+    else:  # argparse already restricts this; the branch keeps the variable provably assigned
+        print(f"ERROR: unknown strategy '{args.strategy}'.", file=sys.stderr)
+        sys.exit(1)
 
     if not tracks:
         print("No tracks found for this strategy. Try refreshing your profile.", file=sys.stderr)

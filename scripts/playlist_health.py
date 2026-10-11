@@ -286,6 +286,9 @@ def main():
         result = cmd_check(args)
     elif args.command == "fix":
         result = cmd_fix(args)
+    else:  # argparse already restricts this; the branch keeps the variable provably assigned
+        print(f"ERROR: unknown command '{args.command}'.", file=sys.stderr)
+        sys.exit(1)
 
     print(json.dumps(result, indent=2))
 

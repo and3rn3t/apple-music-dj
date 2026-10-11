@@ -128,10 +128,11 @@ class MockAppleMusic:
                 mock.requests.append({"method": method, "path": unquote(url.path), "query": query,
                                       "body": body, "auth": auth, "user_token": user})
                 if not auth:
-                    return self._send(401, {"errors": [{"status": "401"}]})
-                if "/me/" in url.path + "/" and not user:
-                    return self._send(403, {"errors": [{"status": "403"}]})
-                status, payload = mock.route(method, unquote(url.path), query, body)
+                    status, payload = 401, {"errors": [{"status": "401"}]}
+                elif "/me/" in url.path + "/" and not user:
+                    status, payload = 403, {"errors": [{"status": "403"}]}
+                else:
+                    status, payload = mock.route(method, unquote(url.path), query, body)
                 self._send(status, payload)
 
             def do_GET(self):

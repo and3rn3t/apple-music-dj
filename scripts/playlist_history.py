@@ -44,8 +44,8 @@ def load_history() -> list[dict]:
         if isinstance(data, list):
             return data
     except (json.JSONDecodeError, OSError):
-        pass
-    return []
+        return []
+    return []  # valid JSON, but not a list
 
 
 def save_history(history: list[dict]) -> None:

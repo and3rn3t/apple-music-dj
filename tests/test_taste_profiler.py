@@ -98,6 +98,19 @@ class TestExtractArtists:
 
 # ── extract_eras ─────────────────────────────────────────────────
 
+class TestExtractErasMalformedDates:
+    def _t(self, date):
+        return {"attributes": {"releaseDate": date}}
+
+    def test_malformed_dates_are_skipped_not_fatal(self):
+        eras = extract_eras([self._t("1994-05-01"), self._t("abcd-01-01"), self._t("²⁰⁰⁰"),
+                             self._t("19"), self._t(""), {"attributes": {}}])
+        assert [(e["decade"], e["count"]) for e in eras] == [("1990s", 1)]
+
+    def test_bare_year_still_counts(self):
+        assert extract_eras([self._t("1905")])[0]["decade"] == "1900s"
+
+
 class TestExtractEras:
     def test_decade_bucketing(self, sample_tracks):
         eras = extract_eras(sample_tracks)

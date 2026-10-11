@@ -329,14 +329,12 @@ def get_storefront(override: str | None = None) -> str:
     if env_sf:
         return env_sf
 
-    # Check cache
-    try:
+    # Check cache (an unreadable cache just means we detect from the API below)
+    with contextlib.suppress(OSError):
         if STOREFRONT_CACHE.exists():
             cached = STOREFRONT_CACHE.read_text().strip()
             if len(cached) == 2 and cached.isalpha():
                 return cached
-    except OSError:
-        pass
 
     # Auto-detect from API
     result = call_api("user-storefront", raw=True)

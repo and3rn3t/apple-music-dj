@@ -372,8 +372,7 @@ class TestGetStorefront:
 
     def test_auto_falls_through(self, monkeypatch):
         monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
-        import _common
-        monkeypatch.setattr(_common, "STOREFRONT_CACHE", type("P", (), {
+        monkeypatch.setattr("_common.STOREFRONT_CACHE", type("P", (), {
             "exists": lambda self: False,
         })())
         monkeypatch.setattr("_common.call_api", lambda *a, **kw: None)
@@ -388,16 +387,14 @@ class TestGetStorefront:
         monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
         cache = tmp_path / "storefront.cache"
         cache.write_text("jp\n")
-        import _common
-        monkeypatch.setattr(_common, "STOREFRONT_CACHE", cache)
+        monkeypatch.setattr("_common.STOREFRONT_CACHE", cache)
         assert get_storefront() == "jp"
 
     def test_invalid_cache_ignored(self, tmp_path, monkeypatch):
         monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
         cache = tmp_path / "storefront.cache"
         cache.write_text("invalid_long_string\n")
-        import _common
-        monkeypatch.setattr(_common, "STOREFRONT_CACHE", cache)
+        monkeypatch.setattr("_common.STOREFRONT_CACHE", cache)
         monkeypatch.setattr("_common.call_api", lambda *a, **kw: None)
         result = get_storefront()
         assert result == "us"
@@ -405,8 +402,7 @@ class TestGetStorefront:
     def test_api_detection(self, tmp_path, monkeypatch):
         monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
         cache = tmp_path / "storefront.cache"
-        import _common
-        monkeypatch.setattr(_common, "STOREFRONT_CACHE", cache)
+        monkeypatch.setattr("_common.STOREFRONT_CACHE", cache)
         monkeypatch.setattr("_common.call_api", lambda *a, **kw: "fr")
         result = get_storefront()
         assert result == "fr"
@@ -416,8 +412,7 @@ class TestGetStorefront:
     def test_api_returns_invalid(self, tmp_path, monkeypatch):
         monkeypatch.delenv("APPLE_MUSIC_STOREFRONT", raising=False)
         cache = tmp_path / "storefront.cache"
-        import _common
-        monkeypatch.setattr(_common, "STOREFRONT_CACHE", cache)
+        monkeypatch.setattr("_common.STOREFRONT_CACHE", cache)
         monkeypatch.setattr("_common.call_api", lambda *a, **kw: "invalid")
         result = get_storefront()
         assert result == "us"

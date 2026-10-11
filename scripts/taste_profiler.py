@@ -176,13 +176,10 @@ def extract_eras(tracks: list[dict]) -> list[dict]:
     decade_counts: Counter = Counter()
     for track in tracks:
         date_str = track.get("attributes", {}).get("releaseDate", "")
-        if date_str and len(date_str) >= 4:
-            try:
-                year = int(date_str[:4])
-                decade = f"{(year // 10) * 10}s"
-                decade_counts[decade] += 1
-            except ValueError:
-                pass
+        if date_str and len(date_str) >= 4 and date_str[:4].isdecimal():  # skip malformed dates
+            year = int(date_str[:4])
+            decade = f"{(year // 10) * 10}s"
+            decade_counts[decade] += 1
     total = sum(decade_counts.values()) or 1
     return [
         {"decade": d, "count": c, "weight": round(c / total, 3)}

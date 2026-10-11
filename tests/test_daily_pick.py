@@ -21,12 +21,12 @@ class TestDailySeed:
     def test_different_days_differ(self):
         with patch("daily_pick.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, tzinfo=timezone.utc)
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            mock_dt.side_effect = datetime
             seed_a = daily_seed()
 
         with patch("daily_pick.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 2, tzinfo=timezone.utc)
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            mock_dt.side_effect = datetime
             seed_b = daily_seed()
 
         assert seed_a != seed_b

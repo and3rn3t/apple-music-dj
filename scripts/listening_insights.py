@@ -290,6 +290,9 @@ def main():
             print(f"ERROR: Year must be between 2015 and {current_year}", file=sys.stderr)
             sys.exit(1)
         result = cmd_year_review(profile, args.year)
+    else:  # argparse already restricts this; the branch keeps the variable provably assigned
+        print(f"ERROR: unknown command '{args.command}'.", file=sys.stderr)
+        sys.exit(1)
 
     print(json.dumps(result, indent=2))
 

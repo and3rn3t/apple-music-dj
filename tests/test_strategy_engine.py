@@ -878,6 +878,14 @@ class TestMoodMap:
 # ── check_playlist_exists ────────────────────────────────────────
 
 class TestCheckPlaylistExists:
+    def test_lookup_failure_warns_instead_of_failing_silently(self, monkeypatch, capsys):
+        def boom(*a, **kw):
+            raise OSError("api script missing")
+        monkeypatch.setattr("subprocess.run", boom)
+        assert se.check_playlist_exists("My Mix") is None
+        err = capsys.readouterr().err
+        assert "Couldn't check for an existing playlist named 'My Mix'" in err and "api script missing" in err
+
     def test_finds_existing_playlist(self, monkeypatch):
         data = json.dumps({"data": [
             {"id": "pl1", "attributes": {"name": "My Mix"}},

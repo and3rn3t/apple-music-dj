@@ -7,7 +7,7 @@ from datetime import date
 import pytest
 
 import taste_drift as td
-from _common import save_snapshot
+from _common import list_snapshots, save_snapshot
 
 
 def _profile(genres, artists, eras=None, variety=0.5, mainstream=0.5, energy="balanced", day="2026-01-01"):
@@ -139,8 +139,7 @@ class TestSnapshotErrors:
 
     def test_cli_reports_instead_of_tracebacks(self, tmp_path, monkeypatch, capsys):
         import sys
-        import _common
-        monkeypatch.setattr(_common, "SNAPSHOT_DIR", tmp_path)
+        monkeypatch.setattr("_common.SNAPSHOT_DIR", tmp_path)
         save_snapshot(_profile([("Rock", 1.0)], ["A"], day="2026-04-01"), tmp_path)
         (tmp_path / "2026-01-01.json").write_text("{not json")
         monkeypatch.setattr(sys, "argv", ["taste_drift.py"])
@@ -150,7 +149,6 @@ class TestSnapshotErrors:
 
     def test_stray_files_are_ignored(self, tmp_path):
         (tmp_path / "abcd-ef-gh.json").write_text("{}")
-        from _common import list_snapshots
         assert list_snapshots(tmp_path) == []
 
 

@@ -30,6 +30,11 @@ RISKY = {
 }
 
 
+def documented(name: str) -> bool:
+    """`name` appears in SKILL.md as a whole token, not inside a longer word."""
+    return re.search(rf"(?<![\w.-]){re.escape(name)}(?![\w-])", SKILL) is not None
+
+
 def code_lines(path: Path):
     for number, line in enumerate(path.read_text().splitlines(), 1):
         if not line.lstrip().startswith("#"):
@@ -43,7 +48,7 @@ def test_scripts_only_contact_documented_hosts():
                 parts = urlsplit(url)
                 assert (parts.scheme, parts.hostname) in ALLOWED_HOSTS, f"{path.name}:{number} {url}"
     assert re.search(r"https://api\.music\.apple\.com", SKILL)
-    assert "Apple's CDN" in SKILL  # the one extra host must stay disclosed
+    assert re.search(r"MusicKit JS from Apple's CDN", SKILL)  # the one extra host must stay disclosed
 
 
 def test_no_risky_constructs_in_shipped_scripts():
@@ -58,7 +63,7 @@ def test_every_env_var_the_scripts_read_is_documented():
     for path in SCRIPTS:
         names |= set(re.findall(r"\bAPPLE_[A-Z_]+\b", path.read_text()))
     assert names, "expected the scripts to reference APPLE_* variables"
-    missing = sorted(n for n in names if n not in SKILL)
+    missing = sorted(n for n in names if not documented(n))
     assert not missing, f"undocumented in SKILL.md: {missing}"
 
 
@@ -68,12 +73,12 @@ def test_every_stored_file_is_documented():
         paths |= set(re.findall(r"\.apple-music-dj/([A-Za-z0-9_.\-]+)", path.read_text()))
     # Filenames can appear with trailing punctuation from prose
     names = {p.rstrip(".") for p in paths}
-    missing = sorted(n for n in names if n and n not in SKILL)
+    missing = sorted(n for n in names if n and not documented(n))
     assert not missing, f"stored under ~/.apple-music-dj but undocumented in SKILL.md: {missing}"
 
 
 def test_token_handoff_is_disclosed():
-    assert "temporary" in SKILL and "0600" in SKILL
+    assert re.search(r"temporary owner-only \(`0600`\) config file that is deleted on exit", SKILL)
 
 
 def test_every_account_writing_command_asks_for_confirmation():

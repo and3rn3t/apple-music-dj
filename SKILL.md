@@ -649,7 +649,8 @@ under MIT-0.
 **Data NOT collected:**
 - No data is sent to any third-party service
 - No analytics or telemetry
-- No data leaves the user's machine (all API calls go directly to Apple, `https://api.music.apple.com`)
+- The only destination is Apple: requests go directly to `https://api.music.apple.com` (and, during
+  `setup_auth.py`, MusicKit JS from Apple's CDN), and nothing is sent to anyone else
 - Tokens are never logged, and never stored unless the user asks (`setup_auth.py --env-file`)
 - To keep tokens off the process list, the API wrapper and `verify_setup.sh` hand them to `curl` through
   a temporary owner-only (`0600`) config file that is deleted on exit, Ctrl-C and `kill`

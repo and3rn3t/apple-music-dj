@@ -19,7 +19,7 @@ fi
 # The token check below writes the tokens into a temporary curl config (mode 600). Remove those
 # files however we exit — including Ctrl-C or `kill` mid-request. Names carry this script's pid,
 # so the cleanup only ever touches this run's files.
-# shellcheck disable=SC2329  # invoked via the traps below
+# shellcheck disable=SC2317,SC2329  # invoked via the traps below (older ShellCheck says 2317, newer 2329)
 _cleanup() {
     rm -f "${TMPDIR:-/tmp}"/am_verify_$$_* 2>/dev/null || true
 }

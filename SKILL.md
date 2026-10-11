@@ -19,7 +19,7 @@ description: >
   song", "what should I listen to right now", "blend", "throwback", "[decade] playlist", "taste
   drift", "how has my taste changed", "import my playlist", "I didn't like track", "add the
   missing albums", "set up Apple Music tokens", "try the demo", or OpenClaw in the context of music.
-version: 3.3.0
+version: 3.3.1
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj

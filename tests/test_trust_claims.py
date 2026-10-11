@@ -41,8 +41,6 @@ def test_scripts_only_contact_documented_hosts():
         for number, line in code_lines(path):
             for url in re.findall(r"https?://[A-Za-z0-9.\-]+(?::\d+)?(?:/[A-Za-z0-9./_\-]*)?", line):
                 parts = urlsplit(url)
-                if parts.hostname in ("github.com", "raw.githubusercontent.com"):
-                    continue
                 assert (parts.scheme, parts.hostname) in ALLOWED_HOSTS, f"{path.name}:{number} {url}"
     assert re.search(r"https://api\.music\.apple\.com", SKILL)
     assert "Apple's CDN" in SKILL  # the one extra host must stay disclosed

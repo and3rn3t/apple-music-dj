@@ -75,22 +75,21 @@ def render(scenes: list[tuple[str, list[str]]], freeze: int | None = None) -> st
 
     # Timeline: per scene — request, then output lines, then a hold, then a short gap.
     timings, t = [], 0.4
-    for request, body in scenes:
-        start = t
-        shown = [start]                      # when the request line appears
+    for _, body in scenes:
+        shown = [t]                      # when the request line appears
         t += 0.9
         for _ in body:
             shown.append(t)
             t += 0.09
         t += 3.2                             # hold on the finished scene
-        timings.append((start, t, shown))
+        timings.append((t, shown))
         t += 0.5
     total = t
 
     css, texts = [], []
-    for si, ((request, body), (start, end, shown)) in enumerate(zip(scenes, timings), 1):
+    for si, ((request, body), (end, shown)) in enumerate(zip(scenes, timings, strict=True), 1):
         lines = [("req", f"› {request}")] + [(line_class(x), x) for x in body]
-        for li, ((cls, text), at) in enumerate(zip(lines, shown)):
+        for li, ((cls, text), at) in enumerate(zip(lines, shown, strict=True)):
             y = BAR_H + TOP + li * LINE_H
             name = f"s{si}l{li}"
             a, b = at / total * 100, end / total * 100

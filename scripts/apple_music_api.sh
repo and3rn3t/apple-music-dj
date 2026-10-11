@@ -18,13 +18,13 @@ fi
 # ── Token check ───────────────────────────────────────────────────
 require_dev_token() {
   if [[ -z "${APPLE_MUSIC_DEV_TOKEN:-}" ]]; then
-    echo "ERROR: APPLE_MUSIC_DEV_TOKEN not set. See references/auth-setup.md" >&2; exit 1
+    echo "ERROR: APPLE_MUSIC_DEV_TOKEN not set. Run scripts/setup_auth.py, or try scripts/demo.py tour first." >&2; exit 1
   fi
 }
 require_user_token() {
   require_dev_token
   if [[ -z "${APPLE_MUSIC_USER_TOKEN:-}" ]]; then
-    echo "ERROR: APPLE_MUSIC_USER_TOKEN not set. See references/auth-setup.md" >&2; exit 1
+    echo "ERROR: APPLE_MUSIC_USER_TOKEN not set. Run scripts/setup_auth.py, or try scripts/demo.py tour first." >&2; exit 1
   fi
 }
 
@@ -204,7 +204,7 @@ cmd_verify() {
   if _get "/v1/me/recent/played/tracks?limit=1" | jq -e '.data' >/dev/null 2>&1; then
     echo "  ✅ Music User Token valid" >&2
   else
-    echo "  ❌ Music User Token failed (expired? re-authorize)" >&2; exit 1
+    echo "  ❌ Music User Token failed (expired? renew it: python3 scripts/setup_auth.py)" >&2; exit 1
   fi
   echo "Both tokens verified. 🎧" >&2
 }

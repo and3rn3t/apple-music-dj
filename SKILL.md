@@ -4,7 +4,8 @@ description: >
   Your AI Apple Music curator. Builds playlists from your real listening history, finds songs
   like any artist or song, makes decade throwbacks and two-person blends, shows how your taste
   changes over time, and rebuilds playlists from a Spotify export or text list. Anything that
-  changes your account is opt-in and confirmed first. Also covers mood and activity playlists,
+  changes your account is opt-in and confirmed first, and a built-in demo lets you try it with no
+  tokens. Also covers mood and activity playlists,
   deep cuts, trending picks, taste DNA cards, compatibility scores, listening insights and year
   in review, catalog gap analysis, album deep dives, artist rabbit holes, daily song drops,
   concert prep, a new release radar, and scheduled weekly curation via cron. Use whenever the
@@ -17,8 +18,8 @@ description: >
   missed", "album deep dive", "rabbit hole", "concert prep", "seeing [artist] live", "daily
   song", "what should I listen to right now", "blend", "throwback", "[decade] playlist", "taste
   drift", "how has my taste changed", "import my playlist", "I didn't like track", "add the
-  missing albums", or OpenClaw in the context of music.
-version: 3.2.5
+  missing albums", "set up Apple Music tokens", "try the demo", or OpenClaw in the context of music.
+version: 3.3.0
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
@@ -33,6 +34,9 @@ tags:
   - listening-history
   - taste-profile
   - playlist-import
+  - music-discovery
+  - spotify-import
+  - demo
 category: music
 icon: assets/icon.svg
 metadata:
@@ -82,7 +86,11 @@ ratings, Replay), builds a taste profile, and turns it into playlists and insigh
 | "I didn't like track 7" | Rated down and kept out of future playlists |
 
 **What it needs:** an Apple Developer account (for a MusicKit token) and an Apple Music
-subscription. Tokens live only in environment variables.
+subscription. `scripts/setup_auth.py` gets both tokens in one step (sign in with Apple in the
+browser). Tokens live in environment variables.
+
+**No account yet?** `python3 scripts/demo.py tour` runs the real scripts against a fictional
+listener and a local sample catalog — no tokens, nothing sent to Apple, nothing written to an account.
 
 **Safety:** read-only by default. Creating playlists, favoriting, rating, adding albums and
 scheduling cron jobs are opt-in and confirmed first (the scripts preview by default and write only
@@ -122,15 +130,29 @@ User Request
 
 ## Prerequisites
 
-Two environment variables must be set. If the user doesn't have them, walk them through
-`references/auth-setup.md` before doing anything else.
+Two environment variables must be set. If they're missing:
+
+1. **Offer the demo first** so the user sees what they'd get: run `python3 scripts/demo.py tour`
+   and show the output. It needs no tokens, uses a fictional listener and a local sample catalog,
+   and never touches an account. Say clearly that the demo results aren't theirs. Any other
+   request can be shown in demo mode too: `python3 scripts/demo.py run <script> [args]`, with
+   `DEMO_PROFILE` standing in for the profile path (e.g. `demo.py run strategy_engine.py --strategy
+   mood --mood focus --profile DEMO_PROFILE`). Never present a demo playlist as created in their library.
+2. **Then set up real tokens**: ask the user to run `python3 scripts/setup_auth.py` **in their own
+   terminal**. It signs the developer token from their MusicKit key, opens a local page where
+   they sign in with Apple, and prints the `export` lines (or `--env-file PATH` writes them to an
+   owner-only file). Don't run it yourself or ask them to paste tokens into the chat. Full manual
+   steps: `references/auth-setup.md`.
 
 | Variable | Purpose |
 |---|---|
 | `APPLE_MUSIC_DEV_TOKEN` | JWT signed with MusicKit private key (Apple Developer portal) |
 | `APPLE_MUSIC_USER_TOKEN` | Per-user authorization token (obtained via MusicKit JS `authorize()`) |
 
-Verify with: `scripts/apple_music_api.sh verify`
+Verify with: `scripts/apple_music_api.sh verify` (or the fuller `scripts/verify_setup.sh`).
+`python3 scripts/setup_auth.py status` shows how long each token has left; the profiler and
+`verify_setup.sh` warn when the developer token is within 14 days of expiry or the user token is
+nearing the ~6 months these usually last.
 
 ## Taste Profiling
 
@@ -515,8 +537,8 @@ Detection order:
 
 | Code | Meaning | Action |
 |---|---|---|
-| 401 | Dev token invalid/expired | Regenerate JWT. See `references/auth-setup.md` |
-| 403 | User token expired (~6mo) | Re-authorize via browser. No refresh flow exists |
+| 401 | Dev token invalid/expired | Ask the user to run `python3 scripts/setup_auth.py --new-dev-token` |
+| 403 | User token expired (~6mo) | Ask the user to run `python3 scripts/setup_auth.py` (browser sign-in). No refresh flow exists |
 | 404 | Resource removed from catalog | Skip, log warning, continue |
 | 429 | Rate limited | Exponential backoff: 1s→2s→4s→8s, max 3 retries |
 | Empty data | New user or privacy settings | Fall back: Replay → recs → manual seeds |
@@ -537,7 +559,7 @@ some bands in that orbit" — not "Here's an awesome playlist just for you!"
 
 | File | Read when... |
 |---|---|
-| `references/auth-setup.md` | User needs token setup help |
+| `references/auth-setup.md` | User needs token setup help (start with `setup_auth.py`) |
 | `references/api-reference.md` | Need endpoint details, formats, genre IDs |
 | `references/playlist-strategies.md` | Before executing any playlist strategy |
 | `references/troubleshooting.md` | User hits errors, things aren't working |
@@ -564,7 +586,7 @@ stores, and transmits.
 **Requirements.** Needed: `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN`, `curl`, `jq`, `python3`
 (3.10+). Optional, each used by one feature only: `APPLE_MUSIC_STOREFRONT` (override region
 detection); `crontab` (scheduling); and for generating a developer token yourself with
-`generate_dev_token.py`, `APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_PRIVATE_KEY_PATH` (your MusicKit
+`setup_auth.py` or `generate_dev_token.py`, `APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_PRIVATE_KEY_PATH` (your MusicKit
 `.p8` signing key, read only by that script and never sent anywhere) plus the `PyJWT` and
 `cryptography` packages. **License:** MIT (see `LICENSE`); ClawHub distributes published skills
 under MIT-0.
@@ -588,12 +610,19 @@ under MIT-0.
 | Cron job logs | Output of scheduled jobs (playlist names, picks) — only if cron is installed | `~/.apple-music-dj/logs/` (files `0600`) |
 | Playlist history | Names and track IDs of playlists the DJ created | `~/.apple-music-dj/playlist_history.json` |
 | Taste DNA Card | Generated SVG image | User-specified output path |
+| User-token age record | A 16-hex-digit SHA-256 fingerprint of the user token (not the token) and the date it was first seen, for the renewal reminder | `~/.apple-music-dj/user_token_seen.json` |
+| Token env file | The two `export` lines — only if the user passes `setup_auth.py --env-file PATH` | `PATH` (mode `0600`) |
+| Demo data | The fictional demo listener's profile and snapshots | `~/.apple-music-dj-demo/` (`demo.py reset` removes it) |
 
 **Data NOT collected:**
 - No data is sent to any third-party service
 - No analytics or telemetry
 - No data leaves the user's machine (all API calls go directly to Apple)
-- Tokens are never logged or stored by the skill (env vars only)
+- Tokens are never logged, and never stored unless the user asks (`setup_auth.py --env-file`)
+- `setup_auth.py` serves its sign-in page on `127.0.0.1` only, behind a random one-time URL, and
+  stops as soon as the token arrives; the page loads Apple's MusicKit JS from Apple's CDN
+- `demo.py` runs its sample API on `127.0.0.1` only for the length of one command, strips real
+  Apple credentials from the scripts it runs, and refuses `setup_cron.py` and paths into `~/.apple-music-dj/`
 
 **Cache management:**
 - Taste profile cache has a 7-day TTL by default
@@ -611,6 +640,8 @@ under MIT-0.
 | `scripts/taste_profiler.py` | Python | Taste DNA profiler with caching |
 | `scripts/build_playlist.sh` | Bash | Playlist creation & refresh (create or add tracks); previews unless `--yes` is the last argument |
 | `scripts/generate_dev_token.py` | Python | Developer JWT generator |
+| `scripts/setup_auth.py` | Python | Guided setup: dev token + browser sign-in for the user token; `status` shows time left |
+| `scripts/demo.py` | Python | Demo mode — tour or run any script against a local sample catalog, no tokens |
 | `scripts/taste_card.py` | Python | Shareable Taste DNA Card (SVG/text) |
 | `scripts/compatibility.py` | Python | Taste compatibility scoring (artist or profile) |
 | `scripts/listening_insights.py` | Python | Timeline, streaks, milestones, year in review |

@@ -112,7 +112,8 @@ if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" ]]; then
     echo "  $PASS APPLE_MUSIC_DEV_TOKEN — set"
 else
     echo "  $FAIL APPLE_MUSIC_DEV_TOKEN — NOT SET"
-    echo "       See references/auth-setup.md for instructions"
+    echo "       Set up both tokens in one step: python3 scripts/setup_auth.py"
+    echo "       Or try the skill first with no tokens: python3 scripts/demo.py tour"
     errors=$((errors + 1))
 fi
 
@@ -121,7 +122,7 @@ if [[ -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; then
     echo "  $PASS APPLE_MUSIC_USER_TOKEN — set ($token_len chars)"
 else
     echo "  $FAIL APPLE_MUSIC_USER_TOKEN — NOT SET"
-    echo "       See references/auth-setup.md for instructions"
+    echo "       Set it up with: python3 scripts/setup_auth.py (see references/auth-setup.md)"
     errors=$((errors + 1))
 fi
 
@@ -172,6 +173,32 @@ fi
 
 echo ""
 
+# ── User token age ────────────────────────────────────────
+# The user token carries no expiry, so _common records (by fingerprint) when it was first seen.
+
+echo "Checking user token age..."
+
+if [[ -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; then
+    age_json=$(AMDJ_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" python3 -c '
+import json, os, sys
+sys.path.insert(0, os.environ["AMDJ_SCRIPTS"])
+from _common import check_user_token_age
+print(json.dumps(check_user_token_age()))' 2>/dev/null || echo null)
+    age_msg=$(jq -r '.message // empty' <<< "$age_json" 2>/dev/null || true)
+    if [[ -z "$age_msg" ]]; then
+        echo "  $WARN Could not track the user token's age — skipping check"
+    elif [[ "$(jq -r '.warning' <<< "$age_json")" == "true" ]]; then
+        echo "  $WARN ${age_msg#⚠️  }"
+        warnings=$((warnings + 1))
+    else
+        echo "  $PASS ${age_msg#✅ }"
+    fi
+else
+    echo "  $WARN Skipped — APPLE_MUSIC_USER_TOKEN not set"
+fi
+
+echo ""
+
 # ── Script files ──────────────────────────────────────────
 
 echo "Checking scripts..."
@@ -194,6 +221,8 @@ expected_scripts=(
     "playlist_history.py"
     "strategy_engine.py"
     "setup_cron.py"
+    "setup_auth.py"
+    "demo.py"
     "verify_setup.sh"
 )
 
@@ -228,7 +257,7 @@ if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" && -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; th
             ;;
         401)
             echo "  $FAIL Dev token — invalid or expired (HTTP 401)"
-            echo "       Regenerate with: python3 scripts/generate_dev_token.py"
+            echo "       Regenerate with: python3 scripts/setup_auth.py --new-dev-token"
             errors=$((errors + 1))
             ;;
         *)
@@ -257,7 +286,7 @@ if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" && -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; th
             ;;
         403)
             echo "  $FAIL User token expired (HTTP 403)"
-            echo "       Re-authorize via MusicKit JS in browser"
+            echo "       Renew it: python3 scripts/setup_auth.py"
             errors=$((errors + 1))
             ;;
         429)

@@ -42,6 +42,7 @@ from _common import (
     LOW_ENERGY,
     call_api,
     check_token_expiry,
+    check_user_token_age,
     get_storefront,
     require_env_tokens,
     save_snapshot,
@@ -297,6 +298,9 @@ def build_profile(args) -> dict:
         print(token_status["message"], file=sys.stderr)
         if token_status["expired"]:
             sys.exit(1)
+    user_token = check_user_token_age()
+    if user_token and user_token["warning"]:
+        print(user_token["message"], file=sys.stderr)
 
     print("🎧 Building your Taste DNA profile...", file=sys.stderr)
 

@@ -22,7 +22,7 @@ needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
 ALLOWED_ROOT = {"README.md", "SKILL.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "LICENSE", "clawhub.json",
                 "requirements.txt"}
 ALLOWED_DIRS = {"scripts", "references", "assets"}
-MUST_NOT_SHIP = ("pyproject.toml", "CHANGELOG.md", "CONTRIBUTING.md", "renovate.json", "Makefile")
+MUST_NOT_SHIP = ("pyproject.toml", "CHANGELOG.md", "CONTRIBUTING.md", "renovate.json", "Makefile", "ROADMAP.md")
 
 
 def _git(args, cwd, input_=None):

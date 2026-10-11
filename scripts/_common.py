@@ -7,6 +7,7 @@ used across all scripts.
 """
 
 import base64
+import hashlib
 import errno
 import json
 import os
@@ -187,7 +188,8 @@ def require_env_tokens():
         missing.append("APPLE_MUSIC_USER_TOKEN")
     if missing:
         print(f"ERROR: Missing env vars: {', '.join(missing)}", file=sys.stderr)
-        print("  See references/auth-setup.md for configuration steps.", file=sys.stderr)
+        print("  Set them up in one step: python3 scripts/setup_auth.py (see references/auth-setup.md)", file=sys.stderr)
+        print("  Or try it first with no tokens: python3 scripts/demo.py tour", file=sys.stderr)
         sys.exit(1)
 
 
@@ -311,6 +313,57 @@ def check_token_expiry(warn_days: int = 14) -> dict | None:
             }
     except Exception:
         return None
+
+
+# ── Music User Token age ─────────────────────────────────────────
+# The user token is opaque (no expiry inside it) and Apple doesn't say when it lapses, so we note
+# when we first saw it — by a short SHA-256 fingerprint, never the token itself — and warn as it
+# nears the ~6 months these tokens usually last.
+
+USER_TOKEN_SEEN = APP_DIR / "user_token_seen.json"
+USER_TOKEN_LIFETIME_DAYS = 180
+
+
+def user_token_fingerprint(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()[:16]
+
+
+def record_user_token(token: str, path: Path | None = None, when: datetime | None = None) -> None:
+    """Remember today (or `when`) as the day this user token was issued or first seen."""
+    when = when or datetime.now(timezone.utc)
+    write_private(Path(path) if path else USER_TOKEN_SEEN,
+                  json.dumps({"fingerprint": user_token_fingerprint(token),
+                              "first_seen": when.date().isoformat()}) + "\n")
+
+
+def check_user_token_age(warn_days: int = 14, path: Path | None = None) -> dict | None:
+    """Estimate how long the current APPLE_MUSIC_USER_TOKEN has left.
+
+    Returns {age_days, days_left, warning, message}, or None when there is no token, in demo
+    mode, or the record can't be read or written. A token we haven't seen before is recorded
+    as new today.
+    """
+    token = os.environ.get("APPLE_MUSIC_USER_TOKEN", "")
+    if not token or os.environ.get("APPLE_MUSIC_DJ_DEMO"):
+        return None
+    path = Path(path) if path else USER_TOKEN_SEEN
+    today = datetime.now(timezone.utc).date()
+    try:
+        seen = json.loads(path.read_text()) if path.is_file() else {}
+        if not isinstance(seen, dict) or seen.get("fingerprint") != user_token_fingerprint(token):
+            record_user_token(token, path)
+            seen = {"first_seen": today.isoformat()}
+        first = datetime.strptime(seen["first_seen"], "%Y-%m-%d").date()
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    age = max((today - first).days, 0)
+    left = USER_TOKEN_LIFETIME_DAYS - age
+    if left <= warn_days:
+        message = (f"⚠️  Your Apple Music user token is about {age} days old and these usually last ~6 months. "
+                   f"If requests start failing with HTTP 403, renew it: python3 scripts/setup_auth.py")
+    else:
+        message = f"✅ User token first seen {age} day(s) ago (roughly {left} days left)."
+    return {"age_days": age, "days_left": left, "warning": left <= warn_days, "message": message}
 
 
 STOREFRONT_CACHE = Path.home() / ".apple-music-dj" / "storefront.cache"

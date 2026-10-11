@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] — Unreleased
+
+Easier to try, easier to set up.
+
+### Added
+
+- **Demo mode — try it with no account or tokens.** `python3 scripts/demo.py tour` runs the real scripts against a fictional listener and a small sample catalog served on `127.0.0.1` for the length of the command: Taste DNA card, a "songs like" playlist, a decade throwback, a daily pick and a compatibility score. `demo.py run <script> [args]` runs any skill script the same way (`DEMO_PROFILE` stands for the demo profile). The sandbox gets its own `HOME` (`~/.apple-music-dj-demo/`), placeholder tokens and no real `APPLE_*` variables; `setup_cron.py`, `setup_auth.py` and paths into the real `~/.apple-music-dj/` are refused. `demo.py reset` removes the demo data. The mock API moved from `tests/mock_api.py` (now a re-export) to `scripts/demo.py` so it ships.
+- **One-step token setup.** `python3 scripts/setup_auth.py` signs the developer token from your MusicKit key (or reuses a valid one), opens a local page where you sign in with Apple, and prints both `export` lines (`--env-file PATH` writes them `0600` instead). The page is served on `127.0.0.1` at a random path, refuses foreign `Host` and cross-origin requests, and stops once the token arrives. `setup_auth.py status` shows how long each token has left.
+- **User-token age warning.** The user token carries no expiry, so the skill records when it first saw it (by a 16-hex-digit SHA-256 fingerprint, never the token) and the profiler and `verify_setup.sh` warn as it nears the ~6 months these last.
+- `ROADMAP.md` (not shipped).
+
+### Changed
+
+- **Listing:** README links point to openclaw.ai / clawhub.ai (was openclaw.dev), the install command is `openclaw skills install apple-music-dj` (plus "start a new session"), a "Try it first" section and a "What it can change" safety table are near the top, stale "5 strategies" counts are fixed, and `clawhub.json` carries the same tags as `SKILL.md` (plus `music-discovery`, `spotify-import`, `demo`).
+- `SKILL.md` tells the agent to offer the demo when tokens are missing and to have the user run `setup_auth.py` in their own terminal; the description mentions the demo and adds "set up Apple Music tokens" and "try the demo" triggers.
+- Missing- or expired-token messages now point to `setup_auth.py` (and the demo) instead of the manual steps; `troubleshooting.md` no longer shows a wrong `generate_dev_token.py` invocation.
+- `generate_dev_token.py` exposes `make_dev_token()` for reuse; its CLI is unchanged.
+
 ## [3.2.5] — Unreleased
 
 ### Security

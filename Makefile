@@ -17,7 +17,7 @@ coverage-html:
 
 ## Ruff (Python) and ShellCheck (bash)
 ruff:
-	$(PYTHON) -m ruff check scripts tests
+	$(PYTHON) -m ruff check scripts tests .github/scripts
 	shellcheck scripts/*.sh
 
 ## Syntax-check all scripts

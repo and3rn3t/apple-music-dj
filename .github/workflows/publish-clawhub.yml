@@ -1,0 +1,171 @@
+# Publishes the skill to ClawHub when a GitHub release is published (or by hand, as a dry run).
+#
+# Flow: `verify` (no secrets) checks the version/tag/changelog, that the commit is on main, and runs
+# the tests. Only then does `publish` start, and it waits for a human to approve the `clawhub`
+# Environment — the one place the CLAWHUB_TOKEN secret lives. Publishing accepts ClawHub's MIT-0
+# license terms automatically (the CLI sends acceptLicenseTerms), which is why approval is required.
+#
+# One-time setup (repo settings -> Environments):
+#   1. Create an environment named `clawhub` and add yourself as a required reviewer.
+#   2. Add the secret to it:  clawhub token | gh secret set CLAWHUB_TOKEN --env clawhub
+#      (or paste a dedicated token; it is read from the environment, never passed as an argument).
+#
+# To release: bump the version in SKILL.md, pyproject.toml and clawhub.json, add a CHANGELOG.md
+# section, merge to main, then publish a GitHub release tagged vX.Y.Z.
+name: Publish to ClawHub
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: run every check and `clawhub publish --dry-run`, but publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clawhub-publish
+  cancel-in-progress: false
+
+env:
+  SLUG: apple-music-dj
+  DISPLAY_NAME: Apple Music DJ
+  OWNER_HANDLE: and3rn3t
+  # Pinned on purpose (0.7.x can't upload this skill: 15s request timeout). Bump deliberately.
+  CLAWHUB_CLI_VERSION: "0.23.3"
+
+jobs:
+  verify:
+    name: Verify release
+    if: github.repository == 'and3rn3t/apple-music-dj' && (github.event_name == 'workflow_dispatch' || !github.event.release.prerelease)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Check version, tag and changelog
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "release" ]; then
+            version=$(python3 .github/scripts/release_checks.py check-tag "$TAG_NAME")
+          else
+            version=$(python3 .github/scripts/release_checks.py versions)
+          fi
+          python3 .github/scripts/release_checks.py notes --version "$version" > /dev/null
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Require the commit to be on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_SHA is not on main. Only reviewed, merged commits can be published."
+            exit 1
+          fi
+
+      - name: Run the tests
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+          python -m pytest tests -q
+
+  publish:
+    name: Publish to ClawHub
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Pauses here until a required reviewer approves; the token is only exposed to approved runs.
+    environment:
+      name: clawhub
+      url: https://clawhub.ai/and3rn3t/skills/apple-music-dj
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      # Anything other than the literal string "false" is treated as a dry run.
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+      SOURCE_REF: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Install the ClawHub CLI
+        run: npm install --global "clawhub@${CLAWHUB_CLI_VERSION}"
+
+      - name: Authenticate
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          # The CLI reads its token from this file; it never appears on a command line.
+          export CLAWHUB_CONFIG_PATH="$RUNNER_TEMP/clawhub-config.json"
+          python3 .github/scripts/release_checks.py write-config
+          echo "CLAWHUB_CONFIG_PATH=$CLAWHUB_CONFIG_PATH" >> "$GITHUB_ENV"
+          python3 .github/scripts/release_checks.py check-whoami --expect "$OWNER_HANDLE"
+
+      - name: Export a clean copy of the release commit
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pkg"
+          git archive "$GITHUB_SHA" | tar -x -C "$RUNNER_TEMP/pkg"
+
+      - name: Preview the publish
+        run: |
+          set -euo pipefail
+          notes=$(python3 .github/scripts/release_checks.py notes --version "$VERSION" --max-chars 2000)
+          clawhub publish "$RUNNER_TEMP/pkg" --slug "$SLUG" --name "$DISPLAY_NAME" --version "$VERSION" \
+            --tags latest --source-repo "$GITHUB_REPOSITORY" --source-commit "$GITHUB_SHA" \
+            --source-ref "$SOURCE_REF" --changelog "$notes" --no-input --dry-run
+
+      - name: Publish
+        if: env.DRY_RUN == 'false'
+        run: |
+          set -euo pipefail
+          notes=$(python3 .github/scripts/release_checks.py notes --version "$VERSION" --max-chars 2000)
+          clawhub publish "$RUNNER_TEMP/pkg" --slug "$SLUG" --name "$DISPLAY_NAME" --version "$VERSION" \
+            --tags latest --source-repo "$GITHUB_REPOSITORY" --source-commit "$GITHUB_SHA" \
+            --source-ref "$SOURCE_REF" --changelog "$notes" --no-input
+
+      - name: Wait for ClawHub's scans, then check the verdict
+        if: env.DRY_RUN == 'false'
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/release_checks.py wait-for-version --slug "$SLUG" --version "$VERSION" --timeout 1500
+          python3 .github/scripts/release_checks.py check-verdict --slug "$SLUG" --version "$VERSION"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ClawHub publish"
+            echo ""
+            echo "- Version: \`${VERSION:-unknown}\`  (commit \`${GITHUB_SHA::7}\`)"
+            if [ "$DRY_RUN" = "false" ]; then echo "- Mode: published"; else echo "- Mode: dry run (nothing published)"; fi
+            echo "- Skill: https://clawhub.ai/${OWNER_HANDLE}/skills/${SLUG}"
+            echo "- Security audit: https://clawhub.ai/${OWNER_HANDLE}/skills/${SLUG}/security-audit"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "${CLAWHUB_CONFIG_PATH:-}"

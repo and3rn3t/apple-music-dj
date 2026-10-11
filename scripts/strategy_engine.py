@@ -1131,7 +1131,11 @@ def check_playlist_exists(name: str) -> str | None:
             [str(SCRIPT_DIR / "apple_music_api.sh"), "library-playlists", "100"],
             capture_output=True, text=True, timeout=30,
         )
-        if result.returncode == 0 and result.stdout.strip():
+        if result.returncode != 0:
+            detail = (result.stderr or "").strip().splitlines()
+            print(f"WARN: Couldn't check for an existing playlist named '{name}': the API call exited "
+                  f"{result.returncode}" + (f" ({detail[-1]})" if detail else "") + ".", file=sys.stderr)
+        elif result.stdout.strip():
             data = json.loads(result.stdout)
             for pl in data.get("data", []):
                 if pl.get("attributes", {}).get("name") == name:

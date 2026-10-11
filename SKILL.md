@@ -639,6 +639,8 @@ under MIT-0.
 | Taste snapshots | Genre/artist/era weights, no song IDs (last 52, one per day) | `~/.apple-music-dj/snapshots/` |
 | Cron job logs | Output of scheduled jobs (playlist names, picks) — only if cron is installed | `~/.apple-music-dj/logs/` (files `0600`) |
 | Playlist history | Names and track IDs of playlists the DJ created | `~/.apple-music-dj/playlist_history.json` |
+| Storefront cache | Your two-letter region code (e.g. `us`) | `~/.apple-music-dj/storefront.cache` |
+| User config (optional) | Defaults you write yourself; the skill only reads it | `~/.apple-music-dj/config.json` |
 | Taste DNA Card | Generated SVG image | User-specified output path |
 | User-token age record | A 16-hex-digit SHA-256 fingerprint of the user token (not the token) and the date it was first seen, for the renewal reminder | `~/.apple-music-dj/user_token_seen.json` |
 | Token env file | The two `export` lines — only if the user passes `setup_auth.py --env-file PATH` | `PATH` (mode `0600`) |
@@ -647,8 +649,10 @@ under MIT-0.
 **Data NOT collected:**
 - No data is sent to any third-party service
 - No analytics or telemetry
-- No data leaves the user's machine (all API calls go directly to Apple)
+- No data leaves the user's machine (all API calls go directly to Apple, `https://api.music.apple.com`)
 - Tokens are never logged, and never stored unless the user asks (`setup_auth.py --env-file`)
+- To keep tokens off the process list, the API wrapper and `verify_setup.sh` hand them to `curl` through
+  a temporary owner-only (`0600`) config file that is deleted on exit, Ctrl-C and `kill`
 - `setup_auth.py` serves its sign-in page on `127.0.0.1` only, behind a random one-time URL, and
   stops as soon as the token arrives; the page loads Apple's MusicKit JS from Apple's CDN
 - `demo.py` runs its sample API on `127.0.0.1` only for the length of one command, strips real

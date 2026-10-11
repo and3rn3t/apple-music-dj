@@ -50,6 +50,23 @@ broader listing tags.
 - [ ] **Verify response shapes against the live API** and record any differences in the mock, so
       the demo and the tests keep matching the real service.
 
+## Trust and reviews — keep the ClawHub verdict at Pass
+
+ClawHub's reviewer sees only the shipped package (not `tests/` or `CHANGELOG.md`), and its verdict
+once flipped between Pass and Review on identical code. So: remove anything it could plausibly
+read as a risk, rather than waiting to be flagged.
+
+- [x] Claims in `SKILL.md` (hosts, env vars, stored files, no risky constructs, every account write
+      confirmed) are enforced by `tests/test_trust_claims.py`.
+- [ ] **Self-audit before each publish.** Run `SKILL.md` and `scripts/` through a review prompt
+      that mimics ClawHub's concerns (undisclosed writes, unattended actions, credentials, network
+      destinations, shell injection) and fix what it flags before the release is published.
+- [ ] **Log the verdict per version.** `release_checks.check_verdict` already reads it; keep a
+      short table (version → verdict → what changed) to see which edits cause a "Review" flip.
+- [ ] Enable GitHub private vulnerability reporting (repo settings → Security) and point
+      `SECURITY.md` at it.
+- [ ] Optional hardening: signed tags, build provenance for releases.
+
 ## Ongoing
 
 - Ship a release with one headline feature and a short clip every 4–6 weeks, so the listing

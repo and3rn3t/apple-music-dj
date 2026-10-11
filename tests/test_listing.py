@@ -171,3 +171,11 @@ def test_every_apple_env_var_the_scripts_read_is_declared():
     for path in sorted((ROOT / "scripts").glob("*.[ps][yh]")):
         used |= set(re.findall(r"\b(APPLE_[A-Z0-9_]+)\b", path.read_text()))
     assert used - declared == set(), f"undeclared env vars: {sorted(used - declared)}"
+
+
+def test_only_the_newest_changelog_section_may_be_unreleased():
+    """A published version must carry a date; "Unreleased" is for the section being written."""
+    headings = re.findall(r"^## \[([^\]]+)\]([^\n]*)$", (ROOT / "CHANGELOG.md").read_text(), re.M)
+    assert len(headings) > 3
+    stale = [version for version, rest in headings[1:] if not re.search(r"\d{4}-\d{2}-\d{2}", rest)]
+    assert not stale, f"released versions without a date in CHANGELOG.md: {stale}"

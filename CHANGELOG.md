@@ -5,7 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.3.0] — Unreleased
+## [3.3.1] — Unreleased
+
+### Changed
+
+- The privacy section lists the two stored files it had missed (`storefront.cache`, the optional `config.json`) and says plainly that tokens reach `curl` through a short-lived owner-only temp file that is deleted on exit.
+- `CODE_OF_CONDUCT.md` has a real enforcement contact instead of a placeholder.
+- Released versions in this changelog now carry their release dates (3.2.0–3.3.0 still said "Unreleased").
+
+### Added
+
+- `tests/test_trust_claims.py` keeps `SKILL.md`'s claims true: scripts may only contact `api.music.apple.com` (plus MusicKit JS for the local sign-in page and loopback test hooks), no `eval`/`sudo`/piped installers/`shell=True`, and every `APPLE_*` variable and every file under `~/.apple-music-dj/` must be documented.
+- The same test file checks, from the script itself, that every `apple_music_api.sh` command that writes to the account calls `_confirm`, so a new write command can't skip `--yes`. `test_listing.py` fails if a released changelog section has no date.
+
+## [3.3.0] — 2026-10-10
 
 Easier to try, easier to set up.
 
@@ -24,7 +37,7 @@ Easier to try, easier to set up.
 - `generate_dev_token.py` exposes `make_dev_token()` for reuse; its CLI is unchanged.
 - **The Apple tokens are no longer hard requirements in the skill metadata.** They move from `requires.env` to `metadata.openclaw.envVars` with `required: false` (ClawHub's documented form for optional variables), so OpenClaw loads the skill before setup and the agent can offer the demo. Scripts still check for the tokens at run time. All other `APPLE_*` variables the scripts read are now declared there too, with descriptions; `clawhub.json` mirrors the change.
 
-## [3.2.5] — Unreleased
+## [3.2.5] — 2026-10-10
 
 ### Security
 
@@ -51,7 +64,7 @@ Hardening from the ClawHub review of 3.2.3 (whose verdict flipped between Pass a
 - The API wrapper's cleanup names its exact temp-file kinds instead of a broad `am_*` pattern.
 - Docs no longer suggest `rm -rf ~/.apple-music-dj/`: they say to list the folder first and delete it deliberately (and that an agent must never do it unprompted); the troubleshooting guide removes only the cached profile.
 
-## [3.2.3] — Unreleased
+## [3.2.3] — 2026-10-10
 
 ### Security
 
@@ -65,7 +78,7 @@ Follow-up to the ClawHub audit of 3.2.2, which flagged that a documented workflo
 
 - **Two default cron jobs never worked since v3.0**: `new-releases` passed the storefront where `new_releases.sh` expects `<profile.json> <storefront>` (it exited 1), and `daily-drop` passed `--profile` to `daily_pick.py`, which takes positional `<profile.json> <storefront>` (it exited 2). Cron only writes to a log, so both failed silently. Both now run, and a new test executes every default job's real command.
 
-## [3.2.2] — Unreleased
+## [3.2.2] — 2026-10-11
 
 ### Changed
 
@@ -77,7 +90,7 @@ Follow-up to the ClawHub audit of 3.2.2, which flagged that a documented workflo
 
 - `tests/test_listing.py` guards the listing: version agreement across `pyproject.toml`, `SKILL.md` and `clawhub.json`, a crisp description opening, no dropped trigger phrases, valid README images, and no flagged `--seed <value>` pattern in shipped docs.
 
-## [3.2.1] — Unreleased
+## [3.2.1] — 2026-10-10
 
 ### Security
 
@@ -89,7 +102,7 @@ Follow-up to the ClawHub audit of 3.2.0:
 
 - **Renamed the "seed" strategy to "similar"**: `--strategy similar --similar-to "<artist or song>" [--similar-type artist|song]`. A security scanner read the old flag example in `SKILL.md` as a crypto seed phrase passed on the command line. The 3.2.0 spellings (the `seed` strategy name and the old seed flags) still work as hidden aliases and playlists are now logged with strategy `similar`.
 
-## [3.2.0] — Unreleased
+## [3.2.0] — 2026-10-10
 
 ### Added
 

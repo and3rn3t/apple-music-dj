@@ -276,18 +276,43 @@ class TestCheckVerdict:
                            "security": {"status": "clean", "passed": True, "summary": "ok"}})
         assert "_card_pending" not in rc.check_verdict("x", "3.4.5", run=FakeCLI(body), sleep=lambda s: None)
 
-    def test_a_missing_card_never_excuses_a_bad_security_verdict(self):
-        cli = FakeCLI(verdict(status="suspicious", passed=False, decision="fail",
+    def test_a_missing_card_never_excuses_a_malicious_verdict(self):
+        cli = FakeCLI(verdict(status="malicious", passed=False, decision="fail",
                               reasons=["card.missing", "security.status_not_clean"]))
         with pytest.raises(rc.CheckError, match="Security verdict"):
             rc.check_verdict("x", "3.4.5", run=cli, sleep=lambda s: None)
 
-    @pytest.mark.parametrize("status", ["suspicious", "malicious", "pending", None])
-    def test_a_non_clean_verdict_fails_immediately_without_retrying(self, status):
+    @pytest.mark.parametrize("status", ["malicious", "blocked"])
+    def test_a_malicious_verdict_fails_immediately_without_retrying(self, status):
         cli = FakeCLI(verdict(status=status, passed=False, decision="fail", reasons=["security.status_not_clean"]))
         with pytest.raises(rc.CheckError, match="Security verdict"):
             rc.check_verdict("x", "3.4.5", run=cli, sleep=lambda s: pytest.fail("must not wait on a bad verdict"))
         assert len(cli.calls) == 1
+
+    def test_a_malicious_verdict_is_caught_by_the_verdict_field_too(self):
+        body = json.dumps({"decision": "fail", "reasons": ["security.status_not_clean"],
+                           "security": {"status": "weird", "verdict": "malicious", "passed": False, "summary": "bad"}})
+        with pytest.raises(rc.CheckError, match="Security verdict"):
+            rc.check_verdict("x", "3.4.5", run=FakeCLI(body), sleep=lambda s: None)
+
+    @pytest.mark.parametrize("status", ["pending", None, "mystery"])
+    def test_an_unknown_status_fails_closed(self, status):
+        cli = FakeCLI(verdict(status=status, passed=False, decision="fail", reasons=["security.status_not_clean"]))
+        with pytest.raises(rc.CheckError, match="expected clean"):
+            rc.check_verdict("x", "3.4.5", run=cli, sleep=lambda s: pytest.fail("must not wait"))
+
+    def test_a_suspicious_verdict_is_a_warning_not_a_failure(self):
+        """ClawHub's LLM review flips between benign and suspicious on re-scans of identical code, and
+        the version is already published — failing the run would change nothing on the registry."""
+        cli = FakeCLI(verdict(status="suspicious", passed=False, decision="fail",
+                              reasons=["security.status_not_clean"]))
+        result = rc.check_verdict("x", "3.4.5", run=cli, sleep=lambda s: pytest.fail("must not wait"))
+        assert result["_suspicious"] is True and len(cli.calls) == 1
+
+    def test_a_suspicious_verdict_does_not_wait_for_the_card(self):
+        cli = FakeCLI(verdict(status="suspicious", passed=False, decision="fail",
+                              reasons=["card.missing", "security.status_not_clean"]))
+        assert rc.check_verdict("x", "3.4.5", run=cli, sleep=lambda s: pytest.fail("must not wait"))["_suspicious"]
 
     def test_clean_status_but_not_passed_fails(self):
         with pytest.raises(rc.CheckError, match="Security verdict"):
@@ -353,6 +378,21 @@ class TestMain:
         assert rc.main(["check-verdict", "--slug", "s", "--version", "1.0.0"]) == 0
         out = capsys.readouterr().out
         assert "security verdict is clean" in out and "::warning::" in out and "skill card" in out
+
+    def test_check_verdict_cli_warns_but_exits_zero_on_a_suspicious_verdict(self, monkeypatch, capsys):
+        monkeypatch.setattr(rc, "check_verdict", lambda slug, version: {
+            "security": {"summary": "needs review because of X"}, "_suspicious": True})
+        assert rc.main(["check-verdict", "--slug", "s", "--version", "1.0.0"]) == 0
+        out = capsys.readouterr().out
+        assert "::warning::" in out and "suspicious" in out and "needs review because of X" in out
+        assert "security verdict is clean" not in out
+
+    def test_check_verdict_cli_still_fails_on_a_malicious_verdict(self, monkeypatch, capsys):
+        def boom(slug, version):
+            raise rc.CheckError("Security verdict for s@1.0.0 is 'malicious'")
+        monkeypatch.setattr(rc, "check_verdict", boom)
+        assert rc.main(["check-verdict", "--slug", "s", "--version", "1.0.0"]) == 1
+        assert "::error::" in capsys.readouterr().err
 
     def test_check_verdict_cli_is_quiet_when_the_card_exists(self, monkeypatch, capsys):
         monkeypatch.setattr(rc, "check_verdict", lambda slug, version: {"security": {"summary": "fine"}})

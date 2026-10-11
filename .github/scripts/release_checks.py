@@ -9,8 +9,8 @@ Standard library only. Kept out of scripts/ so it is never packaged into the ski
   write-config                   write the ClawHub CLI config from $CLAWHUB_TOKEN (0600)
   check-whoami --expect HANDLE   fail unless `clawhub whoami` reports HANDLE
   wait-for-version --slug S --version V   poll until V is ClawHub's latest
-  check-verdict --slug S --version V      fail unless ClawHub's security verdict is clean
-                                          (a not-yet-generated skill card only warns)
+  check-verdict --slug S --version V      fail on a malicious verdict; warn on suspicious or a
+                                          not-yet-generated skill card
 """
 
 import argparse
@@ -124,14 +124,22 @@ def wait_for_version(slug: str, version: str, timeout: float = 1200, interval: f
         sleep(interval)
 
 
+HARD_FAIL_STATUSES = {"malicious", "blocked"}
+
+
 def check_verdict(slug: str, version: str, attempts: int = 4, interval: float = 30,
                   run=subprocess.run, sleep=time.sleep) -> dict:
-    """Fail unless ClawHub's security verdict is clean.
+    """Judge ClawHub's verdict for a version that is *already published*.
 
-    ClawHub generates the skill card asynchronously and it can lag the scans by 30+ minutes, so a
-    result whose *only* problem is `card.missing` is retried briefly and then reported as
-    `_card_pending` — a warning, not a failure: the card is metadata, not a safety property, and a
-    release whose security verdict is clean must not show a red run because of it."""
+    - malicious/blocked: fail. An unknown status also fails (closed by default).
+    - suspicious: return `_suspicious` — a warning, not a failure. ClawHub's LLM review is not
+      stable (the same code has flipped between benign and suspicious on re-scans), and the
+      publish has already happened, so failing the run changes nothing on the registry while
+      teaching people to ignore red runs. The summary is surfaced for a human to read.
+    - clean: the skill card is generated asynchronously and can lag the scans by 30+ minutes, so a
+      result whose *only* problem is `card.missing` is retried briefly and then reported as
+      `_card_pending` (also just a warning — metadata, not a safety property).
+    An unexplained non-passing decision is never downgraded."""
     last: dict = {}
     for attempt in range(attempts):
         result = _run(["skill", "verify", slug, "--version", version], run)
@@ -140,9 +148,16 @@ def check_verdict(slug: str, version: str, attempts: int = 4, interval: float = 
         except json.JSONDecodeError:
             raise CheckError(f"Couldn't read `clawhub skill verify` output: {result.stdout[:200]!r}") from None
         security = last.get("security", {})
-        if security.get("status") != "clean" or not security.get("passed"):
-            raise CheckError(f"Security verdict for {slug}@{version} is {security.get('status')!r} "
+        status, verdict = security.get("status"), security.get("verdict")
+        if status in HARD_FAIL_STATUSES or verdict in HARD_FAIL_STATUSES:
+            raise CheckError(f"Security verdict for {slug}@{version} is {status or verdict!r} "
                              f"({security.get('summary', 'no summary')}). See the audit page.")
+        if status == "suspicious" or (verdict == "suspicious" and status != "clean"):
+            last["_suspicious"] = True
+            return last
+        if status != "clean" or not security.get("passed"):
+            raise CheckError(f"Security verdict for {slug}@{version} is {status!r} "
+                             f"({security.get('summary', 'no summary')}); expected clean. See the audit page.")
         all_reasons = last.get("reasons") or []
         other = [r for r in all_reasons if r != "card.missing"]
         if other:
@@ -196,7 +211,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{args.slug}@{args.version} is now the latest version on ClawHub.")
         elif args.cmd == "check-verdict":
             result = check_verdict(args.slug, args.version)
-            print(f"ClawHub security verdict is clean: {result['security'].get('summary', '')}")
+            summary = result["security"].get("summary", "")
+            if result.get("_suspicious"):
+                print(f"::warning::ClawHub's review of {args.slug}@{args.version} says 'suspicious' (its reviews "
+                      f"are not stable between runs, and this version is already published): {summary} "
+                      f"Read the audit page and decide whether anything needs changing.")
+                return 0
+            print(f"ClawHub security verdict is clean: {summary}")
             if result.get("_card_pending"):
                 print("::warning::ClawHub hasn't generated the skill card yet (it does so asynchronously, "
                       "sometimes 30+ minutes after publishing). The security verdict is clean; check "

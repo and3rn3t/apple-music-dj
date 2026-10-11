@@ -3,7 +3,7 @@
 [![Tests](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml/badge.svg)](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml)
 ![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](LICENSE)
 
 **Your AI-powered Apple Music curator.** Analyzes your listening history, understands your taste DNA, and creates intelligent playlists directly in your Apple Music library — on all your devices.
 
@@ -326,7 +326,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## 📄 License
 
-[MIT](LICENSE) — © 2026 Andernet (Matthew Anderson)
+[MIT-0](LICENSE) — © 2026 Andernet (Matthew Anderson)
 
 ## 👤 Author
 

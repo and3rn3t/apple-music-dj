@@ -105,7 +105,7 @@ Maintainers only. Releases are published by CI; the manual route below is the fa
    exists, the commit is on `main`, and the tests pass.
 4. The **publish** job then waits for a required reviewer to approve the `clawhub` Environment.
    Approving is the real decision: publishing accepts ClawHub's **MIT-0** license terms
-   automatically (the CLI sends `acceptLicenseTerms: true`). The repo itself stays MIT.
+   automatically (the CLI sends `acceptLicenseTerms: true`). The repo is MIT-0 too, so the two match.
 5. It publishes a clean `git archive` of the release commit, waits for ClawHub's scans to finish,
    and reports ClawHub's verdict. A **malicious** or **blocked** verdict (or one it can't recognize, or any
    unexpected verification reason) fails the run.
@@ -185,4 +185,4 @@ If you're adding a new engagement feature or playlist strategy:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the MIT No Attribution License (MIT-0).

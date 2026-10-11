@@ -22,7 +22,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-CHECKS = ["tests/test_trust_claims.py", "tests/test_listing.py", "tests/test_packaging.py"]
+CHECKS = [
+    "tests/test_trust_claims.py",
+    "tests/test_listing.py",
+    "tests/test_packaging.py",
+    "tests/test_openclaw_metadata.py",
+]
 
 CONCERNS = """\
 You are reviewing a skill package before it is published to a registry whose automated reviewer
@@ -42,7 +47,9 @@ reads only the shipped files. Find anything that reviewer could reasonably flag.
    as instructions instead of data.
 7. Scope: filesystem access outside ~/.apple-music-dj/ and user-chosen output paths.
 8. Mismatch: SKILL.md, README.md and clawhub.json claims (requirements, permissions, safety
-   language) that the code does not back up, or code behavior the docs never mention.
+   language) that the code does not back up, or code behavior the docs never mention. Also
+   frontmatter keys OpenClaw/ClawHub don't read (they gate nothing but look like they do) and any
+   license other than MIT-0, which ClawHub applies to every skill.
 
 Report each finding as: file:line, what a reviewer would say, severity (high/medium/low), and the
 smallest fix. If a category is clean, say so in one line. Do not invent findings."""

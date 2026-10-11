@@ -161,7 +161,8 @@ def test_tokens_are_optional_so_the_skill_loads_for_the_demo():
     assert frontmatter_value("    primaryEnv") == "APPLE_MUSIC_DEV_TOKEN"
     clawhub = json.loads((ROOT / "clawhub.json").read_text())
     assert "env" not in clawhub["requires"]
-    assert {v["name"] for v in clawhub["envVars"]} == {"APPLE_MUSIC_DEV_TOKEN", "APPLE_MUSIC_USER_TOKEN"}
+    assert {"APPLE_MUSIC_DEV_TOKEN", "APPLE_MUSIC_USER_TOKEN"} <= {v["name"] for v in clawhub["envVars"]}
+    assert all(v["required"] is False for v in clawhub["envVars"])
 
 
 def test_every_apple_env_var_the_scripts_read_is_declared():

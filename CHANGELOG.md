@@ -15,6 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pre-publish self-audit** (`make audit`): runs the trust, listing and packaging checks, lists the published files that changed since the last tag and prints a review prompt covering ClawHub's concerns. `CONTRIBUTING.md` makes it step 0 of a release.
 - `tests/test_trust_claims.py` now also checks that every `/v1/me/...` endpoint the scripts call is listed in `SKILL.md`'s read and write tables.
 
+### Changed
+
+- **Frontmatter now follows the OpenClaw and ClawHub spec.** `os: [darwin, linux]` replaces
+  `platforms`, which neither reads, so the skill is now actually limited to macOS and Linux.
+  `emoji` and `homepage` move under `metadata.openclaw`, where the Skills UI looks for them, and
+  an `install` entry offers `jq` through Homebrew on macOS. `minVersion` and `permissions` are
+  gone: nothing read them, so they gated nothing. Script commands in `SKILL.md` use
+  `{baseDir}/scripts/…`, so they work whatever the agent's working directory is. `clawhub.json`
+  now lists all nine env vars and `os`. `tests/test_openclaw_metadata.py` (part of `make audit`)
+  keeps all of this in place, starting with the frontmatter parsing as YAML.
+- **Relicensed from MIT to MIT-0** (MIT No Attribution), the license ClawHub publishes every skill
+  under, so the repository and the ClawHub package carry the same terms.
+
 ### Fixed
 
 - **Four read endpoints were missing from the privacy tables**: `/v1/me/recent/played` (`apple_music_api.sh recent-played`), `/v1/me/ratings/{type}` (albums, playlists and music videos), `/v1/me/library/artists` and `/v1/me/music-summaries/milestones`. All are read-only; found by the new endpoint check, which now matches documented paths exactly.

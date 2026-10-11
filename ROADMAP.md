@@ -27,10 +27,8 @@ broader listing tags.
 - [ ] **Taste card as PNG, Instagram Story size (1080×1920)**, with a small
       "apple-music-dj · ClawHub" footer. `taste_card.py` already renders SVG; add a PNG export
       (optional dependency, e.g. `cairosvg`, with the SVG as the fallback).
-- [ ] **Blend share codes.** Today a blend needs the other person's full profile JSON. Add
-      `taste_profiler.py --share-code` that exports a compact, ID-free, base64 summary (genre/era
-      weights + top artists — the same data as a snapshot), and let `--profile-b` accept a code.
-      "Send me your code" is a much easier ask than a file.
+- [x] **Blend share codes.** `share_code.py make` prints an ID-free `amdj1:` taste code, and
+      `--profile-b` (blend, compatibility) accepts it. "Send me your code" is a much easier ask than a file.
 - [ ] **Monthly recap / "Wrapped"-style year in review** as a shareable card, timed for December,
       with a ready-made caption. Builds on `listening_insights.py` and the snapshots.
 - [x] **Spotify-switcher section** in the README plus `references/spotify-import.md`, with a sample
@@ -63,11 +61,19 @@ read as a risk, rather than waiting to be flagged.
 - [x] **Self-audit before each publish:** `make audit` runs the trust checks, lists the shipped files
       changed since the last tag and prints a review prompt for ClawHub's concerns (see
       `CONTRIBUTING.md`). The model review itself stays manual: CI holds no model key.
-- [ ] **Log the verdict per version.** `release_checks.check_verdict` already reads it; keep a
-      short table (version → verdict → what changed) to see which edits cause a "Review" flip.
+- [ ] **Log the verdict per version** in the table below (`release_checks.check_verdict` prints
+      it after each publish), to see which edits cause a "Review" flip.
+- [x] Frontmatter matches the OpenClaw/ClawHub spec (`os`, `emoji`, `install` under
+      `metadata.openclaw`; no unread gating keys; MIT-0; `{baseDir}` script paths), enforced by
+      `tests/test_openclaw_metadata.py`.
 - [ ] Enable GitHub private vulnerability reporting (repo settings → Security) and point
       `SECURITY.md` at it.
 - [ ] Optional hardening: signed tags, build provenance for releases.
+
+### Verdict log
+
+| Version | ClawHub verdict | What changed |
+|---|---|---|
 
 ## Ongoing
 

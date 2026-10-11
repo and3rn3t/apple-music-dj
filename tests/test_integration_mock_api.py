@@ -557,3 +557,59 @@ class TestScheduledJobsActuallyRun:
         r = self._run(api, jobs["monthly-drift"]["command"])
         assert r.returncode == 0, r.stderr[-400:]
         assert "Taste drift: 2020-01-01" in r.stdout
+
+
+# ── verify_setup.sh handles the tokens it writes to a temp file ──
+
+def _hanging_server():
+    """A local server that accepts requests and never answers (so we can interrupt mid-request)."""
+
+    class Hang(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            time.sleep(30)
+
+        def log_message(self, *args):
+            pass
+
+    socketserver.ThreadingTCPServer.daemon_threads = True
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Hang)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+class TestVerifySetup:
+    def test_runs_against_the_mock_and_reports_valid_tokens(self, api):
+        r = api("verify_setup.sh")
+        assert "Dev token — valid (HTTP 200)" in r.stdout and "User token — valid (HTTP 200)" in r.stdout
+        assert api.mock.writes() == []
+
+    def test_leaves_no_token_files_behind(self, api):
+        api("verify_setup.sh")
+        assert list(api.tmpdir.glob("am_verify_*")) == []
+
+    def test_refuses_a_remote_api_base(self, api):
+        env = {**api.env, "APPLE_MUSIC_API_BASE": "https://evil.example"}
+        r = subprocess.run(["bash", str(SCRIPTS / "verify_setup.sh")], capture_output=True, text=True, env=env)
+        assert r.returncode == 1 and "must be http://127.0.0.1" in r.stderr
+
+    @pytest.mark.parametrize("sig", [signal.SIGINT, signal.SIGTERM])
+    def test_interrupt_mid_request_removes_the_token_file(self, api, sig):
+        """The temp curl config holds both tokens; Ctrl-C while curl is waiting must not leave it."""
+        server = _hanging_server()
+        env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{server.server_address[1]}"}
+        proc = subprocess.Popen(["bash", str(SCRIPTS / "verify_setup.sh")], env=env, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, start_new_session=True)
+        try:
+            deadline = time.time() + 15
+            while not list(api.tmpdir.glob("am_verify_*")) and time.time() < deadline:
+                time.sleep(0.05)
+            assert list(api.tmpdir.glob("am_verify_*")), "the token check never started"
+            os.killpg(proc.pid, sig)
+            proc.wait(timeout=10)
+        finally:
+            if proc.poll() is None:
+                os.killpg(proc.pid, signal.SIGKILL)
+            server.shutdown()
+            server.server_close()
+        assert proc.returncode in (130, 143, -sig)
+        assert list(api.tmpdir.glob("am_verify_*")) == []

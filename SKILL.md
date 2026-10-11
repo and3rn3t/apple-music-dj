@@ -18,7 +18,7 @@ description: >
   song", "what should I listen to right now", "blend", "throwback", "[decade] playlist", "taste
   drift", "how has my taste changed", "import my playlist", "I didn't like track", "add the
   missing albums", or OpenClaw in the context of music.
-version: 3.2.3
+version: 3.2.4
 emoji: 🎧
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
@@ -86,9 +86,11 @@ subscription. Tokens live only in environment variables.
 
 **Safety:** read-only by default. Creating playlists, favoriting, rating, adding albums and
 scheduling cron jobs are opt-in and confirmed first (the scripts preview by default and write only
-with an explicit `--create` / `--yes` / `--confirm`). Scheduled jobs run unattended once installed,
-so installing one needs a reviewed `--confirm` digest. Local data is owner-only
-(`~/.apple-music-dj/`). See `SECURITY.md`.
+with an explicit `--create` / `--yes` / `--apply` / `--confirm`). **Editing an existing playlist can
+remove tracks** (`playlist_health.py fix --apply` drops duplicates and swaps in replacements;
+`build_playlist.sh refresh|remove` add or remove tracks) — show the exact changes and get a yes first.
+Scheduled jobs run unattended once installed, so installing one needs a reviewed `--confirm` digest.
+Local data is owner-only (`~/.apple-music-dj/`). See `SECURITY.md`.
 
 ## Architecture
 
@@ -188,7 +190,8 @@ Journey from familiar artists outward to new territory in 3 "rings" of distance.
 ### Strategy 5: Playlist Refresh / Evolution
 **Triggers:** "refresh my [playlist]", "update my [playlist]", "evolve", "getting stale"
 Analyzes existing playlist's sonic signature, adds fresh matching tracks, optionally
-prunes overplayed songs.
+prunes overplayed songs. Changing the original playlist adds or removes tracks, so show the
+proposed additions and removals and only apply them after a yes.
 
 ### Strategy 6: Similar ("songs like X")
 **Triggers:** "songs like [artist/song]", "more like [artist]", "similar to", "more like track 3"
@@ -318,7 +321,9 @@ Show the user the exact / fuzzy / unmatched counts and list the unmatched ones.
 Rates the song in Apple Music and updates the cached profile so later playlists skip it
 immediately: `python3 scripts/feedback.py dislike --playlist-name "<name>" --position 7 --profile <profile.json>`
 (or pass song IDs; `like` and `clear` also exist). Positions are 1-based within playlists the DJ
-created; omit `--playlist-name` for the most recent one. **This writes a rating to the user's account.**
+created; omit `--playlist-name` for the most recent one. **This writes a rating to the user's account**,
+so only do it on the user's explicit say-so, and name the song and the rating you are about to write
+when it isn't obvious which track they mean.
 
 ### Album Deep Dive
 **Triggers:** "tell me about [album]", "album deep dive", "what's on [album]",
@@ -445,7 +450,9 @@ Schedule: Weekly (Saturday)
 Task:
   1. Scan user's playlists
   2. Flag any tracks removed from Apple Music catalog (404 on lookup)
-  3. Suggest replacements
+  3. Suggest replacements (report only: the scheduled job runs `playlist_health.py check`;
+     removing or replacing tracks needs `playlist_health.py fix <id> --apply`, which previews
+     by default and is never run unattended)
 ```
 
 **Monthly Drift** (opt-in — install with `setup_cron.py install --jobs monthly-drift`):
@@ -558,6 +565,7 @@ stores, and transmits.
 | Create playlist / add tracks | `/v1/me/library/playlists` | `--create`, playlist import |
 | Add albums to library | `/v1/me/library` | gap analysis `--add-missing N --yes` |
 | Add to favorites | `/v1/me/favorites` | `--create --favorite` |
+| Add / remove tracks in an existing playlist | `/v1/me/library/playlists/{id}/tracks` | `playlist_health.py fix --apply`, `build_playlist.sh refresh` / `remove` |
 | Rate / un-rate a song | `/v1/me/ratings/songs/{id}` | `feedback.py like/dislike/clear` |
 
 **Data stored locally:**
@@ -578,7 +586,9 @@ stores, and transmits.
 
 **Cache management:**
 - Taste profile cache has a 7-day TTL by default
-- Cache can be cleared: `rm -rf ~/.apple-music-dj/`
+- The user can clear it by deleting the `~/.apple-music-dj/` folder (list it first with
+  `ls -la ~/.apple-music-dj`; it holds their profile, snapshots, history and cron logs). Never delete
+  it on your own initiative.
 - Use `--max-age 0` to bypass cache and fetch fresh data
 
 ## Scripts

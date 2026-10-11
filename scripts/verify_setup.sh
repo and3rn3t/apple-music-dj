@@ -4,6 +4,29 @@
 
 set -euo pipefail
 
+# Testing hook: APPLE_MUSIC_API_BASE may point at a local mock server (tests/mock_api.py).
+# Loopback addresses only, so real tokens can never be sent to another host.
+BASE="https://api.music.apple.com"
+if [[ -n "${APPLE_MUSIC_API_BASE:-}" ]]; then
+    if [[ "$APPLE_MUSIC_API_BASE" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?$ ]]; then
+        BASE="$APPLE_MUSIC_API_BASE"
+    else
+        echo "ERROR: APPLE_MUSIC_API_BASE must be http://127.0.0.1[:port] or http://localhost[:port]" >&2
+        exit 1
+    fi
+fi
+
+# The token check below writes the tokens into a temporary curl config (mode 600). Remove those
+# files however we exit — including Ctrl-C or `kill` mid-request. Names carry this script's pid,
+# so the cleanup only ever touches this run's files.
+# shellcheck disable=SC2329  # invoked via the traps below
+_cleanup() {
+    rm -f "${TMPDIR:-/tmp}"/am_verify_$$_* 2>/dev/null || true
+}
+trap _cleanup EXIT
+trap '_cleanup; exit 130' INT
+trap '_cleanup; exit 143' TERM
+
 PASS="✅"
 FAIL="❌"
 WARN="⚠️"
@@ -168,12 +191,12 @@ echo "Checking API connectivity..."
 if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" && -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; then
     # Verify dev token
     echo "  Verifying dev token against API..." >&2
-    auth_cfg=$(mktemp "${TMPDIR:-/tmp}/am_verify_XXXXXX")
+    auth_cfg=$(mktemp "${TMPDIR:-/tmp}/am_verify_$$_XXXXXX")
     chmod 600 "$auth_cfg"
     printf -- '-H "Authorization: Bearer %s"\n' "$APPLE_MUSIC_DEV_TOKEN" > "$auth_cfg"
     dev_code=$(curl -s -o /dev/null -w "%{http_code}" \
         -K "$auth_cfg" \
-        "https://api.music.apple.com/v1/storefronts/us" \
+        "${BASE}/v1/storefronts/us" \
         2>/dev/null || echo "000")
     rm -f "$auth_cfg"
 
@@ -194,13 +217,13 @@ if [[ -n "${APPLE_MUSIC_DEV_TOKEN:-}" && -n "${APPLE_MUSIC_USER_TOKEN:-}" ]]; th
 
     # Verify user token
     echo "  Verifying user token against API..." >&2
-    auth_cfg=$(mktemp "${TMPDIR:-/tmp}/am_verify_XXXXXX")
+    auth_cfg=$(mktemp "${TMPDIR:-/tmp}/am_verify_$$_XXXXXX")
     chmod 600 "$auth_cfg"
     printf -- '-H "Authorization: Bearer %s"\n-H "Music-User-Token: %s"\n' \
         "$APPLE_MUSIC_DEV_TOKEN" "$APPLE_MUSIC_USER_TOKEN" > "$auth_cfg"
     user_code=$(curl -s -o /dev/null -w "%{http_code}" \
         -K "$auth_cfg" \
-        "https://api.music.apple.com/v1/me/recent/played/tracks?limit=1" \
+        "${BASE}/v1/me/recent/played/tracks?limit=1" \
         2>/dev/null || echo "000")
     rm -f "$auth_cfg"
 

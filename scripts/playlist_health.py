@@ -4,11 +4,15 @@ playlist_health.py — Playlist Health Check & Maintenance.
 
 Subcommands:
   check     Scan playlists for removed tracks, duplicates, and staleness
-  fix       Remove duplicates and replaced removed tracks (with --auto or interactive)
+  fix       Preview, or with --apply carry out, removing duplicate tracks and replacing unavailable ones
 
 Usage:
   python3 playlist_health.py check <playlist_id|all> --profile <profile.json>
-  python3 playlist_health.py fix <playlist_id> --profile <profile.json> [--auto]
+  python3 playlist_health.py fix <playlist_id> --profile <profile.json> [--apply]
+
+`fix` changes the playlist in the user's library (it can REMOVE tracks and ADD replacements), so it
+only previews ("WOULD remove ...") unless --apply is given. (--apply was called --auto before 3.2.4;
+the old spelling still works.)
 
 Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 """
@@ -187,7 +191,7 @@ def cmd_fix(args) -> dict:
     if report["duplicates"]:
         for dup in report["duplicates"]:
             extras = dup["count"] - 1
-            if args.auto:
+            if args.apply:
                 print(f"  Removing {extras} duplicate(s) of {dup['id']}...", file=sys.stderr)
                 # Write IDs to remove
                 import tempfile
@@ -207,7 +211,7 @@ def cmd_fix(args) -> dict:
                     Path(ids_file).unlink(missing_ok=True)
             else:
                 actions_taken.append(
-                    f"WOULD remove {extras} duplicate(s) of {dup['id']} (use --auto to apply)"
+                    f"WOULD remove {extras} duplicate(s) of {dup['id']} (use --apply to apply)"
                 )
 
     # Handle removed tracks — find replacements
@@ -221,7 +225,7 @@ def cmd_fix(args) -> dict:
             }
             replacements.append(entry)
 
-            if replacement and args.auto:
+            if replacement and args.apply:
                 print(
                     f"  Replacing '{track['name']}' with '{replacement['name']}'...",
                     file=sys.stderr,
@@ -248,7 +252,7 @@ def cmd_fix(args) -> dict:
             elif replacement:
                 actions_taken.append(
                     f"WOULD replace '{track['name']}' with '{replacement['name']}' "
-                    f"by {replacement['artist']} (use --auto)"
+                    f"by {replacement['artist']} (use --apply)"
                 )
             else:
                 actions_taken.append(
@@ -260,7 +264,8 @@ def cmd_fix(args) -> dict:
         "issues_found": report["removed_count"] + report["duplicate_count"],
         "actions_taken": actions_taken,
         "replacements": replacements,
-        "auto_applied": args.auto,
+        "applied": args.apply,
+        "auto_applied": args.apply,  # legacy key, kept for existing consumers
     }
 
 
@@ -277,8 +282,11 @@ def main():
     p_fix.add_argument("playlist_id", help="Playlist library ID")
     p_fix.add_argument("--profile", default=None, help="Path to taste profile JSON")
     p_fix.add_argument("--storefront", default=None, help="Storefront code")
-    p_fix.add_argument("--auto", action="store_true",
-                       help="Automatically apply fixes without confirmation")
+    p_fix.add_argument("--apply", dest="apply", action="store_true",
+                       help="Carry out the fixes (removes duplicate tracks, adds replacements). "
+                            "Without it, `fix` only previews what it would do.")
+    # Old spelling from before 3.2.4: "auto" read as "unattended"; accepted but not advertised
+    p_fix.add_argument("--auto", dest="apply", action="store_true", help=argparse.SUPPRESS)
 
     args = parser.parse_args()
 

@@ -116,3 +116,23 @@ def test_skill_md_says_scheduled_jobs_run_unattended():
     body = (ROOT / "SKILL.md").read_text()
     assert "runs unattended and writes on its own" in body
     assert "unattended once installed" in body.split("## At a glance", 1)[1].split("## Architecture", 1)[0]
+
+
+def test_shipped_docs_never_suggest_rm_rf_on_the_data_folder():
+    """A reviewer flagged `rm -rf ~/.apple-music-dj/` (user data, no confirmation) in three docs."""
+    shipped = [ROOT / "SKILL.md", ROOT / "README.md", ROOT / "SECURITY.md", *sorted((ROOT / "references").glob("*.md"))]
+    offenders = [p.name for p in shipped if re.search(r"rm\s+-[a-zA-Z]*r[a-zA-Z]*f?\s+~/?\.apple-music-dj", p.read_text())]
+    assert not offenders, f"destructive cache-clearing advice in: {offenders}"
+
+
+def test_skill_md_discloses_that_editing_a_playlist_can_remove_tracks():
+    body = (ROOT / "SKILL.md").read_text()
+    glance = body.split("## At a glance", 1)[1].split("## Architecture", 1)[0]
+    assert "remove tracks" in glance and "playlist_health.py fix --apply" in glance and "get a yes first" in glance
+    written = body.split("Data written to the user's account", 1)[1].split("**Data stored locally", 1)[0]
+    assert "playlist_health.py fix --apply" in written and "/tracks" in written
+
+
+def test_docs_name_apply_not_auto_for_the_health_fix():
+    for path in (ROOT / "SKILL.md", ROOT / "README.md", *sorted((ROOT / "references").glob("*.md"))):
+        assert "playlist_health.py fix" not in path.read_text() or "--auto" not in path.read_text(), path.name

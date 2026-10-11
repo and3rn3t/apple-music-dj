@@ -244,7 +244,7 @@ class TestCmdFix:
         args = MagicMock()
         args.playlist_id = "pl1"
         args.storefront = None
-        args.auto = False
+        args.apply = False
         result = phealth.cmd_fix(args)
         assert result["issues_found"] == 0
 
@@ -259,7 +259,7 @@ class TestCmdFix:
         args = MagicMock()
         args.playlist_id = "pl1"
         args.storefront = None
-        args.auto = False
+        args.apply = False
         result = phealth.cmd_fix(args)
         assert len(result["actions_taken"]) == 1
         assert "WOULD remove" in result["actions_taken"][0]
@@ -276,9 +276,9 @@ class TestCmdFix:
         args = MagicMock()
         args.playlist_id = "pl1"
         args.storefront = None
-        args.auto = True
+        args.apply = True
         result = phealth.cmd_fix(args)
-        assert result["auto_applied"] is True
+        assert result["applied"] is True and result["auto_applied"] is True
         assert any("Removed" in a for a in result["actions_taken"])
 
     def test_fix_removed_tracks_dry_run(self, monkeypatch):
@@ -296,7 +296,7 @@ class TestCmdFix:
         args = MagicMock()
         args.playlist_id = "pl1"
         args.storefront = None
-        args.auto = False
+        args.apply = False
         result = phealth.cmd_fix(args)
         assert any("WOULD replace" in a for a in result["actions_taken"])
 
@@ -313,7 +313,7 @@ class TestCmdFix:
         args = MagicMock()
         args.playlist_id = "pl1"
         args.storefront = None
-        args.auto = False
+        args.apply = False
         result = phealth.cmd_fix(args)
         assert any("No replacement" in a for a in result["actions_taken"])
 
@@ -333,7 +333,7 @@ class TestCmdFix:
         args = MagicMock()
         args.playlist_id = "pl1"
         args.storefront = None
-        args.auto = True
+        args.apply = True
         result = phealth.cmd_fix(args)
         assert any("Added replacement" in a for a in result["actions_taken"])
 
@@ -347,7 +347,7 @@ class TestCmdFix:
         args = MagicMock()
         args.playlist_id = "pl1"
         args.storefront = "us"
-        args.auto = False
+        args.apply = False
         result = phealth.cmd_fix(args)
         assert result["error"] == "fail"
 
@@ -380,3 +380,54 @@ class TestMain:
         monkeypatch.setattr(sys, "argv", ["playlist_health.py"])
         with pytest.raises(SystemExit):
             phealth.main()
+
+
+# ── The fix command only changes a playlist when asked: --apply (formerly --auto) ──
+
+class TestFixFlag:
+    def _run(self, monkeypatch, *flags):
+        import sys
+        seen = {}
+        monkeypatch.setattr(phealth, "cmd_fix", lambda args: seen.update(apply=args.apply) or {"ok": True})
+        monkeypatch.setattr(sys, "argv", ["playlist_health.py", "fix", "p.1", *flags])
+        phealth.main()
+        return seen["apply"]
+
+    def test_default_is_preview_only(self, monkeypatch):
+        assert self._run(monkeypatch) is False
+
+    def test_apply_turns_it_on(self, monkeypatch):
+        assert self._run(monkeypatch, "--apply") is True
+
+    def test_old_auto_spelling_still_works(self, monkeypatch):
+        assert self._run(monkeypatch, "--auto") is True
+
+    def test_help_advertises_apply_but_not_the_old_name(self, monkeypatch, capsys):
+        import sys
+        monkeypatch.setattr(sys, "argv", ["playlist_health.py", "fix", "--help"])
+        with pytest.raises(SystemExit):
+            phealth.main()
+        text = capsys.readouterr().out
+        assert "--apply" in text and "--auto" not in text and "only previews" in text
+
+    def _fix(self, monkeypatch, apply):
+        import subprocess
+        runs = []
+        monkeypatch.setattr(phealth, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(phealth, "load_config", lambda: {})
+        monkeypatch.setattr(phealth, "check_playlist", lambda pid, sf: {
+            "duplicates": [{"id": "t1", "count": 3}], "removed": [], "removed_count": 0, "duplicate_count": 1})
+        monkeypatch.setattr(subprocess, "run", lambda cmd, **k: runs.append(cmd) or MagicMock(returncode=0))
+        args = MagicMock(playlist_id="p.1", storefront="us", profile=None, apply=apply)
+        return phealth.cmd_fix(args), runs
+
+    def test_a_preview_never_removes_anything(self, monkeypatch):
+        result, runs = self._fix(monkeypatch, apply=False)
+        assert runs == [], "a preview must not call the playlist builder"
+        assert result["applied"] is False and result["auto_applied"] is False
+        assert result["actions_taken"] == ["WOULD remove 2 duplicate(s) of t1 (use --apply to apply)"]
+
+    def test_apply_removes_the_extra_copies(self, monkeypatch):
+        result, runs = self._fix(monkeypatch, apply=True)
+        assert len(runs) == 1 and runs[0][1:3] == ["remove", "p.1"]
+        assert result["applied"] is True and result["actions_taken"] == ["Removed 2 duplicate(s) of t1"]

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.4] — Unreleased
+
+### Security
+
+Hardening from the ClawHub review of 3.2.3 (whose verdict flipped between Pass and Review on identical code; these are the points that were fair):
+
+- **`playlist_health.py fix --apply`** replaces `--auto`: `fix` only previews (`WOULD remove …`) unless `--apply` is given, and "auto" read as "unattended". The old `--auto` still works as a hidden alias, and the result keeps the legacy `auto_applied` key beside the new `applied`.
+- **Clearer disclosure** in `SKILL.md`: editing an existing playlist can *remove tracks* (`fix --apply`, `build_playlist.sh refresh|remove`); it is listed in the "data written to your account" table and in the At a glance safety note, the scheduled health check is stated to be report-only, and ratings are only written on the user's explicit say-so.
+- **`verify_setup.sh` cleans up its token temp file on interrupt** (Ctrl-C / `kill`) and honors the same loopback-only `APPLE_MUSIC_API_BASE` test hook as the API wrapper, so it is now tested end to end.
+- The API wrapper's cleanup names its exact temp-file kinds instead of a broad `am_*` pattern.
+- Docs no longer suggest `rm -rf ~/.apple-music-dj/`: they say to list the folder first and delete it deliberately (and that an agent must never do it unprompted); the troubleshooting guide removes only the cached profile.
+
 ## [3.2.3] — Unreleased
 
 ### Security

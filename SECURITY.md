@@ -48,7 +48,9 @@ Include:
 2. **Keep `.env` in `.gitignore`** — The repo ships with this configured
 3. **Rotate tokens periodically** — Dev tokens support up to 6-month lifetime
 4. **Review cache contents** — `~/.apple-music-dj/` contains your taste profile
-5. **Clear cache when sharing machines** — `rm -rf ~/.apple-music-dj/`
+5. **Clear the cache when sharing machines** — list it first (`ls -la ~/.apple-music-dj`), then delete
+   the folder yourself. It holds your taste profile, snapshots, playlist history and cron logs, and
+   deleting it can't be undone. An agent should never do this without being asked.
 
 ## How the skill handles local data
 

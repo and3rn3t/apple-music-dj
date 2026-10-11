@@ -38,8 +38,8 @@ require_user_token() {
 # where bash resets traps, so _with_auth re-installs them.
 #
 # Every temp file is named am_<kind>_<script pid>_XXXXXX (`$$` stays the main script's
-# pid inside subshells) and the backstop removes by that pattern instead of keeping a
-# list: a signal that lands right after mktemp but before a list append would otherwise
+# pid inside subshells) and the backstop removes those exact kinds for this pid instead of
+# keeping a list: a signal that lands right after mktemp but before a list append would otherwise
 # leak the file, because bash runs a pending trap before the next command.
 _CURL_PID=""
 _cleanup() {
@@ -48,7 +48,8 @@ _cleanup() {
   if [[ -n "${_CURL_PID:-}" ]]; then
     kill "$_CURL_PID" 2>/dev/null || true
   fi
-  rm -f "${TMPDIR:-/tmp}"/am_*_$$_* 2>/dev/null || true
+  rm -f "${TMPDIR:-/tmp}"/am_api_$$_* "${TMPDIR:-/tmp}"/am_auth_$$_* "${TMPDIR:-/tmp}"/am_code_$$_* \
+        "${TMPDIR:-/tmp}"/am_rate_$$_* 2>/dev/null || true
   return 0
 }
 _install_traps() {

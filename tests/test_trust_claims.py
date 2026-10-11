@@ -6,17 +6,18 @@ stay true: a new host, env var or stored file has to be documented before this p
 
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = sorted((ROOT / "scripts").glob("*.py")) + sorted((ROOT / "scripts").glob("*.sh"))
 SKILL = (ROOT / "SKILL.md").read_text()
 
-ALLOWED_URLS = {
-    "https://api.music.apple.com",
-    "http://127.0.0.1",  # test hook, loopback only
-    "http://localhost",  # test hook, loopback only
-    "http://www.w3.org/2000/svg",  # SVG XML namespace, not a request
-    "https://js-cdn.music.apple.com",  # MusicKit JS, loaded by setup_auth.py's local sign-in page
+ALLOWED_HOSTS = {
+    ("https", "api.music.apple.com"),
+    ("https", "js-cdn.music.apple.com"),  # MusicKit JS, loaded by setup_auth.py's local sign-in page
+    ("http", "127.0.0.1"),  # test hook, loopback only
+    ("http", "localhost"),  # test hook, loopback only
+    ("http", "www.w3.org"),  # SVG XML namespace, not a request
 }
 
 RISKY = {
@@ -38,12 +39,12 @@ def code_lines(path: Path):
 def test_scripts_only_contact_documented_hosts():
     for path in SCRIPTS:
         for number, line in code_lines(path):
-            for url in re.findall(r"https?://[A-Za-z0-9.\-]+(?:/[A-Za-z0-9./_\-]*)?", line):
-                if "github.com" in url:
+            for url in re.findall(r"https?://[A-Za-z0-9.\-]+(?::\d+)?(?:/[A-Za-z0-9./_\-]*)?", line):
+                parts = urlsplit(url)
+                if parts.hostname in ("github.com", "raw.githubusercontent.com"):
                     continue
-                host = re.match(r"https?://[^/:]+", url).group(0)
-                assert any(url.startswith(a) or host == a for a in ALLOWED_URLS), f"{path.name}:{number} {url}"
-    assert "https://api.music.apple.com" in SKILL
+                assert (parts.scheme, parts.hostname) in ALLOWED_HOSTS, f"{path.name}:{number} {url}"
+    assert re.search(r"https://api\.music\.apple\.com", SKILL)
     assert "Apple's CDN" in SKILL  # the one extra host must stay disclosed
 
 

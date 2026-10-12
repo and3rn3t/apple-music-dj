@@ -61,6 +61,18 @@ Start a new OpenClaw session afterwards so the skill loads. It loads even before
 any tokens, so you can ask it for the demo first; anything that reads your own music asks for the
 tokens when it needs them.
 
+### Use with Claude Code
+
+It's a standard Agent Skill, so Claude Code can load it too:
+
+```bash
+git clone https://github.com/and3rn3t/apple-music-dj.git ~/.claude/skills/apple-music-dj
+```
+
+Start a new Claude Code session and ask *"Show me what the Apple Music DJ can do."* For your own
+music, put the two token `export` lines from [setup](#1-get-your-tokens-one-command) in your shell
+profile so the scripts can read them.
+
 ## 🧪 Try it first (no account needed)
 
 ![Animated replay of the no-account demo: a taste card, songs like Radiohead, a 90s throwback, a daily pick and a compatibility score](assets/demo-tour.svg)

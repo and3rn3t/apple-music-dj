@@ -1,25 +1,16 @@
 ---
 name: apple-music-dj
 description: >
-  Your AI Apple Music curator. Builds playlists from your real listening history, finds songs
-  like any artist or song, makes decade throwbacks and two-person blends, shows how your taste
-  changes over time, and rebuilds playlists from a Spotify export or text list. Anything that
-  changes your account is opt-in and confirmed first, and a built-in demo lets you try it with no
-  tokens. Also covers mood and activity playlists,
-  deep cuts, trending picks, taste DNA cards, compatibility scores, listening insights and year
-  in review, catalog gap analysis, album deep dives, artist rabbit holes, daily song drops,
-  concert prep, a new release radar, and scheduled weekly curation via cron. Use whenever the
-  user mentions Apple Music, playlists, music recommendations, listening habits, music taste,
-  "what should I listen to", discovering new music, mood or workout playlists, deep cuts, hidden
-  gems, trending music, "surprise me", refreshing a playlist, or anything related to curating
-  their music experience. Also trigger on: "DJ", "mix", "playlist for", "music for", "songs
-  like", "similar to", "more like", "what's hot", "new releases for me", "taste DNA", "taste
-  card", "compatibility", "how compatible", "year in review", "listening stats", "what have I
-  missed", "album deep dive", "rabbit hole", "concert prep", "seeing [artist] live", "daily
-  song", "what should I listen to right now", "blend", "throwback", "[decade] playlist", "taste
-  drift", "how has my taste changed", "import my playlist", "I didn't like track", "add the
-  missing albums", "set up Apple Music tokens", "try the demo", "my taste code", "blend with a code", or OpenClaw
-  in the context of music.
+  Your AI Apple Music curator. Builds playlists from your real listening history, finds songs like
+  any artist or song, makes decade throwbacks and two-person blends, and shows how your taste
+  changes over time. Changes to your account are opt-in and confirmed first; a built-in demo needs
+  no tokens. Also: mood, workout and deep cuts playlists, trending picks, taste card, compatibility,
+  year in review, catalog gaps, album deep dive, rabbit hole, concert prep, new release radar,
+  Spotify import, weekly cron curation. Use when the user mentions Apple Music, playlists, music
+  recommendations, listening stats, "what should I listen to", "surprise me", "DJ", "mix", "playlist
+  for", "songs like", "similar to", "more like", "taste DNA", "how compatible", "what have I
+  missed", "daily song", "blend", "throwback", "taste drift", "import my playlist", "I didn't like
+  track", "add the missing albums", "try the demo", "my taste code", or OpenClaw with music.
 version: 3.4.0
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj

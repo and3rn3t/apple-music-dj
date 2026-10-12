@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Use with Claude Code** section in the README: clone into `~/.claude/skills/` and the skill loads like any other Agent Skill.
+
+### Changed
+
+- **Shorter `description`** (950 characters, down from 1,660) so it fits the Agent Skills limit of 1,024 that Claude-side validators and community skill lists enforce. It keeps every trigger phrase the listing tests check for, and a new test holds it under the limit.
+
 ## [3.4.0] — 2026-10-11
 
 ### Added

@@ -72,8 +72,9 @@ def test_description_keeps_every_trigger_phrase_agents_rely_on():
 
 def test_description_fits_the_agent_skills_limit():
     """The Agent Skills spec caps `description` at 1024 characters; Claude-side validators and the
-    community skill lists reject anything longer."""
-    assert len(description()) <= 1024
+    community skill lists reject anything longer. The `>` scalar keeps one trailing newline that
+    `description()` drops, so count it."""
+    assert len(description()) + 1 <= 1024
 
 
 def test_tags_cover_the_main_topics():

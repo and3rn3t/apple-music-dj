@@ -44,7 +44,7 @@ Built as an [OpenClaw](https://openclaw.ai) skill, on [ClawHub](https://clawhub.
 | **Apple Developer Account** | [$99/year](https://developer.apple.com/programs/) — needed for MusicKit API access (not for the demo) |
 | **Apple Music subscription** | Active subscription on your Apple ID (not for the demo) |
 | **Python** | 3.10+ (no pip packages needed for core features; `PyJWT` + `cryptography` only to sign a developer token) |
-| **OpenClaw** | [openclaw.ai](https://openclaw.ai) · [docs](https://docs.openclaw.ai) |
+| **Skill host** | [OpenClaw](https://openclaw.ai) ([docs](https://docs.openclaw.ai)) or [Claude Code](#use-with-claude-code) |
 | **CLI tools** | `curl`, `jq` (usually pre-installed on macOS) |
 
 ## 🚀 Quick Install

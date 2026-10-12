@@ -1,6 +1,6 @@
 [project]
 name = "apple-music-dj"
-version = "3.4.0"
+version = "3.4.1"
 description = "OpenClaw skill — personalized Apple Music curation engine"
 readme = "README.md"
 license = {text = "MIT-0"}

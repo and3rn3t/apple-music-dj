@@ -11,7 +11,7 @@ description: >
   for", "songs like", "similar to", "more like", "taste DNA", "how compatible", "what have I
   missed", "daily song", "blend", "throwback", "taste drift", "import my playlist", "I didn't like
   track", "add the missing albums", "try the demo", "my taste code", or OpenClaw with music.
-version: 3.4.0
+version: 3.4.1
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj
 license: MIT-0

@@ -69,7 +69,7 @@ read as a risk, rather than waiting to be flagged.
 - [x] Frontmatter matches the OpenClaw/ClawHub spec (`os`, `emoji`, `install` under
       `metadata.openclaw`; no unread gating keys; MIT-0; `{baseDir}` script paths), enforced by
       `tests/test_openclaw_metadata.py`.
-- [ ] Enable GitHub private vulnerability reporting (repo settings → Security) and point
+- [x] Enable GitHub private vulnerability reporting (repo settings → Security) and point
       `SECURITY.md` at it.
 - [ ] Optional hardening: signed tags, build provenance for releases.
 

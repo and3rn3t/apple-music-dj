@@ -1,7 +1,9 @@
-"""The README's animated demo and the Spotify sample are generated from / run by the real scripts."""
+"""The README's animated demo, the social preview card and the Spotify sample are generated from / run by
+the real scripts."""
 
 import importlib.util
 import re
+import struct
 import xml.dom.minidom
 from pathlib import Path
 
@@ -11,6 +13,10 @@ ROOT = Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("make_demo_svg", ROOT / ".github" / "scripts" / "make_demo_svg.py")
 mk = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mk)
+_spec = importlib.util.spec_from_file_location("make_social_preview",
+                                               ROOT / ".github" / "scripts" / "make_social_preview.py")
+sp = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(sp)
 
 TOUR = """🎧 Demo mode: a fictional listener.
 
@@ -77,6 +83,26 @@ def test_committed_demo_svg_is_valid_and_has_the_real_scenes():
     for phrase in ("Songs like Radiohead", "90s throwback", "TASTE DNA CARD", "nothing touches an Apple Music account"):
         assert phrase in text
     assert len(text) < 60_000
+
+
+def test_social_preview_svg_is_valid_and_github_sized():
+    doc = xml.dom.minidom.parseString(sp.render_svg())
+    svg = doc.documentElement
+    assert (svg.getAttribute("width"), svg.getAttribute("height")) == ("1280", "640")
+    text = " ".join(t.firstChild.data for t in doc.getElementsByTagName("text") if t.firstChild)
+    assert "Apple Music DJ" in text and "Claude Code & OpenClaw" in text and "Read-only by default" in text
+
+
+def test_committed_social_preview_svg_matches_the_generator():
+    """Edit make_social_preview.py → run `make social-preview` (and re-upload the PNG in repo settings)."""
+    assert (ROOT / "assets" / "social-preview.svg").read_text() == sp.render_svg()
+
+
+def test_committed_social_preview_png_is_github_sized():
+    data = (ROOT / "assets" / "social-preview.png").read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR"
+    assert struct.unpack(">II", data[16:24]) == (1280, 640)
+    assert len(data) < 1_000_000  # GitHub's social preview limit is 1 MB
 
 
 def test_sample_spotify_export_parses_without_isrc():

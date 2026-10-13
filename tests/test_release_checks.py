@@ -140,6 +140,41 @@ class TestChangelog:
         assert rc.release_notes("3.4.5", max_chars=300, root=repo) == "v3.4.5\n\n- x"
 
 
+# ── coverage badge ───────────────────────────────────────────────
+
+class TestCoverageBadge:
+    def write(self, tmp_path, badge="91", measured=91.1):
+        (tmp_path / "README.md").write_text(f"![Coverage](https://img.shields.io/badge/coverage-{badge}%25-brightgreen)\n")
+        report = tmp_path / "coverage.json"
+        report.write_text(json.dumps({"totals": {"percent_covered": measured}}))
+        return report
+
+    def test_matching_badge_passes(self, tmp_path):
+        report = self.write(tmp_path)
+        assert "matches" in rc.check_coverage_badge(report, root=tmp_path)
+
+    def test_within_one_point_passes(self, tmp_path):
+        report = self.write(tmp_path, badge="91", measured=91.9)
+        rc.check_coverage_badge(report, root=tmp_path)
+
+    def test_stale_badge_fails_with_the_fix(self, tmp_path):
+        report = self.write(tmp_path, badge="91", measured=86.4)
+        with pytest.raises(rc.CheckError, match="Update the badge to 86%"):
+            rc.check_coverage_badge(report, root=tmp_path)
+
+    def test_missing_badge_fails(self, tmp_path):
+        report = self.write(tmp_path)
+        (tmp_path / "README.md").write_text("# no badge\n")
+        with pytest.raises(rc.CheckError, match="No coverage badge"):
+            rc.check_coverage_badge(report, root=tmp_path)
+
+    def test_real_readme_has_a_badge(self, tmp_path):
+        report = tmp_path / "coverage.json"
+        report.write_text(json.dumps({"totals": {"percent_covered": 50.0}}))
+        with pytest.raises(rc.CheckError, match="tests measure 50.0%"):
+            rc.check_coverage_badge(report)
+
+
 # ── config / auth ────────────────────────────────────────────────
 
 class TestWriteConfig:

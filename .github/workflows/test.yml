@@ -56,5 +56,10 @@ jobs:
           python -m pytest tests/ \
             --cov=scripts \
             --cov-report=term-missing \
+            --cov-report=json:coverage.json \
             --cov-fail-under=80 \
             -v
+
+      - name: Check README coverage badge
+        if: matrix.python-version == '3.14'
+        run: python .github/scripts/release_checks.py check-coverage-badge coverage.json

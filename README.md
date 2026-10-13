@@ -4,10 +4,13 @@
 ![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue)
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](LICENSE)
+[![ClawHub](https://img.shields.io/badge/ClawHub-apple--music--dj-orange)](https://clawhub.ai/and3rn3t/skills/apple-music-dj)
 
 **Your AI-powered Apple Music curator.** Analyzes your listening history, understands your taste DNA, and creates intelligent playlists directly in your Apple Music library — on all your devices.
 
 An [Agent Skill](https://github.com/anthropics/skills) for [OpenClaw](https://openclaw.ai) (on [ClawHub](https://clawhub.ai)) and [Claude Code](#use-with-claude-code). Talk naturally, get playlists.
+
+**Read-only by default.** Nothing changes in your Apple Music account until you approve it — [see exactly what it can change](#-what-it-can-change).
 
 **No Apple Developer account yet?** Try it in 30 seconds with the built-in demo: [`python3 scripts/demo.py tour`](#-try-it-first-no-account-needed).
 
@@ -326,7 +329,7 @@ make coverage          # Tests with coverage summary (fails below 80%)
 make coverage-html     # Generate HTML coverage report
 ```
 
-1,000+ tests across 22 modules — 91% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, all eight strategies and energy-arc sequencing, taste drift, playlist import, feedback, playlist health, history tracking, cron setup, token generation and guided setup, demo mode, end-to-end runs against a local mock API, and shared utilities.
+1,000+ tests across 27 modules — 91% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, all eight strategies and energy-arc sequencing, taste drift, playlist import, feedback, playlist health, history tracking, cron setup, token generation and guided setup, demo mode, end-to-end runs against a local mock API, and shared utilities.
 
 ## 📖 Full Documentation
 
@@ -334,7 +337,12 @@ See [**SKILL.md**](SKILL.md) for the complete skill definition — triggers, wor
 
 ## 🤝 Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines. Questions, ideas and
+taste cards are welcome in [Discussions](https://github.com/and3rn3t/apple-music-dj/discussions);
+[good first issues](https://github.com/and3rn3t/apple-music-dj/labels/good%20first%20issue) are a
+gentle way in.
+
+If it made you a playlist you liked, a ⭐ helps other Apple Music listeners find it.
 
 ## 📄 License
 

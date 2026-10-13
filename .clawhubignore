@@ -34,6 +34,13 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.coverage
+coverage.json
+htmlcov/
+
+# GitHub social preview (uploaded by hand in repo settings; not used by the skill)
+
+assets/social-preview.*
 
 # Cache (generated at runtime)
 

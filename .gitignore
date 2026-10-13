@@ -25,6 +25,7 @@ venv/
 coverage_html/
 htmlcov/
 .coverage
+coverage.json
 
 # Data directory
 ~/.apple-music-dj/

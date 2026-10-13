@@ -1,13 +1,13 @@
 # Allow users to create blank issues without a template.
 blank_issues_enabled: true
 
-# TODO: Add links to community resources (discussions, Discord, forums, etc.)
-# Example:
-# contact_links:
-#   - name: GitHub Discussions
-#     url: https://github.com/YOUR_ORG/YOUR_REPO/discussions
-#     about: Ask questions and share ideas
-#   - name: Discord
-#     url: https://discord.gg/YOUR_INVITE
-#     about: Chat with the community in real time
-contact_links: []
+contact_links:
+  - name: Questions and setup help
+    url: https://github.com/and3rn3t/apple-music-dj/discussions/categories/q-a
+    about: Stuck on tokens, setup or a playlist? Ask here rather than opening an issue.
+  - name: Show & tell
+    url: https://github.com/and3rn3t/apple-music-dj/discussions/categories/show-and-tell
+    about: Share your taste card, a playlist it made, or a taste code to blend with.
+  - name: Security issue
+    url: https://github.com/and3rn3t/apple-music-dj/security/policy
+    about: Please report vulnerabilities privately, not in a public issue.

@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: test coverage coverage-html lint ruff actionlint ci audit demo-svg
+.PHONY: test coverage coverage-html lint ruff actionlint ci audit demo-svg social-preview
 
 ## Run all tests
 test:
@@ -41,3 +41,7 @@ audit:
 ## Regenerate the README's animated demo (assets/demo-tour.svg) from the real `demo.py tour`
 demo-svg:
 	$(PYTHON) .github/scripts/make_demo_svg.py
+
+## Regenerate the GitHub social preview card (assets/social-preview.png); upload it in repo settings
+social-preview:
+	$(PYTHON) .github/scripts/make_social_preview.py

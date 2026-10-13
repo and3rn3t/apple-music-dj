@@ -6,6 +6,8 @@ Standard library only. Kept out of scripts/ so it is never packaged into the ski
   versions                       print the version after checking the three files agree
   check-tag TAG                  fail unless TAG == v<version>
   notes --version V [--max-chars N]   print V's CHANGELOG section (fails if missing/empty)
+  check-coverage-badge REPORT    fail unless README's coverage badge is within 1 point of
+                                 pytest-cov's JSON REPORT
   write-config                   write the ClawHub CLI config from $CLAWHUB_TOKEN (0600)
   check-whoami --expect HANDLE   fail unless `clawhub whoami` reports HANDLE
   wait-for-version --slug S --version V   poll until V is ClawHub's latest
@@ -81,6 +83,21 @@ def release_notes(version: str, max_chars: int | None = None, root: Path = ROOT)
     if max_chars and len(notes) > max_chars:
         notes = notes[: max_chars - 40].rstrip() + "\n\n… (full notes in CHANGELOG.md)"
     return notes
+
+
+# ── coverage badge ───────────────────────────────────────────────
+
+def check_coverage_badge(report: Path, tolerance: float = 1.0, root: Path = ROOT) -> str:
+    """Fail when the README's static coverage badge strays from what pytest-cov measured."""
+    m = re.search(r"img\.shields\.io/badge/coverage-(\d+(?:\.\d+)?)%25", (root / "README.md").read_text())
+    if not m:
+        raise CheckError("No coverage badge found in README.md")
+    badge = float(m.group(1))
+    measured = json.loads(report.read_text())["totals"]["percent_covered"]
+    if abs(badge - measured) > tolerance:
+        raise CheckError(f"README coverage badge says {badge:g}% but tests measure {measured:.1f}%. "
+                         f"Update the badge to {int(measured)}%.")
+    return f"Coverage badge {badge:g}% matches measured {measured:.1f}%"
 
 
 # ── ClawHub CLI helpers ──────────────────────────────────────────
@@ -205,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     notes = sub.add_parser("notes")
     notes.add_argument("--version", required=True)
     notes.add_argument("--max-chars", type=int)
+    sub.add_parser("check-coverage-badge").add_argument("report", type=Path)
     sub.add_parser("write-config")
     sub.add_parser("check-whoami").add_argument("--expect", required=True)
     wait = sub.add_parser("wait-for-version")
@@ -223,6 +241,8 @@ def main(argv: list[str] | None = None) -> int:
             print(check_tag(args.tag))
         elif args.cmd == "notes":
             print(release_notes(args.version, args.max_chars))
+        elif args.cmd == "check-coverage-badge":
+            print(check_coverage_badge(args.report))
         elif args.cmd == "write-config":
             write_config(os.environ["CLAWHUB_CONFIG_PATH"], os.environ.get("CLAWHUB_TOKEN", ""))
         elif args.cmd == "check-whoami":

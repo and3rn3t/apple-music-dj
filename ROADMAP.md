@@ -11,6 +11,9 @@ broader listing tags.
 
 - [x] **Animated demo in the README** — a replay of `demo.py tour` (`assets/demo-tour.svg`,
       regenerate with `make demo-svg`).
+- [x] **GitHub presence:** About box, topics and homepage point at ClawHub; Discussions on (Q&A,
+      Show and tell); social preview card (`make social-preview`, uploaded by hand); CI keeps the
+      README coverage badge honest; good-first-issues seeded from this roadmap.
 - [ ] **Screen recording for the listing.** 20–30 s: say "songs like Phoebe Bridgers" in OpenClaw →
       the playlist appears in Apple Music on an iPhone. Needs a real device and account, so it is
       recorded by hand.
@@ -24,7 +27,7 @@ broader listing tags.
 
 ## Next — features that spread
 
-- [ ] **Taste card as PNG, Instagram Story size (1080×1920)**, with a small
+- [ ] **Taste card as PNG, Instagram Story size (1080×1920)** ([#48](https://github.com/and3rn3t/apple-music-dj/issues/48)), with a small
       "apple-music-dj · ClawHub" footer. `taste_card.py` already renders SVG; add a PNG export
       (optional dependency, e.g. `cairosvg`, with the SVG as the fallback).
 - [x] **Blend share codes.** `share_code.py make` prints an ID-free `amdj1:` taste code, and
@@ -32,19 +35,19 @@ broader listing tags.
 - [ ] **Monthly recap / "Wrapped"-style year in review** as a shareable card, timed for December,
       with a ready-made caption. Builds on `listening_insights.py` and the snapshots.
 - [x] **Spotify-switcher section** in the README plus `references/spotify-import.md`, with a sample
-      export to try. Still open: a line for the ClawHub listing description (keep
+      export to try. Still open: a line for the ClawHub listing description ([#49](https://github.com/and3rn3t/apple-music-dj/issues/49)) (keep
       `tests/test_listing.py`'s opening-sentence limits in mind).
 
 ## Later — remove the remaining setup friction
 
-- [ ] **Richer demo catalog.** The demo uses the 12-song test catalog; a separate ~150-song demo
+- [ ] **Richer demo catalog** ([#46](https://github.com/and3rn3t/apple-music-dj/issues/46)). The demo uses the 12-song test catalog; a separate ~150-song demo
       catalog (still fictional-listener, real-ish metadata) would make demo playlists full length.
       Keep the tests on the small catalog so their assertions stay stable.
 - [ ] **Hosted token helper (investigate).** The $99/yr Apple Developer membership is the biggest
       barrier. A hosted page that issues user tokens under a shared developer key would remove it,
       but means running a service, holding a signing key and checking Apple's MusicKit terms.
       Write an ADR before building anything.
-- [ ] **Renewal nudge in scheduled jobs.** Cron output only goes to a log; when a token is within
+- [ ] **Renewal nudge in scheduled jobs** ([#47](https://github.com/and3rn3t/apple-music-dj/issues/47)). Cron output only goes to a log; when a token is within
       14 days of expiry, have the daily-drop job surface the warning where the user will see it
       (e.g. in the day's pick message).
 - [ ] **Verify response shapes against the live API** and record any differences in the mock, so

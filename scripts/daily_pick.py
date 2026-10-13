@@ -30,7 +30,13 @@ import random
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import call_api, filter_generic_genres, load_profile
+from _common import (
+    call_api,
+    check_token_expiry,
+    check_user_token_age,
+    filter_generic_genres,
+    load_profile,
+)
 
 SCRIPT_DIR = Path(__file__).parent
 
@@ -158,6 +164,15 @@ def score_candidate(candidate: dict, profile: dict, context: dict | None = None,
 
 # ── Daily Song Drop ──────────────────────────────────────────────
 
+def get_token_renewal_reminder() -> str:
+    """Return token renewal warnings for the daily song drop, if any."""
+    warnings = []
+    for status in (check_token_expiry(), check_user_token_age()):
+        if status and status["warning"]:
+            warnings.append(status["message"])
+    return "\n".join(warnings)
+
+
 def cmd_daily(profile: dict, sf: str) -> dict:
     """Pick one track for today's daily song drop."""
     rng = random.Random(daily_seed())
@@ -178,11 +193,16 @@ def cmd_daily(profile: dict, sf: str) -> dict:
     # Clean up internal fields
     pick.pop("_score", None)
 
+    message = f"🎧 Today's pick: *{pick['name']}* by {pick['artist']} — {pick.get('reason', '')}"
+    reminder = get_token_renewal_reminder()
+    if reminder:
+        message = f"{message}\n\n{reminder}"
+
     return {
         "type": "daily_song_drop",
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "track": pick,
-        "message": f"🎧 Today's pick: *{pick['name']}* by {pick['artist']} — {pick.get('reason', '')}",
+        "message": message,
     }
 
 

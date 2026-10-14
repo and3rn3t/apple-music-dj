@@ -1,16 +1,17 @@
 ---
 name: apple-music-dj
 description: >
-  Your AI Apple Music curator. Builds playlists from your real listening history, finds songs like
-  any artist or song, makes decade throwbacks and two-person blends, and shows how your taste
-  changes over time. Changes to your account are opt-in and confirmed first; a built-in demo needs
-  no tokens. Also: mood, workout and deep cuts playlists, trending picks, taste card, compatibility,
-  year in review, catalog gaps, album deep dive, rabbit hole, concert prep, new release radar,
-  Spotify import, weekly cron curation. Use when the user mentions Apple Music, playlists, music
-  recommendations, listening stats, "what should I listen to", "surprise me", "DJ", "mix", "playlist
-  for", "songs like", "similar to", "more like", "taste DNA", "how compatible", "what have I
-  missed", "daily song", "blend", "throwback", "taste drift", "import my playlist", "I didn't like
-  track", "add the missing albums", "try the demo", "my taste code", or OpenClaw with music.
+  Your AI Apple Music curator. Moving from Spotify? Import playlists into Apple Music.
+  Builds playlists from your real listening history, finds songs like any artist or song, makes
+  decade throwbacks and two-person blends, and shows how your taste changes over time. Changes to
+  your account are opt-in and confirmed first; a built-in demo needs no tokens. Also: mood, workout
+  and deep cuts playlists, trending picks, taste card, compatibility, year in review, catalog gaps,
+  album deep dive, rabbit hole, concert prep, new release radar, Spotify import, weekly cron
+  curation. Use when the user mentions Apple Music, playlists, music recommendations, listening
+  stats, "what should I listen to", "surprise me", "DJ", "mix", "playlist for", "songs like",
+  "similar to", "more like", "taste DNA", "how compatible", "what have I missed", "daily song",
+  "blend", "throwback", "taste drift", "import my playlist", "I didn't like track", "add the
+  missing albums", "try the demo", "my taste code", or OpenClaw with music.
 version: 3.4.1
 author: Andernet (Matthew Anderson) <and3rn3t@icloud.com>
 homepage: https://github.com/and3rn3t/apple-music-dj

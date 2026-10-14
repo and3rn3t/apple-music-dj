@@ -238,6 +238,47 @@ class TestGetCandidates:
 # ── cmd_daily ────────────────────────────────────────────────────
 
 class TestCmdDaily:
+    @pytest.fixture
+    def mock_candidates(self, monkeypatch):
+        monkeypatch.setattr("daily_pick.get_candidates", lambda *args, **kwargs: [{
+            "id": "t99",
+            "name": "Song",
+            "artist": "Radiohead",
+            "genre": ["Rock"],
+            "source": "deep_cut",
+            "reason": "A deep cut from Radiohead you haven't heard yet.",
+        }])
+
+    def test_token_renewal_reminder_is_added(self, monkeypatch, sample_profile, mock_candidates):
+        monkeypatch.setattr(
+            "daily_pick.check_token_expiry",
+            lambda: {"warning": True, "message": "Dev token expires in 9 days."},
+        )
+        monkeypatch.setattr(
+            "daily_pick.check_user_token_age",
+            lambda: {"warning": False, "message": "User token is healthy."},
+        )
+
+        result = cmd_daily(sample_profile, "us")
+
+        assert "Dev token expires in 9 days." in result["message"]
+
+    def test_token_renewal_reminder_is_omitted_when_not_needed(
+        self, monkeypatch, sample_profile, mock_candidates
+    ):
+        monkeypatch.setattr(
+            "daily_pick.check_token_expiry",
+            lambda: {"warning": False, "message": "Dev token is healthy."},
+        )
+        monkeypatch.setattr(
+            "daily_pick.check_user_token_age",
+            lambda: {"warning": False, "message": "User token is healthy."},
+        )
+
+        result = cmd_daily(sample_profile, "us")
+
+        assert "token" not in result["message"].lower()
+
     def test_returns_daily_pick(self, monkeypatch, sample_profile):
         def mock_api(cmd, *args, **kw):
             if cmd == "artist-albums":

@@ -12,4 +12,4 @@ permissions:
 
 jobs:
   stale:
-    uses: and3rn3t/.github/.github/workflows/reusable-stale.yml@bac71674cf57c550774f71a70e32a5bb7bec48ad # v1
+    uses: and3rn3t/.github/.github/workflows/reusable-stale.yml@c3cca4317f8170f20fcd07e5606f29690af9fc3f # v1

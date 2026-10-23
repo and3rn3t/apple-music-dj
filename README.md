@@ -144,6 +144,16 @@ Open OpenClaw and say:
 
 That's it. Your taste profile is built, a playlist is generated, and it appears in Apple Music.
 
+```mermaid
+flowchart LR
+    you([You ask]) --> profile["Taste profile<br/>from your listening"]
+    profile --> strategy["Strategy picks and<br/>sequences tracks"]
+    strategy --> preview["Preview in chat"]
+    preview -->|you approve| playlist([Playlist in Apple Music])
+```
+
+More detail in [`references/architecture.md`](references/architecture.md).
+
 ## 🔒 What it can change
 
 Read-only by default. Every write to your account is opt-in and previewed first:

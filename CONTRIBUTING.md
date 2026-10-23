@@ -100,6 +100,20 @@ Maintainers only. Releases are published by CI; the manual route below is the fa
 
 `.github/workflows/publish-clawhub.yml` publishes when you **publish a GitHub release**:
 
+```mermaid
+flowchart TD
+    audit["make audit<br/>(fix what a review flags)"] --> bump["Bump SKILL.md, pyproject.toml, clawhub.json<br/>+ CHANGELOG section, merge to main"]
+    bump --> release["Publish GitHub release vX.Y.Z"]
+    release --> verify["verify job (no secrets):<br/>tag = version, changelog, on main, tests"]
+    verify --> approve{"Reviewer approves<br/>clawhub environment?"}
+    approve -->|no| done([Nothing published])
+    approve -->|yes| publish["publish job: git archive → clawhub publish"]
+    publish --> verdict{ClawHub verdict}
+    verdict -->|benign| ok([Published])
+    verdict -->|suspicious| warn([Published, run warns])
+    verdict -->|"malicious / blocked / unknown"| fail([Run fails])
+```
+
 0. **Run `make audit` first.** ClawHub's reviewer sees only the published files (not `tests/` or this
    changelog), and its verdict has flipped on identical code, so fix what it could flag before
    publishing. The command runs the trust-claim, listing and packaging checks, lists the shipped

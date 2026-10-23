@@ -54,6 +54,13 @@ class TestPage:
         assert request(catcher, "GET", "/")[0] == 404
         assert request(catcher, "GET", "/wrong/")[0] == 404
 
+    def test_server_skips_the_reverse_dns_lookup(self, monkeypatch):
+        """HTTPServer.server_bind calls socket.getfqdn(), which hangs ~35 s on some macOS setups."""
+        def no_lookup(*_args):
+            raise AssertionError("socket.getfqdn() called")
+        monkeypatch.setattr(setup_auth.socketserver.socket, "getfqdn", no_lookup)
+        setup_auth.TokenCatcher("dev.tok.en").start().stop()
+
     def test_foreign_host_header_is_refused(self, catcher):
         """A DNS-rebinding page would arrive with its own Host name."""
         assert request(catcher, "GET", f"/{catcher.nonce}/", headers={"Host": "evil.example"})[0] == 404

@@ -341,7 +341,8 @@ analysis, top songs/artists/albums, total listen time, and narrative insights.
 Card: `python3 {baseDir}/scripts/listening_insights.py year-review <profile.json> > review.json` then
 `python3 {baseDir}/scripts/taste_card.py <profile.json> --mode year-review --data review.json [--format text]`.
 Offer the output's `caption` as ready-to-post text alongside the card. Without Replay for that year,
-hours show as "—" and the top artist and genre come from the current profile (the first insight says so).
+hours show as "—", the top artist and genre come from the current profile (the card labels them "(now)"),
+and the caption describes current taste ("My Apple Music taste right now: …") instead of that year.
 
 ### Catalog Gap Analysis
 **Triggers:** "what have I missed", "what am I missing from [artist]", "catalog gaps",

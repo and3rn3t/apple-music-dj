@@ -301,6 +301,7 @@ class TestYearReviewCard:
         assert "#1 Artist:       Radiohead" in text
         assert "#1 Genre:        Alternative" in text
         assert "Reckoner — Radiohead" in text
+        assert "(now)" not in text
         svg = generate_year_review_svg(result)
         assert ">500<" in svg and "Reckoner" in svg
 
@@ -310,9 +311,15 @@ class TestYearReviewCard:
         assert result["top_artist"] == "Radiohead"
         assert result["top_genre"] == "Alternative"
         assert result["total_minutes"] is None
-        assert "isn't available" in result["insights"][0]
+        # The disclosure has to survive the SVG's 50-character cut, and the card labels the stats.
+        assert "Replay" in result["insights"][0] and len(result["insights"][0]) <= 50
         text = generate_year_review_text(result)
         assert "Hours Listened:  —" in text
+        assert "#1 Artist (now): Radiohead" in text
+        svg = generate_year_review_svg(result)
+        assert "#1 Artist (now)" in svg and result["insights"][0] in svg
+        # The caption is shared on its own, so it must not claim today's taste for that year.
+        assert result["caption"] == "My Apple Music taste right now: #1 artist Radiohead, mostly Alternative. 🎧"
         assert "None" not in text and "None" not in generate_year_review_svg(result)
 
     def test_empty_profile_without_replay(self, monkeypatch):

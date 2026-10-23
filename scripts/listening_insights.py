@@ -184,8 +184,12 @@ def cmd_streaks(profile: dict) -> dict:
 # ── Year in Review ───────────────────────────────────────────────
 
 def year_review_caption(year: int, total_minutes: int | None, top_artist: str | None,
-                        top_genre: str | None) -> str:
-    """A ready-to-post caption for the year-in-review card; leaves out whatever is unknown."""
+                        top_genre: str | None, from_profile: bool = False) -> str:
+    """A ready-to-post caption for the year-in-review card; leaves out whatever is unknown.
+
+    `from_profile` means artist and genre are today's taste, not that year's Replay, so the
+    caption says "right now" rather than claiming them for the year.
+    """
     parts = []
     if total_minutes:
         parts.append(f"{total_minutes // 60:,} hours of music")
@@ -193,6 +197,8 @@ def year_review_caption(year: int, total_minutes: int | None, top_artist: str | 
         parts.append(f"#1 artist {top_artist}")
     if top_genre:
         parts.append(f"mostly {top_genre}")
+    if from_profile and parts:
+        return f"My Apple Music taste right now: {', '.join(parts)}. 🎧"
     body = ", ".join(parts) if parts else "a year of music"
     return f"My {year} on Apple Music: {body}. 🎧"
 
@@ -269,8 +275,8 @@ def cmd_year_review(profile: dict, year: int) -> dict:
     if not year_data:
         top_artist = (profile.get("top_artists") or [{}])[0].get("name")
         top_genre = (profile.get("genre_distribution") or [{}])[0].get("genre")
-        insights.insert(0, f"Replay data for {year} isn't available, so your top artist and genre "
-                           "come from your current taste profile.")
+        # Short enough for the SVG card, which cuts insights at 50 characters.
+        insights.insert(0, f"No {year} Replay; artist and genre are current.")
     total_minutes = year_data.get("listen_minutes")
 
     return {
@@ -279,7 +285,8 @@ def cmd_year_review(profile: dict, year: int) -> dict:
         "top_artist": top_artist,
         "top_genre": top_genre,
         "top_songs": year_data.get("top_songs", []),
-        "caption": year_review_caption(year, total_minutes, top_artist, top_genre),
+        "caption": year_review_caption(year, total_minutes, top_artist, top_genre,
+                                       from_profile=not year_data),
         "replay_data": year_data,
         "insights": insights,
         "obscurity_score": obscurity,

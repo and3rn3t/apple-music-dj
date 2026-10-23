@@ -400,6 +400,8 @@ def generate_year_review_svg(review: dict) -> str:
     milestones = review.get("milestones", [])[:4]
     insights = review.get("insights", [])[:3]
     hours = f"{total_minutes // 60:,}" if total_minutes else "—"  # unknown without Replay
+    # Without that year's Replay, artist and genre are today's taste (listening_insights falls back).
+    now = "" if review.get("replay_available", True) else " (now)"
 
     bg = "#1a1a2e"
     card_bg = "#16213e"
@@ -424,8 +426,8 @@ def generate_year_review_svg(review: dict) -> str:
     y = 118
     stats = [
         (hours, "Hours Listened"),
-        (_escape(top_genre), "Top Genre"),
-        (_escape(top_artist), "#1 Artist"),
+        (_escape(top_genre), "Top Genre" + now),
+        (_escape(top_artist), "#1 Artist" + now),
     ]
     col_w = 140
     for i, (val, label) in enumerate(stats):
@@ -492,14 +494,20 @@ def generate_year_review_text(review: dict) -> str:
     milestones = review.get("milestones", [])[:4]
     insights = review.get("insights", [])[:3]
     hours = f"{total_minutes // 60:,}" if total_minutes else "—"  # unknown without Replay
+    # Without that year's Replay, artist and genre are today's taste (listening_insights falls back).
+    now = "" if review.get("replay_available", True) else " (now)"
 
     lines = []
     lines.append("╔══════════════════════════════════════╗")
     lines.append(f"║       🎧  YEAR IN REVIEW {year}        ║")
     lines.append("╠══════════════════════════════════════╣")
     lines.append(f"  Hours Listened:  {hours}")
-    lines.append(f"  #1 Genre:        {top_genre}")
-    lines.append(f"  #1 Artist:       {top_artist}")
+    if now:
+        lines.append(f"  #1 Genre (now):  {top_genre}")
+        lines.append(f"  #1 Artist (now): {top_artist}")
+    else:
+        lines.append(f"  #1 Genre:        {top_genre}")
+        lines.append(f"  #1 Artist:       {top_artist}")
     lines.append("")
     if top_songs:
         lines.append("  ── TOP SONGS ──")

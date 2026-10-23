@@ -6,6 +6,8 @@
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](LICENSE)
 [![ClawHub](https://img.shields.io/badge/ClawHub-apple--music--dj-orange)](https://clawhub.ai/and3rn3t/skills/apple-music-dj)
 
+![Animated replay of the no-account demo: a taste card, songs like Radiohead, a 90s throwback, a daily pick and a compatibility score](assets/demo-tour.svg)
+
 **Your AI-powered Apple Music curator.** Analyzes your listening history, understands your taste DNA, and creates intelligent playlists directly in your Apple Music library — on all your devices.
 
 An [Agent Skill](https://github.com/anthropics/skills) for [OpenClaw](https://openclaw.ai) (on [ClawHub](https://clawhub.ai)) and [Claude Code](#use-with-claude-code). Talk naturally, get playlists.
@@ -77,8 +79,6 @@ music, put the two token `export` lines from [setup](#1-get-your-tokens-one-comm
 profile so the scripts can read them.
 
 ## 🧪 Try it first (no account needed)
-
-![Animated replay of the no-account demo: a taste card, songs like Radiohead, a 90s throwback, a daily pick and a compatibility score](assets/demo-tour.svg)
 
 ```bash
 python3 scripts/demo.py tour
@@ -190,6 +190,13 @@ Just talk naturally. Here's what the DJ understands:
 | "How was my 2025 in music?" | Year-in-review analysis |
 | "Set up weekly playlists" | Cron automation |
 | "Show me what you can do" | Demo tour — no tokens needed |
+
+## 🧰 Tech stack
+
+- **Python 3.10+** standard library for every core feature — no pip packages needed
+- **Apple Music API** (developer token signed with `PyJWT` + `cryptography`, only for setup)
+- **Agent Skill** format (`SKILL.md`) for OpenClaw / ClawHub and Claude Code
+- **pytest** for the test suite
 
 ## 📁 Project Structure
 

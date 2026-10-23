@@ -9,11 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`config.json` preferences are honoured:** `excluded_artists` and `preferred_genres` were read into the config but never used. Every strategy and the daily pick now drop excluded artists and give preferred genres a small boost. A new `avoid_repeat_days` key (default 30, `0` to turn off) skips tracks from playlists the DJ created recently. Documented in `references/playlist-strategies.md`.
 - CLI entry-point tests for daily picks, listening insights and the demo, including year limits and refusal of account paths, authentication and cron setup in demo mode.
 - **Token-renewal reminder in the daily drop:** when the developer token is close to expiry or the user token is getting old, `daily_pick.py daily` adds the warning to the day's pick message, so a scheduled job surfaces it where you'll see it instead of only in its log.
 - **Year-in-review caption:** `listening_insights.py year-review` adds a ready-to-post `caption` ("My 2025 on Apple Music: 500 hours of music, #1 artist …"), leaving out whatever is unknown.
 
 ### Changed
+
+- **Scoring fixes across the strategies:**
+  - **Deep cuts:** max 3 tracks per artist. The first artist's discography could fill the whole playlist before. The track-position bonus is capped at 0.15 (track 25 used to add +0.83). Live, remix, demo and other alternate takes, live albums, compilations and the same song on a deluxe edition are skipped. Artists you play more score higher.
+  - **Mood:** the mood's energy level is now used. It was defined but never read, so a sleep mix could pick up a loud track from a mood-adjacent genre. Score = 0.5 × mood-genre match + 0.35 × energy fit + 0.15 × taste match, and tracks far from the target energy rank last. Max 3 tracks per artist.
+  - **Constellation** ([#61](https://github.com/and3rn3t/apple-music-dj/issues/61)): finds neighbours through Apple's similar artists, falling back to text search only when there are none. A short zone is backfilled so the playlist reaches its length.
+  - **Trend radar:** rank weight is relative to the chart's length (longer charts used to give negative weights); max 3 tracks per artist.
+  - **Refresh:** "new from" an artist really uses their newest albums; max 3 tracks per artist.
+  - **Daily pick:** never picks a song you disliked. Taste match (+0.3) now counts and the random term is halved to 0.15, so a track in your genres beats one outside them.
+  - **Compatibility:** era overlap is weighted by how much you listen to each decade, not just whether a decade appears in both lists.
+  - Genre adjacency lives once in `_common.py` instead of two copies.
+  - **Playlists reach their length more reliably:** picking now applies the 2-per-album cap (sequencing used to drop the extra tracks afterwards); deep cuts keep scanning artists until the capped, filtered candidates can fill the list; trend radar never returns more tracks than asked for; constellation at 1–2 tracks no longer returns almost a whole zone. Non-Latin song titles are no longer treated as duplicates of each other, and preferred genres now also rank constellation picks and the daily pick.
 
 - **Docs-only PRs get a quick CI run:** a PR that only touches `*.md`, `assets/`, `LICENSE` or issue templates runs just the tests that read docs and assets, on one Python version, instead of lint and the five-job matrix. A **CI result** check sums up every run and is the one to require in branch protection. `tests/test_ci_workflow.py` checks which PRs take the short path and that the docs job lists every test that reads docs.
 - **CI:** a new push to a PR cancels that PR's previous test run; lint and test jobs have timeouts; the macOS job (the slowest by ~4×) runs the tests in parallel with `pytest-xdist`; every job prints its 15 slowest tests; ruff is pinned to the pre-commit version; dev dependencies come from `pyproject.toml`'s `[dev]` extra instead of a separate list. `make test-fast` runs the suite in parallel locally.

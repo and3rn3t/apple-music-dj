@@ -5,10 +5,12 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _isolate_snapshots(tmp_path, monkeypatch):
-    """Never let a test write taste snapshots or the token record into the real ~/.apple-music-dj."""
+    """Never let a test touch taste snapshots, the token record or playlist history in the real ~/.apple-music-dj."""
     import _common
     monkeypatch.setattr(_common, "SNAPSHOT_DIR", tmp_path / "_snapshots")
     monkeypatch.setattr(_common, "USER_TOKEN_SEEN", tmp_path / "_user_token_seen.json")
+    import playlist_history
+    monkeypatch.setattr(playlist_history, "HISTORY_FILE", tmp_path / "_playlist_history.json")
 
 
 # ── Sample Tracks ────────────────────────────────────────────────

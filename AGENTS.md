@@ -92,6 +92,10 @@ Env vars (see `.env.example`): `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN`
   strategies also go in `references/playlist-strategies.md`; `CHANGELOG.md` under `[Unreleased]`.
 - **SKILL.md's body stays under 500 lines** (the Agent Skills guideline): detail goes in
   `references/` and is listed in SKILL.md's Reference Files table.
+- `tests/test_docs.py` keeps the docs in step with the code: every script and reference listed in
+  SKILL.md and README's tree, no broken links or paths, every documented `--flag` real, every
+  `apple_music_api.sh` command in `references/api-reference.md`, the Python badge matching CI, and
+  `references/automation.md` matching `setup_cron.py`'s schedules.
 - Conventional commits; branches `type/short-description`. License is MIT-0.
 
 ## Releasing

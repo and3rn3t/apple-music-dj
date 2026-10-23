@@ -78,7 +78,7 @@ GET /v1/me/music-summaries/milestones?filter[year]=2025
 ```
 Annual listening stats: top artists, albums, songs, listen time, milestones.
 Not available for all users/regions.
-Wrapper: `apple_music_api.sh replay-summary [year]` and `replay-milestones [year]`.
+Wrappers: `apple_music_api.sh replay-summary [year]` and `apple_music_api.sh replay-milestones [year]`.
 
 ### User Storefront
 ```
@@ -177,7 +177,7 @@ so the profiler keeps using ratings (loved/disliked) as its explicit-preference 
 PUT    /v1/me/ratings/songs/{id}     body: {"type":"rating","attributes":{"value":1}}   (1 = love, -1 = dislike)
 DELETE /v1/me/ratings/songs/{id}
 ```
-Wrappers: `apple_music_api.sh rate <id> <1|-1> --yes` and `unrate <id> --yes`. **Writes to the account** (need `--yes`).
+Wrappers: `apple_music_api.sh rate <id> <1|-1> --yes` and `apple_music_api.sh unrate <id> --yes`. **Writes to the account** (need `--yes`).
 
 ---
 

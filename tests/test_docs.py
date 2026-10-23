@@ -74,7 +74,7 @@ def test_relative_links_and_paths_exist(doc):
     for target in re.findall(r"\]\(([^)#\s]+)(?:#[^)]*)?\)", text):
         if not target.startswith(("http://", "https://", "mailto:")) and not (doc.parent / target).exists():
             broken.append(target)
-    for path in re.findall(r"(?<![\w/.{])((?:scripts|references)/[\w.-]+\.(?:py|sh|md))", text):
+    for path in re.findall(r"(?:(?<![\w/.{])|(?<=\{baseDir\}/))((?:scripts|references)/[\w.-]+\.(?:py|sh|md))", text):
         if not (ROOT / path).exists():
             broken.append(path)
     assert not broken, f"{doc.relative_to(ROOT)} points at missing files: {sorted(set(broken))}"
@@ -89,20 +89,47 @@ def help_text(script: str, sub: str | None = None) -> str:
     return r.stdout if r.returncode == 0 else ""
 
 
+def command_texts(text: str) -> list[str]:
+    """Commands as written: fenced-block lines (with `\\` continuations joined, `# comments` dropped)
+    and inline code spans. Pipes inside a span (`svg|text`, `[--since 90d | --from …]`) stay part of the
+    command; a Markdown table's `|` separators fall outside the spans."""
+    out = []
+    fences = re.findall(r"^```[^\n]*\n(.*?)^```", text, re.M | re.S)
+    for block in fences:
+        for line in re.sub(r"\\\n\s*", " ", block).splitlines():
+            out.append(re.split(r"\s#\s", line, maxsplit=1)[0])
+    prose = re.sub(r"^```[^\n]*\n.*?^```", "", text, flags=re.M | re.S)
+    out += re.findall(r"`([^`\n]+)`", prose)
+    return out
+
+
+def flags_by_command(text: str) -> list[tuple[str, str | None, str]]:
+    """(script, subcommand, flag) for every `--flag` after a `scripts/x.py` in a command."""
+    found = []
+    for cmd in command_texts(text):
+        hits = list(re.finditer(r"scripts/([a-z_]+\.py)", cmd))
+        for i, m in enumerate(hits):
+            rest = cmd[m.end(): hits[i + 1].start() if i + 1 < len(hits) else len(cmd)]
+            toks = rest.split()
+            sub = toks[0] if toks and re.fullmatch(r"[a-z][a-z-]+", toks[0]) else None
+            if m.group(1) == "demo.py" and sub == "run":
+                continue  # flags after `demo.py run <script>` belong to that script
+            found += [(m.group(1), sub, f) for f in re.findall(r"(?<![\w-])(--[a-z][a-z0-9-]*)", rest)]
+    return found
+
+
+def test_flag_extraction_handles_continuations_and_inline_pipes():
+    fenced = "```bash\npython3 scripts/strategy_engine.py --strategy blend \\\n        --profile-b x --storefront us\n```\n"
+    inline = "| x | `python3 {baseDir}/scripts/taste_drift.py [--since 90d | --from 2026-01-01] --format text` |"
+    alt = "Run: `python3 {baseDir}/scripts/taste_card.py <p> [--format svg|text] [--output card.svg]`"
+    assert {f for _, _, f in flags_by_command(fenced)} == {"--strategy", "--profile-b", "--storefront"}
+    assert {f for _, _, f in flags_by_command(inline)} == {"--since", "--from", "--format"}
+    assert {f for _, _, f in flags_by_command(alt)} == {"--format", "--output"}
+
+
 def documented_commands() -> list[tuple[str, str, str | None, str]]:
     """(doc, script, subcommand, flag) for every `--flag` in a documented `scripts/x.py …` command."""
-    found = []
-    for doc in DOCS:
-        for line in doc.read_text().splitlines():
-            for m in re.finditer(r"scripts/([a-z_]+\.py)((?:[ \t]+[^`|\n]*)?)", line):
-                script, rest = m.group(1), m.group(2)
-                toks = rest.split()
-                sub = toks[0] if toks and re.fullmatch(r"[a-z][a-z-]+", toks[0]) else None
-                if script == "demo.py" and sub == "run":
-                    continue  # flags after `demo.py run <script>` belong to that script
-                for flag in re.findall(r"(?<![\w-])(--[a-z][a-z0-9-]*)", rest):
-                    found.append((doc.relative_to(ROOT).as_posix(), script, sub, flag))
-    return sorted(set(found))
+    return sorted({(doc.relative_to(ROOT).as_posix(), *hit) for doc in DOCS for hit in flags_by_command(doc.read_text())})
 
 
 @pytest.mark.parametrize("doc,script,sub,flag", documented_commands())
@@ -167,5 +194,5 @@ def test_automation_reference_matches_setup_cron(name, job):
     rows = [line for line in doc.splitlines() if line.startswith("|") and f"`{name}`" in line]
     assert rows, f"references/automation.md has no table row for the `{name}` job"
     when = cron_time(job["schedule"])
-    assert any(when in row for row in rows), \
+    assert any(re.search(rf"(?<![\d:]){re.escape(when)}(?!\d)", row) for row in rows), \
         f"references/automation.md's `{name}` row should say {when} (setup_cron.py schedules `{job['schedule']}`)"

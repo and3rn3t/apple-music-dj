@@ -101,8 +101,9 @@ created; omit `--playlist-name` for the most recent one. **This writes a rating 
 so only do it on the user's explicit say-so, and name the song and the rating you are about to write
 when it isn't obvious which track they mean.
 
-**How ratings steer playlists.** Each rating also updates the profile's `rating_signals`, which
-holds like/dislike counts per artist and per genre. `feedback.py` looks the song up once to learn
+**How ratings steer playlists.** Each rating also updates the profile's `rating_signals`: each rated
+song's artist and genres (`songs`), and the like/dislike counts per artist and per genre that are
+always recomputed from them. Clearing a song therefore removes exactly what it added. `feedback.py` looks the song up once to learn
 its artist and genres, and `taste_profiler.py` rebuilds the counts from your Apple Music ratings
 on every refresh (it looks up at most 25 rated songs it hasn't already fetched). Every strategy
 and the daily pick then apply them:
@@ -113,6 +114,9 @@ and the daily pick then apply them:
 - A liked artist gets +0.05 per net like (max +0.15), and a liked genre +0.02 per net like (max +0.1).
 - A boosted or scored-down track says so in its `reason`, and the playlist JSON lists the
   affected artists under `steered_by_ratings`.
+- In a blend, both listeners' ratings count. An artist one listener disliked twice is left out
+  unless that listener plays them a lot or the other listener likes them; then the two
+  listeners' score changes add up.
 
 ### Album Deep Dive
 **Triggers:** "tell me about [album]", "album deep dive", "what's on [album]",

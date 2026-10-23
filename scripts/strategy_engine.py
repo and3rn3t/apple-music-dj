@@ -1333,6 +1333,7 @@ def main():
         recent_ids = get_recent_track_ids(repeat_days)
     USER_FILTERS.clear()
     USER_FILTERS.update(user_filters(config, recent_ids, profile))
+    profile_b: dict | None = None  # the second listener, for a blend
 
     print(f"🎧 Strategy: {args.strategy} | Target: {target_size} tracks", file=sys.stderr)
 
@@ -1367,6 +1368,7 @@ def main():
             found = resolve_artist_ids(profile_b, sf)
             print(f"  Found {found} of their top artists in the catalog "
                   "(a taste code has no song IDs, so their loved tracks and dislikes aren't used).", file=sys.stderr)
+        USER_FILTERS.update(user_filters(config, recent_ids, profile, profile_b))  # both listeners' ratings
         tracks = strategy_blend(profile, profile_b, sf, target_size)
     elif args.strategy == "era":
         try:
@@ -1395,7 +1397,7 @@ def main():
         "track_count": len(tracks),
         "tracks": tracks,
     }
-    steered = rating_summary(profile.get("rating_signals") or {})
+    steered = rating_summary(*(p.get("rating_signals") or {} for p in (profile, profile_b) if p))
     if steered["boosted_artists"] or steered["demoted_artists"]:
         result["steered_by_ratings"] = steered
     if args.strategy == "blend":

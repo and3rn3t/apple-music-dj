@@ -195,7 +195,7 @@ class TestRatingSignals:
         p = fb.apply_to_profile(p, "like", ["s1"], self.SONGS)
         assert p["rating_signals"]["artists"]["nope"] == {"name": "Nope", "likes": 1, "dislikes": 0}
         p = fb.apply_to_profile(p, "clear", ["s1"], self.SONGS)
-        assert p["rating_signals"] == {"artists": {}, "genres": {}}
+        assert p["rating_signals"] == {"songs": {}, "artists": {}, "genres": {}}
 
     def test_run_rating_looks_songs_up_and_saves_signals(self, monkeypatch, tmp_path):
         path = tmp_path / "profile.json"

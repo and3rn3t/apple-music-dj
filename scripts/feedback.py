@@ -31,7 +31,7 @@ import argparse
 import json
 from pathlib import Path
 
-from _common import call_api, load_profile, record_rating, require_env_tokens, write_private
+from _common import call_api, load_profile, require_env_tokens, set_song_rating, write_private
 from playlist_history import load_history
 
 RATING_VALUE = {"like": "1", "dislike": "-1"}
@@ -66,12 +66,12 @@ def apply_to_profile(profile: dict, action: str, song_ids: list[str],
                      songs: dict[str, dict] | None = None) -> dict:
     """Move IDs between the profile's loved / disliked lists (returns the same dict).
 
-    With `songs` (song ID -> catalog attributes), also update ``rating_signals``, the
-    artist and genre like/dislike counts that steer every playlist strategy.
+    Also update ``rating_signals``, the per-song ratings behind the artist and genre counts
+    that steer every playlist strategy. `songs` (song ID -> catalog attributes) supplies a
+    song's artist and genres; `clear` needs none, and a re-rated song keeps what it had.
     """
     loved = list(profile.get("loved_track_ids", []))
     disliked = list(profile.get("disliked_song_ids", []))
-    before = {sid: 1 if sid in loved else -1 if sid in disliked else 0 for sid in song_ids}
     if action in ("dislike", "clear"):
         loved = [i for i in loved if i not in song_ids]
     if action in ("like", "clear"):
@@ -82,12 +82,11 @@ def apply_to_profile(profile: dict, action: str, song_ids: list[str],
         disliked += song_ids
     profile["loved_track_ids"] = list(dict.fromkeys(loved))
     profile["disliked_song_ids"] = list(dict.fromkeys(disliked))
-    if songs:
-        after = int(RATING_VALUE.get(action, "0"))
-        signals = profile.setdefault("rating_signals", {"artists": {}, "genres": {}})
+    if songs or "rating_signals" in profile:
+        value = int(RATING_VALUE.get(action, "0"))
+        signals = profile.setdefault("rating_signals", {"songs": {}, "artists": {}, "genres": {}})
         for sid in dict.fromkeys(song_ids):
-            if sid in songs:
-                record_rating(signals, songs[sid], before[sid], after)
+            set_song_rating(signals, sid, value, (songs or {}).get(sid))
     return profile
 
 

@@ -753,4 +753,4 @@ class TestBuildRatingSignals:
 
     def test_no_ratings(self):
         import taste_profiler as tp
-        assert tp.build_rating_signals(None, [], "us") == ({"artists": {}, "genres": {}}, 0)
+        assert tp.build_rating_signals(None, [], "us") == ({"songs": {}, "artists": {}, "genres": {}}, 0)

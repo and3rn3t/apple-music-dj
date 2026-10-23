@@ -250,7 +250,7 @@ MAX_RATING_LOOKUPS = 25  # rated songs not already fetched cost one catalog look
 
 
 def build_rating_signals(ratings_data: dict | None, known_tracks: list[dict], storefront: str) -> tuple[dict, int]:
-    """Artist and genre like/dislike counts from your ratings, and how many rated songs fed them.
+    """Per-song ratings with artist and genre like/dislike counts, and how many rated songs fed them.
 
     Ratings carry only a song ID and a value, so each song's artist and genres come from
     tracks already fetched for the profile, else from a catalog lookup (at most
@@ -272,7 +272,7 @@ def build_rating_signals(ratings_data: dict | None, known_tracks: list[dict], st
             data = (call_api("song-detail", storefront, rid) or {}).get("data", [])
             attrs = data[0].get("attributes") if data else None
         if attrs and attrs.get("artistName"):
-            rated.append((value, attrs))
+            rated.append((rid, value, attrs))
     return rating_signals_from(rated), len(rated)
 
 

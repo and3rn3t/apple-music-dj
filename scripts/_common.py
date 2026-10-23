@@ -575,22 +575,38 @@ def taste_affinity(track_genres: list[str], genre_distribution: list[dict]) -> f
 PREFERRED_GENRE_BOOST = 0.1
 
 
-def user_filters(config: dict, recent_track_ids: set[str] | None = None, profile: dict | None = None) -> dict:
-    """The parts of config.json, recent playlist history and your ratings that every strategy honours."""
-    profile = profile or {}
-    signals = profile.get("rating_signals") or {}
-    play_weights = {a["name"].lower(): a.get("play_weight", 0) for a in profile.get("top_artists", []) if a.get("name")}
+def _rater(profile: dict, who: str) -> dict:
+    """One listener's ratings and play weights, as the filters use them."""
+    return {
+        "who": who,
+        "signals": profile.get("rating_signals") or {},
+        "play_weights": {a["name"].lower(): a.get("play_weight", 0) for a in profile.get("top_artists", [])
+                         if a.get("name")},
+    }
+
+
+def user_filters(config: dict, recent_track_ids: set[str] | None = None, profile: dict | None = None,
+                 profile_b: dict | None = None) -> dict:
+    """The parts of config.json, recent playlist history and ratings that every strategy honours.
+
+    `profile_b` is the second listener of a blend: both listeners' ratings count.
+    """
+    raters = [_rater(p, who) for p, who in ((profile, "you"), (profile_b, "they")) if p]
     excluded = {a.lower() for a in config.get("excluded_artists") or [] if isinstance(a, str)}
-    # Artists you've disliked enough are left out, like excluded_artists, unless you play them a lot
-    # (those are only scored down, in apply_user_filters)
-    excluded |= {key for key in rating_summary_keys(signals)["demoted"]
-                 if play_weights.get(key, 0) < FAVOURITE_PLAY_WEIGHT}
+    # An artist a listener disliked enough is left out, like excluded_artists, unless that
+    # listener plays them a lot or the other listener likes them (then they're only scored
+    # down, in apply_user_filters)
+    for rater in raters:
+        others = [r for r in raters if r is not rater]
+        for key in rating_summary_keys(rater["signals"])["demoted"]:
+            liked_elsewhere = any((r["signals"].get("artists") or {}).get(key, {}).get("likes") for r in others)
+            if rater["play_weights"].get(key, 0) < FAVOURITE_PLAY_WEIGHT and not liked_elsewhere:
+                excluded.add(key)
     return {
         "excluded_artists": excluded,
         "preferred_genres": [g for g in config.get("preferred_genres") or [] if isinstance(g, str)],
         "recent_track_ids": set(recent_track_ids or ()),
-        "rating_signals": signals,
-        "play_weights": play_weights,
+        "raters": raters,
     }
 
 
@@ -608,13 +624,12 @@ def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dic
 
     Candidates with a ``_score`` get ``PREFERRED_GENRE_BOOST`` scaled by how well they
     match a preferred genre (half for a family match), plus ``rating_adjustment`` for the
-    artist and genres you've rated, noted in the track's ``reason``.
+    artist and genres each listener has rated (summed), noted in the track's ``reason``.
     """
     if not filters:
         return candidates
     preferred = filters.get("preferred_genres") or []
-    signals = filters.get("rating_signals") or {}
-    play_weights = filters.get("play_weights") or {}
+    raters = filters.get("raters") or []
     kept = []
     for c in candidates:
         if not passes_user_filters(c, filters):
@@ -622,13 +637,15 @@ def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dic
         if "_score" in c:
             if preferred:
                 c["_score"] += PREFERRED_GENRE_BOOST * best_genre_match(c.get("genre", []), preferred)
-            if signals:
-                artist = c.get("artist", "")
-                adjustment, note = rating_adjustment(artist, c.get("genre", []), signals,
-                                                     play_weights.get(artist.lower(), 0))
+            artist = c.get("artist", "")
+            notes = []
+            for rater in raters:
+                adjustment, note = rating_adjustment(artist, c.get("genre", []), rater["signals"],
+                                                     rater["play_weights"].get(artist.lower(), 0), rater["who"])
                 c["_score"] += adjustment
-                if note:
-                    c["reason"] = f"{c.get('reason', '')} ({note})".strip()
+                notes += [note] if note else []
+            if notes:
+                c["reason"] = f"{c.get('reason', '')} ({'; '.join(notes)})".strip()
         kept.append(c)
     return kept
 
@@ -651,39 +668,52 @@ def _plural(n: int, word: str) -> str:
     return f"{n} {word}" + ("" if n == 1 else "s")
 
 
-def record_rating(signals: dict, song_attrs: dict, before: int, after: int) -> dict:
-    """Move one song from rating `before` to `after` (1 like, -1 dislike, 0 none) in the
-    artist and genre counts. Returns the same dict."""
-    if before == after:
-        return signals
-    artist = song_attrs.get("artistName") or ""
-    buckets = []
-    if artist:
-        buckets.append((signals.setdefault("artists", {}), artist.lower(), {"name": artist}))
-    for genre in filter_generic_genres(song_attrs.get("genreNames", [])):
-        buckets.append((signals.setdefault("genres", {}), genre, {}))
-    for table, key, extra in buckets:
-        entry = table.setdefault(key, {**extra, "likes": 0, "dislikes": 0})
-        for value, step in ((before, -1), (after, 1)):
-            field = {1: "likes", -1: "dislikes"}.get(value)
-            if field:
-                entry[field] = max(entry[field] + step, 0)
-        if not entry["likes"] and not entry["dislikes"]:
-            del table[key]
+def _recount(signals: dict) -> dict:
+    """Rebuild the artist and genre counts from the per-song ratings (returns the same dict)."""
+    artists: dict = {}
+    genres: dict = {}
+    for song in (signals.get("songs") or {}).values():
+        field = {1: "likes", -1: "dislikes"}.get(song.get("value"))
+        if not field:
+            continue
+        if song.get("artist"):
+            entry = artists.setdefault(song["artist"].lower(), {"name": song["artist"], "likes": 0, "dislikes": 0})
+            entry[field] += 1
+        for genre in song.get("genres", []):
+            genres.setdefault(genre, {"likes": 0, "dislikes": 0})[field] += 1
+    signals["artists"], signals["genres"] = artists, genres
     return signals
 
 
-def rating_signals_from(rated: list[tuple[int, dict]]) -> dict:
-    """Artist and genre like/dislike counts from (value, song attributes) pairs."""
-    signals: dict = {"artists": {}, "genres": {}}
-    for value, attrs in rated:
-        record_rating(signals, attrs, 0, value)
+def set_song_rating(signals: dict, song_id: str, value: int, attrs: dict | None = None) -> dict:
+    """Set one song's rating (1 like, -1 dislike, 0 cleared) and recount. Returns the same dict.
+
+    Each song keeps its own artist and genres under ``songs``, and the counts are always
+    rebuilt from those, so clearing a song removes exactly what it contributed. A song
+    whose details aren't known (`attrs` None and never seen) can't contribute and is skipped.
+    """
+    songs = signals.setdefault("songs", {})
+    if value == 0:
+        songs.pop(song_id, None)
+    elif attrs and attrs.get("artistName"):
+        songs[song_id] = {"value": value, "artist": attrs["artistName"],
+                          "genres": filter_generic_genres(attrs.get("genreNames", []))}
+    elif song_id in songs:
+        songs[song_id]["value"] = value
+    return _recount(signals)
+
+
+def rating_signals_from(rated: list[tuple[str, int, dict]]) -> dict:
+    """Ratings signals from (song ID, value, song attributes) triples."""
+    signals: dict = {"songs": {}, "artists": {}, "genres": {}}
+    for song_id, value, attrs in rated:
+        set_song_rating(signals, song_id, value, attrs)
     return signals
 
 
 def rating_adjustment(artist: str, genres: list[str], signals: dict,
-                      play_weight: float = 0.0) -> tuple[float, str | None]:
-    """Score change from your ratings, and a note for the track's reason (None if nothing applies)."""
+                      play_weight: float = 0.0, who: str = "you") -> tuple[float, str | None]:
+    """Score change from one listener's ratings, and a note for the track's reason (None if nothing applies)."""
     adjustment, note = 0.0, None
     entry = (signals.get("artists") or {}).get(artist.lower())
     if entry:
@@ -691,10 +721,10 @@ def rating_adjustment(artist: str, genres: list[str], signals: dict,
         if dislikes >= DISLIKES_TO_DEMOTE and not likes:
             factor = FAVOURITE_PENALTY_FACTOR if play_weight >= FAVOURITE_PLAY_WEIGHT else 1.0
             adjustment -= ARTIST_DISLIKE_PENALTY * factor
-            note = f"demoted: you disliked {_plural(dislikes, 'song')} by {entry.get('name', artist)}"
+            note = f"demoted: {who} disliked {_plural(dislikes, 'song')} by {entry.get('name', artist)}"
         elif likes > dislikes:
             adjustment += min(LIKE_BOOST_PER_SONG * (likes - dislikes), LIKE_BOOST_MAX)
-            note = f"boosted: you liked {_plural(likes, 'song')} by {entry.get('name', artist)}"
+            note = f"boosted: {who} liked {_plural(likes, 'song')} by {entry.get('name', artist)}"
     genre_table = signals.get("genres") or {}
     net = max((genre_table[g].get("likes", 0) - genre_table[g].get("dislikes", 0) for g in genres if g in genre_table),
               default=0)
@@ -715,11 +745,14 @@ def rating_summary_keys(signals: dict) -> dict[str, list[str]]:
     return {"boosted": boosted, "demoted": demoted}
 
 
-def rating_summary(signals: dict) -> dict:
-    """Artists your ratings currently boost or demote, for a playlist's summary."""
-    artists = signals.get("artists") or {}
-    keys = rating_summary_keys(signals)
-    return {f"{kind}_artists": sorted(artists[k].get("name", k) for k in keys[kind]) for kind in ("boosted", "demoted")}
+def rating_summary(*all_signals: dict) -> dict:
+    """Artists the ratings currently boost or demote (any listener's), for a playlist's summary."""
+    summary: dict[str, set[str]] = {"boosted_artists": set(), "demoted_artists": set()}
+    for signals in all_signals:
+        artists = signals.get("artists") or {}
+        for kind, keys in rating_summary_keys(signals).items():
+            summary[f"{kind}_artists"] |= {artists[k].get("name", k) for k in keys}
+    return {kind: sorted(names) for kind, names in summary.items()}
 
 
 # ── Taste snapshots (for drift tracking) ─────────────────────────

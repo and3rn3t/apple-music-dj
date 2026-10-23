@@ -128,13 +128,13 @@ Named "Constellation" because it maps outward from known stars to discover new o
    - 0.1 = different genre entirely (wildcard zone)
 6. Build playlist with intentional gradient:
 
-```
-Tracks 1–8:   FAMILIAR ZONE — Close to taste. Adjacent artists, same genres.
-               User thinks: "Oh I like this, this makes sense."
-Tracks 9–18:  EXPANSION ZONE — Same broad genre, less obvious artists.
-               User thinks: "I haven't heard this but it fits."
-Tracks 19–25: FRONTIER ZONE — Genre-adjacent, unexpected picks.
-               User thinks: "This is different but actually cool."
+```mermaid
+flowchart LR
+    known(("Top 5 artists"))
+    familiar["<b>Tracks 1–8: Familiar zone</b><br/>Adjacent artists, same genres<br/><i>“Oh I like this, this makes sense.”</i>"]
+    expansion["<b>Tracks 9–18: Expansion zone</b><br/>Same broad genre, less obvious artists<br/><i>“I haven't heard this but it fits.”</i>"]
+    frontier["<b>Tracks 19–25: Frontier zone</b><br/>Genre-adjacent, unexpected picks<br/><i>“This is different but actually cool.”</i>"]
+    known --> familiar --> expansion --> frontier
 ```
 
 1. The key insight: the familiar opening builds trust, so the user keeps listening
@@ -230,13 +230,15 @@ contributes only what plausibly fits the other's taste.
 
 ### The Arc
 
-```
-Tracks 1–3:   OPENER — Familiar or instantly engaging. Sets tone.
-Tracks 4–8:   BUILD — Energy rises, variety expands. Best discovery at 5–7.
-Tracks 9–15:  PEAK — Heart of playlist. Most exciting finds.
-Tracks 16–22: SUSTAIN — Maintain interest, introduce textures.
-Tracks 23–28: WIND DOWN — Energy gradually decreases.
-Tracks 29–30: CLOSER — Memorable, leaves listener satisfied.
+```mermaid
+flowchart LR
+    opener["<b>1–3 Opener</b><br/>Familiar or instantly<br/>engaging; sets tone"]
+    build["<b>4–8 Build</b><br/>Energy rises, variety expands;<br/>best discovery at 5–7"]
+    peak["<b>9–15 Peak</b><br/>Heart of the playlist;<br/>most exciting finds"]
+    sustain["<b>16–22 Sustain</b><br/>Maintain interest,<br/>introduce textures"]
+    wind["<b>23–28 Wind down</b><br/>Energy gradually<br/>decreases"]
+    closer["<b>29–30 Closer</b><br/>Memorable; leaves the<br/>listener satisfied"]
+    opener --> build --> peak --> sustain --> wind --> closer
 ```
 
 ### Energy arcs in code
@@ -248,6 +250,26 @@ Each track's `energy` (0–1) is the mean of its genres' values in `GENRE_ENERGY
 - `ascending` — workout, anger moods
 - `descending` — sleep, focus, sad moods
 - `none` — keep the incoming order
+
+The shape each arc gives a 30-track playlist. `wave` plots the slot targets `_arc_order` assigns
+(opener 0.55, peak 1.0 mid-playlist, closer 0.2; the lowest-energy tracks fill the lowest-target
+slots). `ascending` and `descending` simply sort by energy, shown as a straight ramp.
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#7c3aed, #0284c7, #ea580c"
+---
+xychart-beta
+    title "Energy arcs, 30 tracks"
+    x-axis "Track position" [1, 5, 10, 15, 20, 25, 30]
+    y-axis "Relative energy" 0 --> 1
+    line "wave" [0.55, 0.67, 0.83, 0.98, 0.75, 0.48, 0.2]
+    line "ascending" [0, 0.14, 0.31, 0.48, 0.66, 0.83, 1]
+    line "descending" [1, 0.86, 0.69, 0.52, 0.34, 0.17, 0]
+```
 
 ### Hard Rules
 

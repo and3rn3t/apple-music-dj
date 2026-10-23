@@ -5,6 +5,15 @@ the user the exact lines and digest, install only with `--confirm <digest>` afte
 `SKILL.md` (Cron / Automated Playlists) and always apply. A scheduled job runs unattended, so the
 one job that writes (weekly mix) is opt-in.
 
+```mermaid
+flowchart LR
+    dry["setup_cron.py install --dry-run<br/>(optionally --jobs …)"] --> show["Show the user the exact<br/>crontab lines and digest"]
+    show --> ask{User says yes?}
+    ask -->|yes| install["setup_cron.py install --confirm DIGEST<br/>(same --jobs)"]
+    ask -->|no| stop([Nothing installed])
+    install --> check["setup_cron.py status"]
+```
+
 Times are the machine's local time (standard crontab). Each job appends its output to
 `~/.apple-music-dj/logs/<job>.log` (owner-only). `python3 {baseDir}/scripts/setup_cron.py list` shows the
 same table; `status` shows what is installed; `remove [--jobs …]` undoes it.

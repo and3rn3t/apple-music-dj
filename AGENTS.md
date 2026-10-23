@@ -96,6 +96,9 @@ Env vars (see `.env.example`): `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN`
   SKILL.md and README's tree, no broken links or paths, every documented `--flag` real, every
   `apple_music_api.sh` command in `references/api-reference.md`, the Python badge matching CI, and
   `references/automation.md` matching `setup_cron.py`'s schedules.
+- **Diagrams are Mermaid** (` ```mermaid ` fences, which GitHub renders), not ASCII art. Keep them out
+  of SKILL.md, which the agent reads as plain text and must stay under 500 lines; put them in
+  `references/`, README or CONTRIBUTING, next to the prose they illustrate.
 - Conventional commits; branches `type/short-description`. License is MIT-0.
 
 ## Releasing

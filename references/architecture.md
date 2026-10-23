@@ -2,30 +2,28 @@
 
 How a request flows through the skill's scripts and the Apple Music API.
 
-```
-User Request
-     │
-     ▼
-┌─────────────┐    ┌──────────────────────────────────────────────┐
-│  Taste       │◄──│  Apple Music API (read)                      │
-│  Profiler    │    │  · recently played    · library songs/artists│
-│  (cached)    │    │  · heavy rotation     · ratings (loved/hated)│
-│              │    │  · recommendations    · Replay summaries     │
-└──────┬───────┘    └──────────────────────────────────────────────┘
-       │
-       ▼
-┌─────────────┐    ┌──────────────────────────────────────────────┐
-│  Strategy    │───▶│  Apple Music API (catalog)                   │
-│  Engine      │    │  · search · charts · artist albums/top songs │
-│              │    │  · genres · new releases                     │
-└──────┬───────┘    └──────────────────────────────────────────────┘
-       │
-       ▼
-┌─────────────┐    ┌──────────────────────────────────────────────┐
-│  Playlist    │───▶│  Apple Music API (write)                     │
-│  Builder     │    │  · POST /me/library/playlists                │
-│              │    │  · POST /me/library/playlists/{id}/tracks     │
-└─────────────┘    └──────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    req([User request]) --> profiler
+
+    subgraph skill [Skill scripts]
+        profiler["Taste profiler<br/>taste_profiler.py<br/>(cached profile)"]
+        engine["Strategy engine<br/>strategy_engine.py<br/>(scoring, energy-arc sequencing)"]
+        builder["Playlist builder<br/>build_playlist.sh"]
+        profiler --> engine
+        engine -->|"--create or --yes, after the user confirms"| builder
+        engine -->|no write flag| preview([JSON preview only])
+    end
+
+    subgraph api ["Apple Music API, every call via apple_music_api.sh"]
+        read["Read: recently played, heavy rotation,<br/>recommendations, library songs/artists,<br/>ratings, Replay summaries"]
+        catalog["Catalog: search, charts, artist albums/top songs,<br/>genres, new releases"]
+        write["Write: POST /me/library/playlists<br/>POST /me/library/playlists/{id}/tracks"]
+    end
+
+    read --> profiler
+    engine <--> catalog
+    builder --> write
 ```
 
 - **Taste profiler** (`scripts/taste_profiler.py`) reads the user's listening and caches a profile.

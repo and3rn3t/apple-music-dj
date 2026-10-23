@@ -32,7 +32,12 @@ Changelog = "https://github.com/and3rn3t/apple-music-dj/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 token = ["PyJWT>=2.8.0,<3.0", "cryptography>=50,<51"]
-dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.8", "pyyaml>=6.0"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "pytest-xdist>=3.6", "ruff>=0.8", "pyyaml>=6.0"]
+
+# The scripts run in place and aren't installed as a package; without this, setuptools' automatic
+# discovery finds scripts/, tests/, assets/ … and refuses `pip install -e ".[dev]"`.
+[tool.setuptools]
+packages = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

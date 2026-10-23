@@ -40,6 +40,22 @@
   color: "0366d6"
   description: Dependency updates
 
+- name: chore
+  color: "fef2c0"
+  description: Maintenance with no user-facing change (release drafter's Maintenance section)
+
+- name: ci
+  color: "ededed"
+  description: GitHub Actions workflows and repo automation
+
+- name: tests
+  color: "c2e0c6"
+  description: Test suite only
+
+- name: breaking
+  color: "b60205"
+  description: Breaking change; the release drafter makes the next version a major one
+
 # ---- Status ----
 
 - name: needs-triage
@@ -61,6 +77,18 @@
 - name: duplicate
   color: "cfd3d7"
   description: This issue or PR already exists
+
+- name: good first issue
+  color: "7057ff"
+  description: Good for newcomers
+
+- name: help wanted
+  color: "008672"
+  description: Extra attention is needed
+
+- name: needs-account
+  color: "e99695"
+  description: Needs a real Apple Music account (and tokens) to do or verify
 
 # ---- Priority ----
 
@@ -101,3 +129,43 @@
 - name: "size: xl"
   color: "f9d0c4"
   description: "Very large change (a week+)"
+
+# ---- Risk (applied by hand) ----
+
+- name: account-writes
+  color: "b60205"
+  description: Touches code that writes to a user's Apple Music account; every write must stay confirmed (--yes)
+
+- name: clawhub
+  color: "5319e7"
+  description: Changes what ClawHub's reviewer sees (SKILL.md, clawhub.json, shipped files, trust claims)
+
+# ---- Area (applied to PRs by .github/labeler.yml) ----
+
+- name: "area: api"
+  color: "bfdadc"
+  description: apple_music_api.sh and the call_api layer
+
+- name: "area: strategies"
+  color: "bfdadc"
+  description: Playlist strategies, building, health, history and feedback
+
+- name: "area: insights"
+  color: "bfdadc"
+  description: Taste profile, cards, drift, compatibility, share codes, insights, catalog gaps
+
+- name: "area: auth"
+  color: "bfdadc"
+  description: Token setup, signing and verification
+
+- name: "area: demo"
+  color: "bfdadc"
+  description: Demo mode and the mock Apple Music API
+
+- name: "area: automation"
+  color: "bfdadc"
+  description: Cron jobs, daily pick, new releases, concert prep
+
+- name: "area: import"
+  color: "bfdadc"
+  description: Spotify and playlist import

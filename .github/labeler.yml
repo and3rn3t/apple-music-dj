@@ -1,26 +1,57 @@
-# Applied by .github/workflows/labeler.yml on every PR.
-# TODO: adjust globs to your project layout.
+# Applied by .github/workflows/labeler.yml on every PR (labels are defined in labels.yml).
+# `account-writes` is applied by hand: a path can't tell whether a change touches a write.
 
 documentation:
   - changed-files:
-    - any-glob-to-any-file: ['**/*.md', 'docs/**']
+    - any-glob-to-any-file: ['**/*.md', 'references/**']
 
 ci:
   - changed-files:
-    - any-glob-to-any-file: ['.github/**']
+    - any-glob-to-any-file: ['.github/**', 'Makefile', '.pre-commit-config.yaml']
 
 dependencies:
   - changed-files:
-    - any-glob-to-any-file: ['package.json', 'pnpm-lock.yaml', 'package-lock.json', 'pyproject.toml', 'renovate.json']
-
-frontend:
-  - changed-files:
-    - any-glob-to-any-file: ['src/components/**', 'src/hooks/**', '*.css']
-
-backend:
-  - changed-files:
-    - any-glob-to-any-file: ['worker/**', 'workers/**', 'functions/**', 'src/api/**']
+    - any-glob-to-any-file: ['pyproject.toml', 'requirements.txt', 'renovate.json']
 
 tests:
   - changed-files:
-    - any-glob-to-any-file: ['tests/**', 'src/test/**', '**/*.test.*', '**/*.spec.*', 'e2e/**']
+    - any-glob-to-any-file: ['tests/**']
+
+clawhub:
+  - changed-files:
+    - any-glob-to-any-file: ['SKILL.md', 'clawhub.json', '.clawhubignore', '.clawignore',
+                             'tests/test_trust_claims.py', 'tests/test_packaging.py',
+                             'tests/test_listing.py', 'tests/test_openclaw_metadata.py']
+
+'area: api':
+  - changed-files:
+    - any-glob-to-any-file: ['scripts/apple_music_api.sh', 'scripts/_common.py', 'references/api-reference.md']
+
+'area: strategies':
+  - changed-files:
+    - any-glob-to-any-file: ['scripts/strategy_engine.py', 'scripts/build_playlist.sh', 'scripts/playlist_health.py',
+                             'scripts/playlist_history.py', 'scripts/feedback.py', 'references/playlist-strategies.md']
+
+'area: insights':
+  - changed-files:
+    - any-glob-to-any-file: ['scripts/taste_profiler.py', 'scripts/taste_card.py', 'scripts/taste_drift.py',
+                             'scripts/compatibility.py', 'scripts/share_code.py', 'scripts/listening_insights.py',
+                             'scripts/catalog_explorer.py']
+
+'area: auth':
+  - changed-files:
+    - any-glob-to-any-file: ['scripts/setup_auth.py', 'scripts/generate_dev_token.py', 'scripts/verify_setup.sh',
+                             'references/auth-setup.md']
+
+'area: demo':
+  - changed-files:
+    - any-glob-to-any-file: ['scripts/demo.py', 'tests/mock_api.py', 'assets/demo-tour.svg', '.github/scripts/make_demo_svg.py']
+
+'area: automation':
+  - changed-files:
+    - any-glob-to-any-file: ['scripts/setup_cron.py', 'scripts/daily_pick.py', 'scripts/new_releases.sh',
+                             'scripts/concert_prep.sh']
+
+'area: import':
+  - changed-files:
+    - any-glob-to-any-file: ['scripts/import_playlist.py', 'references/spotify-import.md', 'assets/sample-spotify-export.csv']

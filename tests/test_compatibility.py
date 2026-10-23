@@ -1,12 +1,18 @@
 """Tests for compatibility.py — genre similarity and profile comparison."""
 
+import json
+import sys
+
+import pytest
 
 from compatibility import (
     artist_compatibility,
     genre_overlap_score,
     genre_similarity,
     get_artist_genre_profile,
+    main,
     profile_compatibility,
+    resolve_artist,
 )
 
 
@@ -208,3 +214,97 @@ class TestArtistCompatibility:
         monkeypatch.setattr("compatibility.resolve_artist", lambda sf, q: mock_artist)
         result = artist_compatibility(sample_profile, "us", "Polka King")
         assert result["compatibility_pct"] < 50
+
+
+# ── resolve_artist ───────────────────────────────────────────────
+
+class TestResolveArtist:
+    def test_not_found(self, monkeypatch):
+        monkeypatch.setattr("_common.search_artist", lambda sf, q: None)
+        assert resolve_artist("us", "Nobody") is None
+
+    def test_prefers_full_detail(self, monkeypatch):
+        monkeypatch.setattr("_common.search_artist", lambda sf, q: {"id": "a1", "attributes": {"name": "Radiohead"}})
+        detail = {"id": "a1", "attributes": {"name": "Radiohead", "genreNames": ["Alternative"]}}
+        calls = []
+
+        def fake_api(cmd, *args):
+            calls.append((cmd, *args))
+            return {"data": [detail]}
+
+        monkeypatch.setattr("compatibility.call_api", fake_api)
+        assert resolve_artist("us", "Radiohead") == detail
+        assert calls == [("artist-detail", "us", "a1")]
+
+    def test_falls_back_to_search_hit_without_detail(self, monkeypatch):
+        hit = {"id": "a1", "attributes": {"name": "Radiohead"}}
+        monkeypatch.setattr("_common.search_artist", lambda sf, q: hit)
+        monkeypatch.setattr("compatibility.call_api", lambda *a: None)
+        assert resolve_artist("us", "Radiohead") == hit
+
+
+# ── verdict bands ────────────────────────────────────────────────
+
+NEW_ARTIST = {"id": "x1", "attributes": {"name": "Someone New", "genreNames": ["Alternative"]}}
+
+
+@pytest.mark.parametrize("g_score, verdict_start", [
+    (1.0, "Deeply compatible"),   # 0.8 * 1.0 + 0.1 = 90%
+    (0.8, "Strong overlap"),      # 74%
+    (0.5, "Moderate match"),      # 50%
+    (0.3, "Stretch pick"),        # 34%
+    (0.0, "Wild card"),           # 10%
+])
+def test_artist_verdict_bands(monkeypatch, sample_profile, g_score, verdict_start):
+    monkeypatch.setattr("compatibility.resolve_artist", lambda sf, q: NEW_ARTIST)
+    monkeypatch.setattr("compatibility.genre_overlap_score", lambda a, b: g_score)
+    result = artist_compatibility(sample_profile, "us", "Someone New")
+    assert result["verdict"].startswith(verdict_start)
+
+
+@pytest.mark.parametrize("g_score, verdict_start", [
+    # No shared artists or eras; energy matches (both unset), so the score is 0.4 * g + 0.15.
+    (1.0, "Some common ground"),  # 55%
+    (0.5, "Different worlds"),    # 35%
+    (0.0, "Opposites"),           # 15%
+])
+def test_profile_verdict_bands(monkeypatch, g_score, verdict_start):
+    monkeypatch.setattr("compatibility.genre_overlap_score", lambda a, b: g_score)
+    result = profile_compatibility({}, {})
+    assert result["verdict"].startswith(verdict_start)
+
+
+# ── CLI ──────────────────────────────────────────────────────────
+
+class TestMain:
+    def _run(self, monkeypatch, capsys, *argv):
+        monkeypatch.setattr(sys, "argv", ["compatibility.py", *argv])
+        main()
+        return json.loads(capsys.readouterr().out)
+
+    def test_profile_mode(self, monkeypatch, capsys, tmp_path, sample_profile):
+        a = tmp_path / "a.json"
+        a.write_text(json.dumps(sample_profile))
+        out = self._run(monkeypatch, capsys, "profile", str(a), str(a))
+        assert out == profile_compatibility(sample_profile, sample_profile)
+        assert "radiohead" in out["shared_artists"]
+
+    def test_artist_mode_joins_multiword_names(self, monkeypatch, capsys, tmp_path, sample_profile):
+        p = tmp_path / "p.json"
+        p.write_text(json.dumps(sample_profile))
+        seen = []
+
+        def fake_resolve(sf, query):
+            seen.append((sf, query))
+            return NEW_ARTIST
+
+        monkeypatch.setattr("compatibility.resolve_artist", fake_resolve)
+        out = self._run(monkeypatch, capsys, "artist", str(p), "us", "Someone", "New")
+        assert seen == [("us", "Someone New")]
+        assert out["artist"] == "Someone New"
+
+    def test_mode_is_required(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["compatibility.py"])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2

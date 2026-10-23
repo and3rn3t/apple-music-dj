@@ -14,6 +14,7 @@ from taste_card import (
     generate_text,
     generate_year_review_svg,
     generate_year_review_text,
+    main,
 )
 
 
@@ -567,7 +568,6 @@ class TestDriftCard:
 class TestDataFileErrors:
     def _run(self, tmp_path, monkeypatch, capsys, data_path, mode="compatibility"):
         import sys
-        import taste_card
 
         profile = tmp_path / "profile.json"
         profile.write_text("{}", encoding="utf-8")
@@ -577,7 +577,7 @@ class TestDataFileErrors:
             ["taste_card.py", str(profile), "--mode", mode, "--data", str(data_path)],
         )
         with pytest.raises(SystemExit) as excinfo:
-            taste_card.main()
+            main()
         assert excinfo.value.code == 1
         return capsys.readouterr().err
 
@@ -594,3 +594,10 @@ class TestDataFileErrors:
         assert "Invalid JSON" in err
         assert "line 1" in err
         assert str(bad) in err
+
+    def test_unreadable_data_path_is_reported(self, tmp_path, monkeypatch, capsys):
+        directory = tmp_path / "data-dir"
+        directory.mkdir()
+        err = self._run(tmp_path, monkeypatch, capsys, directory)
+        assert "Cannot read" in err
+        assert str(directory) in err

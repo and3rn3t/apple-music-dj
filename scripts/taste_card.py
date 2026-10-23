@@ -663,6 +663,9 @@ def load_data_file(path: str) -> dict:
         print(f"ERROR: Invalid JSON in --data file: {path}", file=sys.stderr)
         print(f"  Parse error at line {e.lineno}, column {e.colno}", file=sys.stderr)
         sys.exit(1)
+    except OSError as e:
+        print(f"ERROR: Cannot read --data file: {path} ({e.strerror})", file=sys.stderr)
+        sys.exit(1)
 
 
 # ── Main ─────────────────────────────────────────────────────────

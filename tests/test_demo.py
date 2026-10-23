@@ -129,6 +129,14 @@ def run_demo(home, *args, env_extra=None):
     return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, env=env, timeout=120)
 
 
+def test_mock_server_skips_the_reverse_dns_lookup(monkeypatch):
+    """HTTPServer.server_bind calls socket.getfqdn(), which hangs ~35 s on some macOS setups."""
+    def no_lookup(*_args):
+        raise AssertionError("socket.getfqdn() called")
+    monkeypatch.setattr(demo.socketserver.socket, "getfqdn", no_lookup)
+    demo.MockAppleMusic().start().stop()
+
+
 class TestSandbox:
     def test_env_drops_real_apple_credentials(self, monkeypatch):
         monkeypatch.setenv("APPLE_MUSIC_USER_TOKEN", "REAL")

@@ -97,6 +97,10 @@ Env vars (see `.env.example`): `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN`
   SKILL.md and README's tree, no broken links or paths, every documented `--flag` real, every
   `apple_music_api.sh` command in `references/api-reference.md`, the Python badge matching CI, and
   `references/automation.md` matching `setup_cron.py`'s schedules.
+- **CI runs less for docs-only PRs.** A PR that only touches `*.md`, `assets/`, `LICENSE` or issue
+  templates skips lint and the matrix and runs just the tests that read docs and assets (the `docs`
+  job in `test.yml`). A new test that reads a doc or asset must be added to that job's list;
+  `tests/test_ci_workflow.py` fails until it is. Branch protection should require **CI result**.
 - **Diagrams are Mermaid** (` ```mermaid ` fences, which GitHub renders), not ASCII art. Keep them out
   of SKILL.md, which the agent reads as plain text and must stay under 500 lines; put them in
   `references/`, README or CONTRIBUTING, next to the prose they illustrate.

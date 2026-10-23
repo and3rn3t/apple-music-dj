@@ -69,6 +69,11 @@ scripts/apple_music_api.sh verify                                  # API connect
 python3 scripts/taste_profiler.py --cache /tmp/test_profile.json  # a real taste profile
 ```
 
+CI picks what to run from the files a PR changes. A PR that only touches docs (`*.md`, `assets/`,
+`LICENSE`, issue templates) runs just the tests that read docs and assets, on one Python version.
+Anything else runs lint and the full matrix. The **CI result** check sums it up either way, and it's
+the one to require in branch protection.
+
 ### Testing without an Apple Developer account
 
 `scripts/demo.py` is a local stand-in for the Apple Music API (it also powers the user-facing demo

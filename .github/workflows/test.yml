@@ -16,7 +16,81 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Decides how much to run. A PR that only touches docs (any *.md, assets/, LICENSE, issue templates)
+  # runs the `docs` job; anything else, and every push to main, runs lint and the full matrix.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2  # a PR checks out its merge commit; parent 1 is the base branch
+
+      - name: Classify the changed files
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          code=true
+          if [ "$EVENT" = "pull_request" ]; then
+            changed=$(git diff --name-only HEAD^1 HEAD)
+            if [ -n "$changed" ]; then
+              code=false
+              while IFS= read -r f; do
+                case "$f" in
+                  *.md|assets/*|LICENSE|.github/ISSUE_TEMPLATE/*) ;;
+                  *) code=true; break ;;
+                esac
+              done <<< "$changed"
+            fi
+            {
+              echo "### Changed files"
+              echo '```'
+              echo "$changed"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Run the full suite: $code" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Docs-only PRs: the tests that read the docs and assets (links, documented flags, SKILL.md trust
+  # claims, listing, packaging). tests/test_ci_workflow.py keeps this list in step with tests/.
+  docs:
+    needs: changes
+    if: needs.changes.outputs.code == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -e ".[dev]"
+
+      - name: Run the docs tests
+        run: |
+          python -m pytest \
+            tests/test_demo_assets.py \
+            tests/test_docs.py \
+            tests/test_listing.py \
+            tests/test_openclaw_metadata.py \
+            tests/test_packaging.py \
+            tests/test_release_checks.py \
+            tests/test_self_audit.py \
+            tests/test_trust_claims.py
+
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -39,6 +113,8 @@ jobs:
         run: shellcheck scripts/*.sh
 
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -93,3 +169,24 @@ jobs:
       - name: Check README coverage badge
         if: matrix.python-version == '3.14' && runner.os == 'Linux'
         run: python .github/scripts/release_checks.py check-coverage-badge coverage.json
+
+  # One stable check for branch protection: it passes when everything that ran passed (skipped jobs
+  # are fine), so require "CI result" rather than the individual jobs, which are skipped on docs PRs.
+  result:
+    name: CI result
+    if: always()
+    needs: [changes, docs, lint, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::A required job ended with: $r"; exit 1 ;;
+            esac
+          done

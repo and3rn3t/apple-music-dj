@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Docs-only PRs get a quick CI run:** a PR that only touches `*.md`, `assets/`, `LICENSE` or issue templates runs just the tests that read docs and assets, on one Python version, instead of lint and the five-job matrix. A **CI result** check sums up every run and is the one to require in branch protection. `tests/test_ci_workflow.py` checks which PRs take the short path and that the docs job lists every test that reads docs.
 - **CI:** a new push to a PR cancels that PR's previous test run; lint and test jobs have timeouts; the macOS job (the slowest by ~4×) runs the tests in parallel with `pytest-xdist`; every job prints its 15 slowest tests; ruff is pinned to the pre-commit version; dev dependencies come from `pyproject.toml`'s `[dev]` extra instead of a separate list. `make test-fast` runs the suite in parallel locally.
 
 - **Spotify import in the ClawHub listing:** surface the import workflow in the opening skill and package descriptions.

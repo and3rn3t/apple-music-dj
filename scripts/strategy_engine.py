@@ -151,8 +151,7 @@ DEEP_CUT_BASE = 0.5
 DEEP_CUT_POSITION_BONUS = 0.15  # the last track of an album gets this much over the first
 
 MOOD_GENRE_WEIGHT, MOOD_ENERGY_WEIGHT, MOOD_TASTE_WEIGHT = 0.5, 0.35, 0.15
-MIN_ENERGY_FIT = 0.5  # mood candidates below this fit only fill the list when nothing closer is left
-OFF_ENERGY_PENALTY = 1.0  # larger than any fitting score, so off-energy tracks always rank last
+MIN_ENERGY_FIT = 0.5  # mood candidates further than this from the target energy are dropped
 
 TREND_KNOWN_ARTIST_MATCH = 0.8  # floor on taste match for an artist already in your top list
 TREND_RANK_SPREAD = 0.3         # chart #1 scores x1.0, the last chart entry x(1 - this)
@@ -382,8 +381,9 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30,
 
     Score = 0.5 x mood-genre match + 0.35 x energy fit + 0.15 x taste match (+0.1 for your
     own artists). Energy fit is 1 - |track energy - the mood's target|; tracks below
-    MIN_ENERGY_FIT rank behind every track that fits, so a "sleep" mix only reaches for a
-    loud track when the catalog has nothing quieter.
+    MIN_ENERGY_FIT are dropped: a short sleep mix beats one padded with loud tracks.
+    A track qualifies through a mood genre *or* one of your own genres, so a jazz fan's
+    sleep mix can be quiet jazz and a rock fan's workout loud rock.
     """
     mood_config = MOOD_MAP.get(mood)
     if not mood_config:
@@ -396,11 +396,15 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30,
     library_ids = set(profile.get("library_song_ids", []))
     disliked = set(profile.get("disliked_song_ids", []))
 
-    def score(genres: list[str]) -> float:
+    def score(genres: list[str]) -> float | None:
+        """None when the track's energy is too far from the mood's, or it fits neither the
+        mood's genres nor yours."""
         energy_fit = 1 - abs(track_energy(genres) - target_energy)
-        total = (MOOD_GENRE_WEIGHT * best_genre_match(genres, target_genres) + MOOD_ENERGY_WEIGHT * energy_fit
-                 + MOOD_TASTE_WEIGHT * taste_affinity(genres, user_genres))
-        return total - OFF_ENERGY_PENALTY if energy_fit < MIN_ENERGY_FIT else total
+        genre_match = best_genre_match(genres, target_genres)
+        taste = taste_affinity(genres, user_genres)
+        if energy_fit < MIN_ENERGY_FIT or (genre_match == 0 and taste == 0):
+            return None
+        return MOOD_GENRE_WEIGHT * genre_match + MOOD_ENERGY_WEIGHT * energy_fit + MOOD_TASTE_WEIGHT * taste
 
     candidates = []
 
@@ -417,7 +421,8 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30,
                         tid = item.get("id", "")
                         if tid in library_ids or tid in disliked:
                             continue
-                        if best_genre_match(item_genres, target_genres) > 0:
+                        item_score = score(item_genres)
+                        if item_score is not None:
                             candidates.append({
                                 "id": tid,
                                 "name": attrs.get("name", ""),
@@ -426,7 +431,7 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30,
                                 "genre": item_genres,
                                 "source": "trending",
                                 "reason": f"Matches your {mood} vibe.",
-                                "_score": score(item_genres),
+                                "_score": item_score,
                             })
 
     # Source 2: Deep cuts from user's artists in mood-relevant genres
@@ -447,7 +452,8 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30,
                 if tid in library_ids or tid in disliked:
                     continue
                 item_genres = filter_generic_genres(attrs.get("genreNames", []))
-                if best_genre_match(item_genres, target_genres) > 0:
+                item_score = score(item_genres)
+                if item_score is not None:
                     candidates.append({
                         "id": tid,
                         "name": attrs.get("name", ""),
@@ -456,7 +462,7 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30,
                         "genre": item_genres,
                         "source": "deep_cut",
                         "reason": f"From {artist['name']} — fits your {mood} mood.",
-                        "_score": score(item_genres) + OWN_ARTIST_BOOST,
+                        "_score": item_score + OWN_ARTIST_BOOST,
                     })
 
     return _finish(candidates, target_size, arc=mood_config.get("arc", "wave"), rng=rng)

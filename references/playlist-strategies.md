@@ -62,13 +62,14 @@ taste so it doesn't feel like a generic Spotify editorial playlist.
 
 Each mood's energy label maps to a target on `GENRE_ENERGY`'s 0–1 scale (`MOOD_ENERGY`:
 very-low 0.1, low 0.25, low-med 0.35, medium 0.5, med-high 0.65, high 0.8, very-high 0.95).
-A candidate must share or neighbour a mood genre, then scores
+A candidate needs an energy fit of at least 0.5 (energy fit = 1 − |track energy − target|) and
+must share or neighbour either a mood genre or one of your own genres. That's the
+personalization key below: a jazz fan's sleep mix can be quiet jazz. Then it scores
 
-`0.5 × mood-genre match + 0.35 × energy fit + 0.15 × taste match` (+0.1 for your own artists)
+`0.5 × mood-genre match + 0.35 × energy fit + 0.15 × taste affinity` (+0.1 for your own artists)
 
-where energy fit = 1 − |track energy − target|. A track with energy fit under 0.5 ranks behind
-every track that fits, so a sleep mix only reaches for a loud track when nothing quieter is
-left. Max 3 tracks per artist.
+Tracks outside the energy range are dropped, not used as filler: a short sleep mix beats one
+padded with loud tracks. Max 3 tracks per artist.
 
 ### Personalization Key
 

@@ -1205,10 +1205,11 @@ class TestMoodEnergy:
                                   "us", "sleep", target_size=1)
         assert [t["id"] for t in result] == ["quiet"]
 
-    def test_off_energy_tracks_still_fill_when_nothing_fits(self, monkeypatch):
-        charts = self._charts(("loud", ["Electronic"]))
+    def test_off_energy_tracks_are_dropped_not_used_as_filler(self, monkeypatch):
+        """A short sleep mix beats one padded with loud tracks (the curation-quality test caught this)."""
+        charts = self._charts(("loud", ["Electronic"]), ("quiet", ["Ambient"]))
         monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
-        assert [t["id"] for t in se.strategy_mood({}, "us", "sleep", target_size=3)] == ["loud"]
+        assert [t["id"] for t in se.strategy_mood({}, "us", "sleep", target_size=3)] == ["quiet"]
 
     def test_every_mood_energy_has_a_target(self):
         assert {m["energy"] for m in se.MOOD_MAP.values()} <= set(se.MOOD_ENERGY)

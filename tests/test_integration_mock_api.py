@@ -471,6 +471,7 @@ class TestOtherScripts:
         api("feedback.py", "dislike", "--playlist-name", "Pos Test", "--position", "1", "--yes")
         assert next(r for r in api.mock.writes() if r["method"] == "PUT")["path"].endswith(first_id)
 
+    @pytest.mark.skipif(not shutil.which("crontab"), reason="needs crontab")
     def test_setup_cron_lists_opt_in_job(self, api):
         out = api("setup_cron.py", "list", "--python", sys.executable).stdout
         assert "monthly-drift" in out and "opt-in" in out

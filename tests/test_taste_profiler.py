@@ -376,12 +376,10 @@ class TestLoadCache:
         assert load_cache(str(f), 168) is None
 
     def test_returns_none_on_os_error(self, tmp_path):
+        # A directory in place of the file fails to open for every user, root included.
         f = tmp_path / "cache.json"
-        f.write_text("{}")
-        f.chmod(0o000)
-        result = load_cache(str(f), 168)
-        f.chmod(0o644)
-        assert result is None
+        f.mkdir()
+        assert load_cache(str(f), 168) is None
 
 
 # ── save_cache ───────────────────────────────────────────────────
@@ -397,9 +395,12 @@ class TestSaveCache:
         save_cache({}, str(f))
         assert f.exists()
 
-    def test_handles_os_error(self, capsys):
+    def test_handles_os_error(self, tmp_path, capsys):
         """Should warn on error, not crash."""
-        save_cache({}, "/nonexistent/readonly/cache.json")
+        # A regular file as the parent dir fails for every user, and never writes outside tmp_path.
+        blocker = tmp_path / "not_a_dir"
+        blocker.write_text("")
+        save_cache({}, str(blocker / "cache.json"))
         captured = capsys.readouterr()
         assert "WARN" in captured.err
 

@@ -47,7 +47,7 @@ broader listing tags.
       barrier. A hosted page that issues user tokens under a shared developer key would remove it,
       but means running a service, holding a signing key and checking Apple's MusicKit terms.
       Write an ADR before building anything.
-- [ ] **Renewal nudge in scheduled jobs** ([#47](https://github.com/and3rn3t/apple-music-dj/issues/47)). Cron output only goes to a log; when a token is within
+- [x] **Renewal nudge in scheduled jobs** ([#47](https://github.com/and3rn3t/apple-music-dj/issues/47)). Cron output only goes to a log; when a token is within
       14 days of expiry, have the daily-drop job surface the warning where the user will see it
       (e.g. in the day's pick message).
 - [ ] **Verify response shapes against the live API** and record any differences in the mock, so

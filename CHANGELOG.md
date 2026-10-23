@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Token-renewal reminder in the daily drop:** when the developer token is close to expiry or the user token is getting old, `daily_pick.py daily` adds the warning to the day's pick message, so a scheduled job surfaces it where you'll see it instead of only in its log.
+
 ### Changed
 
 - **Spotify import in the ClawHub listing:** surface the import workflow in the opening skill and package descriptions.

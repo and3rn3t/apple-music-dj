@@ -526,6 +526,8 @@ class TestGenreFallback:
     @pytest.mark.parametrize("genre,root", [
         ("Hard Rock", "Rock"), ("Rock", "Rock"), ("Neo-Soul", "Soul"), ("Indie Pop", "Pop"),
         ("K-Pop", "K-Pop"), ("J-Pop", "J-Pop"), ("Alternative Rap", "Hip-Hop/Rap"),
+        ("Modern Hard Rock", "Rock"), ("Contemporary R&B", "Soul"), ("R&B/Soul", "Soul"),
+        ("Hip-Hop/Rap", "Hip-Hop/Rap"),
     ])
     def test_root_genre(self, genre, root):
         from _common import root_genre
@@ -548,6 +550,7 @@ class TestGenreFallback:
         ("Rock", "Hard Rock", 0.75), ("Hard Rock", "Garage Rock", 0.75), ("Rock", "Alternative", 0.5),
         ("Garage Rock", "Grunge", 0.5), ("Pop", "K-Pop", 0.5), ("Reggaeton", "Latin", 0.5),
         ("Indie Rock", "Indie Pop", 0.0), ("Polka", "Rock", 0.0), ("Polka", "polka", 1.0),
+        ("Modern Hard Rock", "Rock", 0.75), ("Contemporary R&B", "R&B/Soul", 0.75),
     ])
     def test_proximity_tiers(self, a, b, expected):
         from _common import genre_proximity

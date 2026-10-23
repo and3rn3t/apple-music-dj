@@ -498,12 +498,18 @@ def base_genre(genre: str) -> str | None:
 
 
 def root_genre(genre: str) -> str | None:
-    """Like base_genre, but a listed compound reduces to the genre it ends with:
-    "Hard Rock" → Rock, "Neo-Soul" → Soul. A plain listed genre is its own root."""
-    base = base_genre(genre)
-    if base in SELF_ROOTED_GENRES:
-        return base
-    return _rightmost_genre(genre.strip().lower(), skip_whole=True) or base
+    """Like base_genre, but reduced until it stops changing: "Hard Rock" → Rock,
+    "Modern Hard Rock" → Hard Rock → Rock, "Contemporary R&B" → R&B/Soul → Soul.
+    A plain listed genre and SELF_ROOTED_GENRES are their own roots."""
+    root = base_genre(genre)
+    seen: set[str] = set()
+    while root and root not in SELF_ROOTED_GENRES and root not in seen:
+        seen.add(root)
+        parent = _rightmost_genre(root.lower(), skip_whole=True)
+        if not parent:
+            break
+        root = parent
+    return root
 
 
 def genre_energy(genre: str) -> float | None:

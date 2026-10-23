@@ -251,9 +251,8 @@ def test_similar_leans_on_the_seed_sound():
 
 
 def test_era_stays_in_its_decade():
-    from strategy_engine import _release_decade
     years = [_song(*map(int, t["id"].removeprefix("s").split("-"))) for t in run("era")]
-    assert {_release_decade(s["attributes"]["releaseDate"]) for s in years} == {"1990s"}
+    assert {se._release_decade(s["attributes"]["releaseDate"]) for s in years} == {"1990s"}
 
 
 def test_blend_stays_balanced():

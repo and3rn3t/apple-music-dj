@@ -510,3 +510,73 @@ class TestUserFilters:
         assert cands[1]["_score"] == pytest.approx(0.5 + PREFERRED_GENRE_BOOST / 2)  # same family
         assert cands[2]["_score"] == 0.5
         assert "_score" not in cands[3]
+
+
+# ── Genre tables: fallback, sub-genres, weighted taste ───────────
+
+class TestGenreFallback:
+    @pytest.mark.parametrize("genre,base", [
+        ("Rock", "Rock"), ("hard rock", "Hard Rock"), ("Garage Rock", "Rock"), ("Underground Rap", "Hip-Hop/Rap"),
+        ("Pop Punk", "Punk"), ("Indie Folk", "Folk"), ("Contemporary R&B", "Contemporary R&B"), ("Polka", None),
+    ])
+    def test_base_genre(self, genre, base):
+        from _common import base_genre
+        assert base_genre(genre) == base
+
+    @pytest.mark.parametrize("genre,root", [
+        ("Hard Rock", "Rock"), ("Rock", "Rock"), ("Neo-Soul", "Soul"), ("Indie Pop", "Pop"),
+        ("K-Pop", "K-Pop"), ("J-Pop", "J-Pop"), ("Alternative Rap", "Hip-Hop/Rap"),
+    ])
+    def test_root_genre(self, genre, root):
+        from _common import root_genre
+        assert root_genre(genre) == root
+
+    def test_unlisted_genres_get_an_energy(self):
+        """Used to be 0.5 for anything not listed, which flattened arcs."""
+        from _common import track_energy
+        assert track_energy(["Garage Rock"]) == 0.7
+        assert track_energy(["Dream Pop"]) == 0.7
+        assert track_energy(["Ambient Electronic"]) == 0.8  # ends with Electronic
+        assert track_energy(["Polka"]) == 0.5  # still unknown
+
+    def test_every_family_genre_has_an_energy(self):
+        from _common import GENRE_ADJACENCY, GENRE_ENERGY
+        missing = {g for family in GENRE_ADJACENCY.values() for g in family} - set(GENRE_ENERGY)
+        assert not missing
+
+    @pytest.mark.parametrize("a,b,expected", [
+        ("Rock", "Hard Rock", 0.75), ("Hard Rock", "Garage Rock", 0.75), ("Rock", "Alternative", 0.5),
+        ("Garage Rock", "Grunge", 0.5), ("Pop", "K-Pop", 0.5), ("Reggaeton", "Latin", 0.5),
+        ("Indie Rock", "Indie Pop", 0.0), ("Polka", "Rock", 0.0), ("Polka", "polka", 1.0),
+    ])
+    def test_proximity_tiers(self, a, b, expected):
+        from _common import genre_proximity
+        assert genre_proximity(a, b) == expected
+
+
+class TestTasteAffinity:
+    DIST = [{"genre": "Alternative", "weight": 0.4}, {"genre": "Jazz", "weight": 0.02}]
+
+    def test_top_genre_is_full_affinity(self):
+        from _common import taste_affinity
+        assert taste_affinity(["Alternative"], self.DIST) == pytest.approx(1.0)
+
+    def test_a_barely_played_genre_counts_for_little(self):
+        """best_genre_match calls Jazz a perfect match; taste_affinity weighs it by listening share."""
+        from _common import best_genre_match, taste_affinity
+        assert best_genre_match(["Jazz"], [g["genre"] for g in self.DIST]) == 1.0
+        assert taste_affinity(["Jazz"], self.DIST) == pytest.approx(0.05)
+
+    def test_family_and_subgenre_credit(self):
+        from _common import taste_affinity
+        assert taste_affinity(["Rock"], self.DIST) == pytest.approx(0.5)
+        assert taste_affinity(["Adult Alternative"], self.DIST) == pytest.approx(0.75)
+
+    def test_unweighted_profile_counts_genres_equally(self):
+        from _common import taste_affinity
+        assert taste_affinity(["Jazz"], [{"genre": "Rock"}, {"genre": "Jazz"}]) == 1.0
+
+    def test_empty(self):
+        from _common import taste_affinity
+        assert taste_affinity([], self.DIST) == 0.0
+        assert taste_affinity(["Rock"], []) == 0.0

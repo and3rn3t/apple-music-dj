@@ -662,7 +662,8 @@ class TestRecentSignals:
         assert extract_station_genres({"data": [{"attributes": {"name": title}}]}) == []
 
     @pytest.mark.parametrize("title,genre", [("Pop Hits", "Pop"), ("Radio: Rock", "Rock"), ("K-Pop Hits", "K-Pop"),
-                                             ("indie pop favorites", "Indie Pop"), ("Smooth Jazz.", "Jazz")])
+                                             ("indie pop favorites", "Indie Pop"), ("Late Night Jazz.", "Jazz"),
+                                             ("Smooth Jazz.", "Smooth Jazz")])
     def test_station_genres_whole_word_hits(self, title, genre):
         assert extract_station_genres({"data": [{"attributes": {"name": title}}]}) == [genre]
 

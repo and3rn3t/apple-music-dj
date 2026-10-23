@@ -141,7 +141,7 @@ Named "Constellation" because it maps outward from known stars to discover new o
 3. From results, extract artist IDs NOT in user's library
 4. For each discovered artist, fetch their top songs
 5. Zone each artist by genre proximity to the user's top 10 genres:
-   - 1.0 = exact genre match → familiar
+   - 1.0 = exact genre match, or 0.75 = a sub-genre (e.g., Rock → Garage Rock) → familiar
    - 0.5 = same genre family (e.g., Alternative → Rock) → expansion
    - 0.0 = different family → frontier
 6. Fill ~30% familiar, ~45% expansion, ~25% frontier; a short zone is backfilled from the
@@ -264,6 +264,9 @@ flowchart LR
 ### Energy arcs in code
 
 Each track's `energy` (0–1) is the mean of its genres' values in `GENRE_ENERGY` (`_common.py`).
+A genre that table doesn't list takes the value of the listed genre its name ends with
+("Garage Rock" → Rock, "Underground Rap" → Hip-Hop/Rap); only a name with no listed genre in it
+counts as 0.5.
 `sequence_tracks(arc=...)` orders by it before applying the hard rules:
 
 - `wave` (default) — medium opener, build, peak in the middle, wind-down
@@ -299,6 +302,23 @@ xychart-beta
 - No explicit content unless user's library contains explicit
 - Exclude disliked artists (from ratings data)
 - End on a strong note, never a filler track
+
+### Genre matching
+
+Two scores compare genres (`_common.py`):
+
+- **`genre_proximity(a, b)`**: 1.0 for the same genre, 0.75 for the same root genre ("Hard Rock",
+  "Garage Rock" and "Rock" all have root Rock; K-Pop and J-Pop are their own roots), 0.5 for the
+  same family in `GENRE_ADJACENCY` (rock, electronic, hip-hop, folk, jazz, classical, pop, latin,
+  caribbean/african), else 0. Used against a *target* list: a mood's genres, a seed artist's genres.
+- **`taste_affinity(track_genres, genre_distribution)`**: the best proximity to any of the
+  listener's genres, times that genre's weight relative to their top genre. An exact match on
+  the top genre is 1.0; an exact match on a genre at 2% of the listening (top genre 40%) is 0.05.
+  Used wherever a track is compared with *your* taste: mood, trend, similar, era, blend and the daily pick.
+
+Every strategy's weights are named constants in one block near the top of `strategy_engine.py`
+(`JITTER`, `ARTIST_CAP`, `TASTE_WEIGHT`, `MOOD_*`, `TREND_*`, `SEED_BASE`, `ERA_BASE`, `BLEND_*`, …).
+The daily pick's are at the top of `daily_pick.py`.
 
 ### Your preferences (`~/.apple-music-dj/config.json`)
 

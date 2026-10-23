@@ -433,11 +433,8 @@ falling arc) before enforcing the spacing rules below.
 
 ## Storefront Detection
 
-Catalog endpoints need a storefront code (us, gb, jp...).
-Detection order:
-1. `APPLE_MUSIC_STOREFRONT` env var → use it
-2. `GET /v1/me/storefront` → auto-detect and cache
-3. Fall back to `us`, warn user
+Catalog endpoints need a storefront code (us, gb, jp…): `APPLE_MUSIC_STOREFRONT` if set, else
+`GET /v1/me/storefront` (cached), else `us` with a warning to the user.
 
 ## Error Handling
 

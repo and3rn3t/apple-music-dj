@@ -14,7 +14,7 @@ same table; `status` shows what is installed; `remove [--jobs …]` undoes it.
 | `weekly-mix` (opt-in: `--jobs weekly-mix`) | Mondays 7:00 | `strategy_engine.py --strategy trend --create` | **Yes** — creates a playlist each week without asking |
 | `new-releases` | Wednesdays 8:00 | `new_releases.sh <profile> <storefront>` | No (report only; no `--create-playlist`) |
 | `daily-drop` | Every day 8:30 | `daily_pick.py daily <profile> <storefront>` | No — the pick includes a token-renewal reminder when one is due |
-| `health-check` | 1st of each month, 9:00 | `playlist_health.py check all` | No — fixes need `playlist_health.py fix <id> --apply`, which previews first and is never scheduled |
+| `health-check` | 1st of each month, 9:00 | `playlist_health.py check all` | No — to fix, run `playlist_health.py fix <id>` (a preview), show it, and add `--apply` only after a yes; `fix` is never scheduled |
 | `monthly-drift` (opt-in: `--jobs monthly-drift`) | 2nd of each month, 9:00 | `taste_profiler.py` (saves a dated snapshot), then `taste_drift.py --since 30d --format text` | No |
 
 By default `install` schedules the report-only jobs (`new-releases`, `daily-drop`, `health-check`).

@@ -30,7 +30,9 @@ User Request
 
 - **Taste profiler** (`scripts/taste_profiler.py`) reads the user's listening and caches a profile.
 - **Strategy engine** (`scripts/strategy_engine.py`) turns the profile plus catalog lookups into a sequenced track list.
-- **Playlist builder** (`scripts/build_playlist.sh`) writes it to the library — only with `--create` / `--yes`.
+- **Playlist builder** (`scripts/build_playlist.sh`) writes it to the library. Nothing is written without an
+  explicit flag: `strategy_engine.py` creates a playlist only with `--create`, and `build_playlist.sh`
+  (`create` / `refresh` / `remove`) writes only when `--yes` is its last argument.
 - Every API call goes through `scripts/apple_music_api.sh` (see `api-reference.md`).
 
 ## What the taste profiler reads

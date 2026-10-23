@@ -39,9 +39,9 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 import sys
 
 # Python version guard
-if sys.version_info < (3, 10):
+if sys.version_info < (3, 11):
     sys.exit(
-        f"ERROR: Python 3.10+ is required (you have "
+        f"ERROR: Python 3.11+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -52,7 +52,7 @@ import re
 import subprocess
 import tempfile
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 from compatibility import profile_compatibility
@@ -1077,7 +1077,7 @@ def generate_name(strategy: str, mood: str | None = None,
                   profile: dict | None = None, seed: str | None = None,
                   decade: str | None = None) -> str:
     """Auto-generate a playlist name."""
-    date_str = datetime.now(timezone.utc).strftime("%b %Y")
+    date_str = datetime.now(UTC).strftime("%b %Y")
     if strategy == "deep-cuts":
         artists = profile.get("top_artists", [])[:2] if profile else []
         artist_str = " & ".join(a["name"] for a in artists) if artists else "Your Favorites"

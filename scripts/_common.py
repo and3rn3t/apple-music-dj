@@ -16,12 +16,12 @@ import stat
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 import contextlib
 
 # ── Python version guard ──────────────────────────────────────────
-_MIN_PYTHON = (3, 10)
+_MIN_PYTHON = (3, 11)
 if sys.version_info < _MIN_PYTHON:
     sys.exit(
         f"ERROR: Python {_MIN_PYTHON[0]}.{_MIN_PYTHON[1]}+ is required "
@@ -330,7 +330,7 @@ def user_token_fingerprint(token: str) -> str:
 
 def record_user_token(token: str, path: Path | None = None, when: datetime | None = None) -> None:
     """Remember today (or `when`) as the day this user token was issued or first seen."""
-    when = when or datetime.now(timezone.utc)
+    when = when or datetime.now(UTC)
     write_private(Path(path) if path else USER_TOKEN_SEEN,
                   json.dumps({"fingerprint": user_token_fingerprint(token),
                               "first_seen": when.date().isoformat()}) + "\n")
@@ -347,7 +347,7 @@ def check_user_token_age(warn_days: int = 14, path: Path | None = None) -> dict 
     if not token or os.environ.get("APPLE_MUSIC_DJ_DEMO"):
         return None
     path = Path(path) if path else USER_TOKEN_SEEN
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     try:
         seen = json.loads(path.read_text()) if path.is_file() else {}
         if not isinstance(seen, dict) or seen.get("fingerprint") != user_token_fingerprint(token):
@@ -443,7 +443,7 @@ def make_snapshot(profile: dict) -> dict:
         "energy_profile": profile.get("energy_profile", "balanced"),
         "variety_score": profile.get("variety_score", 0.5),
         "mainstream_score": profile.get("mainstream_score", 0.5),
-        "generated_at": profile.get("generated_at") or datetime.now(timezone.utc).isoformat(),
+        "generated_at": profile.get("generated_at") or datetime.now(UTC).isoformat(),
     }
 
 

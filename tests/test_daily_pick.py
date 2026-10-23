@@ -1,7 +1,7 @@
 """Tests for daily_pick.py — scoring, seeding, and time context."""
 
 import random
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from unittest.mock import patch
 
 import pytest
@@ -20,12 +20,12 @@ class TestDailySeed:
 
     def test_different_days_differ(self):
         with patch("daily_pick.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2025, 1, 1, tzinfo=timezone.utc)
+            mock_dt.now.return_value = datetime(2025, 1, 1, tzinfo=UTC)
             mock_dt.side_effect = datetime
             seed_a = daily_seed()
 
         with patch("daily_pick.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2025, 1, 2, tzinfo=timezone.utc)
+            mock_dt.now.return_value = datetime(2025, 1, 2, tzinfo=UTC)
             mock_dt.side_effect = datetime
             seed_b = daily_seed()
 

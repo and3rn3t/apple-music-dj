@@ -17,9 +17,9 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 import sys
 
 # Python version guard
-if sys.version_info < (3, 10):
+if sys.version_info < (3, 11):
     sys.exit(
-        f"ERROR: Python 3.10+ is required (you have "
+        f"ERROR: Python 3.11+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -27,7 +27,7 @@ import argparse
 import hashlib
 import json
 import random
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 from _common import (
@@ -45,7 +45,7 @@ SCRIPT_DIR = Path(__file__).parent
 
 def daily_seed() -> int:
     """Generate a seed based on today's date so the pick is stable within a day."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     return int(hashlib.md5(today.encode()).hexdigest()[:8], 16)
 
 
@@ -200,7 +200,7 @@ def cmd_daily(profile: dict, sf: str) -> dict:
 
     return {
         "type": "daily_song_drop",
-        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "date": datetime.now(UTC).strftime("%Y-%m-%d"),
         "track": pick,
         "message": message,
     }

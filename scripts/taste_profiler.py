@@ -22,9 +22,9 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 import sys
 
 # Python version guard (also checked in _common, but be explicit for entry points)
-if sys.version_info < (3, 10):
+if sys.version_info < (3, 11):
     sys.exit(
-        f"ERROR: Python 3.10+ is required (you have "
+        f"ERROR: Python 3.11+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -33,7 +33,7 @@ import json
 import re
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 from _common import (
@@ -460,7 +460,7 @@ def build_profile(args) -> dict:
             "disliked_count": len(disliked_songs),
         },
         "storefront": sf,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
     }
 
     print("\n✅ Taste DNA profile complete.", file=sys.stderr)

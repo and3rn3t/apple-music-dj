@@ -2,7 +2,7 @@
 
 import json
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -111,7 +111,7 @@ class TestLogPlaylist:
 
 class TestGetRecentTrackIds:
     def test_returns_ids_within_window(self, tmp_path, monkeypatch):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         recent_date = (now - timedelta(days=5)).isoformat()
         old_date = (now - timedelta(days=60)).isoformat()
         data = [
@@ -144,7 +144,7 @@ class TestGetRecentTrackIds:
 
 class TestCheckTracks:
     def test_identifies_used_and_fresh(self, tmp_path, monkeypatch):
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         data = [{"date": now, "track_ids": ["t1", "t2"]}]
         f = tmp_path / "history.json"
         f.write_text(json.dumps(data))
@@ -232,7 +232,7 @@ class TestCmdList:
 
 class TestCmdCheck:
     def test_prints_status(self, tmp_path, monkeypatch, capsys):
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         data = [{"date": now, "track_ids": ["t1"]}]
         f = tmp_path / "history.json"
         f.write_text(json.dumps(data))
@@ -249,7 +249,7 @@ class TestCmdCheck:
 
 class TestCmdRecentTracks:
     def test_prints_recent_ids(self, tmp_path, monkeypatch, capsys):
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         data = [{"date": now, "track_ids": ["t1", "t2"]}]
         f = tmp_path / "history.json"
         f.write_text(json.dumps(data))

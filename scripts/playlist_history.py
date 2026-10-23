@@ -18,15 +18,15 @@ As a library:
 import sys
 
 # Python version guard
-if sys.version_info < (3, 10):
+if sys.version_info < (3, 11):
     sys.exit(
-        f"ERROR: Python 3.10+ is required (you have "
+        f"ERROR: Python 3.11+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
 import argparse
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 from _common import write_private
@@ -59,7 +59,7 @@ def log_playlist(name: str, strategy: str, track_ids: list[str]) -> dict:
 
     entry = {
         "name": name,
-        "date": datetime.now(timezone.utc).isoformat(),
+        "date": datetime.now(UTC).isoformat(),
         "strategy": strategy,
         "track_ids": track_ids,
         "track_count": len(track_ids),
@@ -78,7 +78,7 @@ def log_playlist(name: str, strategy: str, track_ids: list[str]) -> dict:
 def get_recent_track_ids(days: int = 30) -> set[str]:
     """Get all track IDs used in playlists created in the last N days."""
     history = load_history()
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     recent_ids: set[str] = set()
 
     for entry in history:

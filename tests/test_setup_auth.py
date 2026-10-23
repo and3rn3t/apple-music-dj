@@ -5,7 +5,7 @@ import http.client
 import json
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 import pytest
 
@@ -217,12 +217,12 @@ class TestUserTokenAge:
 
     def test_old_token_warns(self, monkeypatch):
         monkeypatch.setenv("APPLE_MUSIC_USER_TOKEN", "abc")
-        _common.record_user_token("abc", when=datetime.now(timezone.utc) - timedelta(days=170))
+        _common.record_user_token("abc", when=datetime.now(UTC) - timedelta(days=170))
         status = _common.check_user_token_age()
         assert status["age_days"] == 170 and status["warning"] and "setup_auth.py" in status["message"]
 
     def test_a_different_token_resets_the_clock(self, monkeypatch):
-        _common.record_user_token("old", when=datetime.now(timezone.utc) - timedelta(days=170))
+        _common.record_user_token("old", when=datetime.now(UTC) - timedelta(days=170))
         monkeypatch.setenv("APPLE_MUSIC_USER_TOKEN", "new")
         assert _common.check_user_token_age()["age_days"] == 0
 

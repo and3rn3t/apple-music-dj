@@ -19,7 +19,8 @@ from taste_profiler import (
     infer_energy_profile,
     extract_recent_additions,
     extract_station_genres,
-    merge_station_genres,
+    SOURCE_WEIGHTS,
+    tag_source,
     load_cache,
     save_cache,
     log,
@@ -205,6 +206,20 @@ class TestComputeVarietyScore:
         score = compute_variety_score([], tracks)
         assert isinstance(score, float)
 
+    def test_entropy_zero_for_one_artist(self):
+        tracks = [{"attributes": {"artistName": "Same"}} for _ in range(5)]
+        assert compute_variety_score([], tracks) == 0.0
+
+    def test_entropy_one_for_even_spread(self):
+        tracks = [{"attributes": {"artistName": f"A{i % 4}"}} for i in range(12)]
+        assert compute_variety_score([], tracks) == 1.0
+
+    def test_entropy_uses_source_weights(self):
+        # Two artists with one track each: even by count, skewed once heavy rotation outweighs a rec
+        tracks = (tag_source([{"attributes": {"artistName": "A"}}], "heavy_rotation")
+                  + tag_source([{"attributes": {"artistName": "B"}}], "recommendations"))
+        assert compute_variety_score([], tracks) < 0.5
+
 
 # ── compute_mainstream_score ─────────────────────────────────────
 
@@ -218,23 +233,27 @@ class TestComputeMainstreamScore:
 
     def test_full_overlap(self, sample_chart_data):
         artists = [
-            {"name": "The Weeknd"},
-            {"name": "Billie Eilish"},
-            {"name": "Glass Animals"},
-            {"name": "Taylor Swift"},
+            {"name": "The Weeknd", "play_weight": 0.25},
+            {"name": "Billie Eilish", "play_weight": 0.25},
+            {"name": "Glass Animals", "play_weight": 0.25},
+            {"name": "Taylor Swift", "play_weight": 0.25},
         ]
         score = compute_mainstream_score(artists, sample_chart_data)
         assert score == 1.0
 
     def test_no_overlap(self, sample_chart_data):
-        artists = [{"name": "Radiohead"}, {"name": "Aphex Twin"}]
+        artists = [{"name": "Radiohead", "play_weight": 0.5}, {"name": "Aphex Twin", "play_weight": 0.5}]
         score = compute_mainstream_score(artists, sample_chart_data)
         assert score == 0.0
 
     def test_partial_overlap(self, sample_chart_data):
-        artists = [{"name": "The Weeknd"}, {"name": "Radiohead"}]
+        artists = [{"name": "The Weeknd", "play_weight": 0.5}, {"name": "Radiohead", "play_weight": 0.5}]
         score = compute_mainstream_score(artists, sample_chart_data)
         assert score == 0.5
+
+    def test_weighted_by_play_weight(self, sample_chart_data):
+        artists = [{"name": "Radiohead", "play_weight": 0.8}, {"name": "The Weeknd", "play_weight": 0.2}]
+        assert compute_mainstream_score(artists, sample_chart_data) == 0.2
 
 
 # ── extract_ratings ──────────────────────────────────────────────
@@ -674,13 +693,12 @@ class TestRecentSignals:
         assert extract_station_genres(data) == ["Alternative", "Indie Pop"]
         assert extract_station_genres(None) == []
 
-    def test_merge_station_genres_nudges_weights(self):
-        genres = [{"genre": "Rock", "count": 9, "weight": 0.9}, {"genre": "Pop", "count": 1, "weight": 0.1}]
-        merged = merge_station_genres(genres, ["Jazz", "Jazz"])
-        by = {g["genre"]: g for g in merged}
+    def test_station_genres_nudge_weights(self):
+        tracks = ([{"attributes": {"genreNames": ["Rock"]}}] * 9) + [{"attributes": {"genreNames": ["Pop"]}}]
+        by = {g["genre"]: g for g in extract_genres(tracks, ["Jazz", "Jazz"])}
         assert by["Jazz"]["count"] == 2
         assert by["Rock"]["weight"] == pytest.approx(9 / 12, abs=0.001)
-        assert merge_station_genres(genres, []) is genres
+        assert extract_genres(tracks, []) == extract_genres(tracks)
 
     def test_profile_includes_new_signals(self, monkeypatch):
         tracks = [{"id": "t1", "attributes": {"name": "S", "artistName": "A", "genreNames": ["Rock"],
@@ -717,3 +735,59 @@ class TestRecentSignals:
         monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
         profile = build_profile(MagicMock(verbose=False, storefront="us", skip_replay=True))
         assert profile["recently_added_artists"] == [] and profile["station_genres"] == []
+
+
+# ── source weighting ─────────────────────────────────────────────
+
+def _song(sid, artist, genres=("Rock",), date="2010-01-01"):
+    return {"id": sid, "attributes": {"name": sid, "artistName": artist, "genreNames": list(genres),
+                                      "releaseDate": date}}
+
+
+class TestSourceWeights:
+    def test_weights_order(self):
+        assert SOURCE_WEIGHTS["heavy_rotation"] > SOURCE_WEIGHTS["recent"] > SOURCE_WEIGHTS["library"]
+        assert SOURCE_WEIGHTS["recommendations"] < SOURCE_WEIGHTS["library"]
+
+    def test_tag_source_copies(self):
+        track = _song("s1", "A")
+        tagged = tag_source([track], "recent")
+        assert tagged[0]["_source"] == "recent"
+        assert "_source" not in track
+
+    def test_recommendations_count_less_than_heavy_rotation(self):
+        tracks = (tag_source([_song("h1", "Heavy", ["Rock"], "1990-01-01")], "heavy_rotation")
+                  + tag_source([_song(f"r{i}", "Suggested", ["Pop"], "2020-01-01") for i in range(4)],
+                               "recommendations"))
+        artists = extract_artists(tracks)
+        assert artists[0]["name"] == "Heavy"
+        by = {a["name"]: a for a in artists}
+        assert by["Suggested"]["count"] == 4  # raw count unchanged
+        assert by["Heavy"]["play_weight"] == pytest.approx(3.0 / 4.0, abs=0.001)
+        assert extract_genres(tracks)[0]["genre"] == "Rock"
+        assert extract_eras(tracks)[0]["decade"] == "1990s"
+
+    def test_genre_weight_split_across_genres(self):
+        tracks = [_song("s1", "A", ["Alternative", "Rock"]), _song("s2", "B", ["Jazz"])]
+        by = {g["genre"]: g for g in extract_genres(tracks)}
+        assert by["Jazz"]["weight"] == pytest.approx(0.5, abs=0.001)
+        assert by["Rock"]["weight"] == pytest.approx(0.25, abs=0.001)
+        assert by["Rock"]["count"] == 1
+
+    def test_loved_tracks_raise_their_artist(self, monkeypatch):
+        library = [_song("l.1", "Plain"), _song("l.2", "Beloved")]
+        library[1]["relationships"] = {"catalog": {"data": [{"id": "c2"}]}}
+
+        def api(cmd, *a, **k):
+            return {"library-songs": {"data": library}, "library-artists": {"data": []},
+                    "ratings": {"data": [{"id": "c2", "attributes": {"value": 1}}]}}.get(cmd)
+
+        monkeypatch.setattr("taste_profiler.call_api", api)
+        monkeypatch.setattr("taste_profiler.require_env_tokens", lambda: None)
+        monkeypatch.setattr("taste_profiler.check_token_expiry", lambda: None)
+        monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
+        profile = build_profile(MagicMock(verbose=False, storefront="us", skip_replay=True))
+        by = {a["name"]: a for a in profile["top_artists"]}
+        assert by["Beloved"]["play_weight"] > by["Plain"]["play_weight"]
+        assert by["Beloved"]["count"] == by["Plain"]["count"] == 1
+        assert profile["library_song_ids"] == ["l.1", "c2"]

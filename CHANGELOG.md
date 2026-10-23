@@ -5,6 +5,7 @@
 ### Changed
 
 - **Spotify import in the ClawHub listing:** surface the import workflow in the opening skill and package descriptions.
+- **Taste profile weighs where a track came from.** `taste_profiler.py` used to count every track once, so Apple's recommendations shaped your "taste" as much as what you actually play. Each source now has a weight (heavy rotation 3, loved 2.5, recently played 2, recently added 1.5, library 1, recommendations 0.25); loved library songs now lift their artist, genres and decade; a track's weight is split across its genres so "Rock" next to "Alternative" isn't counted twice. The variety score is now the normalized entropy of the weighted artist mix (0 = one artist, 1 = an even spread), and the mainstream score is the share of your listening that goes to charting artists. The profile's fields are unchanged (`count` is still the raw count; only `weight` / `play_weight` and the two scores move), but **the first taste-drift report after upgrading will show a one-time jump** as the old and new weighting are compared.
 
 All notable changes to this project will be documented in this file.
 

@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml/badge.svg)](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml)
 ![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)
-![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.14%20%7C%203.15-blue)
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](LICENSE)
 [![ClawHub](https://img.shields.io/badge/ClawHub-apple--music--dj-orange)](https://clawhub.ai/and3rn3t/skills/apple-music-dj)
 
@@ -48,8 +48,9 @@ An [Agent Skill](https://github.com/anthropics/skills) for [OpenClaw](https://op
 |---|---|
 | **Apple Developer Account** | [$99/year](https://developer.apple.com/programs/) — needed for MusicKit API access (not for the demo) |
 | **Apple Music subscription** | Active subscription on your Apple ID (not for the demo) |
-| **Python** | 3.10+ (no pip packages needed for core features; `PyJWT` + `cryptography` only to sign a developer token) |
+| **Python** | 3.11+ (no pip packages needed for core features; `PyJWT` + `cryptography` only to sign a developer token) |
 | **Skill host** | [OpenClaw](https://openclaw.ai) ([docs](https://docs.openclaw.ai)) or [Claude Code](#use-with-claude-code) |
+| **OS** | macOS or Linux (CI runs the scripts on both) |
 | **CLI tools** | `curl`, `jq` (usually pre-installed on macOS) |
 
 ## 🚀 Quick Install
@@ -193,7 +194,7 @@ Just talk naturally. Here's what the DJ understands:
 
 ## 🧰 Tech stack
 
-- **Python 3.10+** standard library for every core feature — no pip packages needed
+- **Python 3.11+** standard library for every core feature — no pip packages needed
 - **Apple Music API** (developer token signed with `PyJWT` + `cryptography`, only for setup)
 - **Agent Skill** format (`SKILL.md`) for OpenClaw / ClawHub and Claude Code
 - **pytest** for the test suite
@@ -206,10 +207,16 @@ apple-music-dj/
 ├── README.md                   # This file
 ├── clawhub.json                # Package metadata
 ├── pyproject.toml              # Python project config
+├── Makefile                    # make ci, make audit, make demo-svg, …
+├── AGENTS.md, CONTRIBUTING.md  # Contributor and AI-assistant guides (not shipped)
+├── CHANGELOG.md, ROADMAP.md, SECURITY.md
+├── assets/                     # Icon, demo SVG, sample taste card, sample Spotify export
+├── tests/                      # pytest suite; runs the real scripts against a mock API
 ├── references/
 │   ├── auth-setup.md           # Token setup walkthrough
 │   ├── api-reference.md        # Apple Music API endpoint reference
 │   ├── playlist-strategies.md  # Deep playbook for all 8 strategies
+│   ├── spotify-import.md       # Moving from Spotify: export, import, match quality
 │   └── troubleshooting.md      # Step-by-step fixes for common issues
 └── scripts/
     ├── _common.py              # Shared utilities (API, profile, token checks)

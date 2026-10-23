@@ -15,7 +15,7 @@ drift, Spotify import, daily pick, concert prep, new releases, cron curation).
 `SKILL.md` is what OpenClaw reads; everything else supports it. A built-in demo
 (`scripts/demo.py`) works with no tokens.
 
-Runs on macOS and Linux. Needs `curl`, `jq`, `python3` (3.10+). Account writes are opt-in
+Runs on macOS and Linux. Needs `curl`, `jq`, `python3` (3.11+). Account writes are opt-in
 and confirmed before they happen.
 
 ## Layout

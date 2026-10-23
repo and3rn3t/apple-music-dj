@@ -634,7 +634,7 @@ stores, and transmits.
 | Recent radio stations | `/v1/me/recent/radio-stations` | Light genre signal from station titles |
 | Storefront | `/v1/me/storefront` | Region detection |
 
-**Requirements.** Always needed: `curl`, `jq`, `python3` (3.10+). Needed for your own music (not for
+**Requirements.** Always needed: `curl`, `jq`, `python3` (3.11+). Needed for your own music (not for
 the demo): `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN` — declared under `envVars` with
 `required: false` so the skill stays loadable before setup, and checked by each script at run time. Optional, each used by one feature only: `APPLE_MUSIC_STOREFRONT` (override region
 detection); `crontab` (scheduling); and for generating a developer token yourself with
@@ -700,6 +700,7 @@ validated and cleaned of control characters before use, and only ever supplies a
 | `scripts/_common.py` | Python | Shared utilities (API calls, profile loading, search) |
 | `scripts/apple_music_api.sh` | Bash | API wrapper — all endpoints, retry logic |
 | `scripts/taste_profiler.py` | Python | Taste DNA profiler with caching |
+| `scripts/strategy_engine.py` | Python | The eight playlist strategies plus energy-arc sequencing; previews unless `--create` |
 | `scripts/build_playlist.sh` | Bash | Playlist creation & refresh (create or add tracks); previews unless `--yes` is the last argument |
 | `scripts/generate_dev_token.py` | Python | Developer JWT generator |
 | `scripts/setup_auth.py` | Python | Guided setup: dev token + browser sign-in for the user token; `status` shows time left |
@@ -710,6 +711,7 @@ validated and cleaned of control characters before use, and only ever supplies a
 | `scripts/catalog_explorer.py` | Python | Gap analysis, album deep dive, artist rabbit hole |
 | `scripts/daily_pick.py` | Python | Daily song drop & instant recommendation |
 | `scripts/playlist_history.py` | Python | Playlist creation history tracking |
+| `scripts/playlist_health.py` | Python | Playlist health check; `fix --apply` removes duplicates and adds replacements |
 | `scripts/taste_drift.py` | Python | Taste drift between dated snapshots |
 | `scripts/share_code.py` | Python | Make and read taste codes (ID-free, validated, no network) for blends |
 | `scripts/import_playlist.py` | Python | Import a CSV/text playlist via ISRC + strict search |
@@ -717,6 +719,7 @@ validated and cleaned of control characters before use, and only ever supplies a
 | `scripts/concert_prep.sh` | Bash | Concert prep playlist builder |
 | `scripts/new_releases.sh` | Bash | Personalized new release radar |
 | `scripts/verify_setup.sh` | Bash | Setup verification (prereqs, tokens, API) |
+| `scripts/setup_cron.py` | Python | List, install or remove the cron jobs; `install --dry-run` prints the exact lines and a digest that `--confirm` needs |
 
 ## Example Interactions
 

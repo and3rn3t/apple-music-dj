@@ -17,8 +17,8 @@ broader listing tags.
 - [ ] **Screen recording for the listing.** 20–30 s: say "songs like Phoebe Bridgers" in OpenClaw →
       the playlist appears in Apple Music on an iPhone. Needs a real device and account, so it is
       recorded by hand.
-- [ ] **Publish 3.3.0 to ClawHub** and check the security verdict comes back *Pass*; once it is
-      stable, add a "ClawHub: Pass" badge to the README.
+- [ ] **Confirm the ClawHub verdict for the latest release** (3.4.1 is the newest tag) is *Pass*,
+      log it in the verdict table below, and once it is stable add a "ClawHub: Pass" badge to the README.
 - [ ] **Submit to the community "Awesome OpenClaw Skills" list** (Music / Media section).
 - [ ] **Launch posts** with the GIF: OpenClaw Discord/community showcase, r/AppleMusic,
       r/selfhosted. Pitch to listeners ("Spotify-grade discovery for Apple Music"), not as a dev tool.
@@ -33,10 +33,12 @@ broader listing tags.
 - [x] **Blend share codes.** `share_code.py make` prints an ID-free `amdj1:` taste code, and
       `--profile-b` (blend, compatibility) accepts it. "Send me your code" is a much easier ask than a file.
 - [ ] **Monthly recap / "Wrapped"-style year in review** as a shareable card, timed for December,
-      with a ready-made caption. Builds on `listening_insights.py` and the snapshots.
+      with a ready-made caption. The card and caption now work end to end (fixed in
+      [#58](https://github.com/and3rn3t/apple-music-dj/pull/58), unreleased); still open: confirm the Replay data
+      against the live API ([#66](https://github.com/and3rn3t/apple-music-dj/issues/66)), and the PNG export (#48 above).
+- [ ] **Likes and dislikes steer playlists** ([#64](https://github.com/and3rn3t/apple-music-dj/issues/64)), not just exclude the one song rated.
 - [x] **Spotify-switcher section** in the README plus `references/spotify-import.md`, with a sample
-      export to try. Still open: a line for the ClawHub listing description ([#49](https://github.com/and3rn3t/apple-music-dj/issues/49)) (keep
-      `tests/test_listing.py`'s opening-sentence limits in mind).
+      export to try, and a line for it in the ClawHub listing description ([#49](https://github.com/and3rn3t/apple-music-dj/issues/49)).
 
 ## Later — remove the remaining setup friction
 
@@ -51,7 +53,9 @@ broader listing tags.
       14 days of expiry, have the daily-drop job surface the warning where the user will see it
       (e.g. in the day's pick message).
 - [ ] **Verify response shapes against the live API** and record any differences in the mock, so
-      the demo and the tests keep matching the real service.
+      the demo and the tests keep matching the real service. Replay comes first ([#66](https://github.com/and3rn3t/apple-music-dj/issues/66)).
+- [ ] **Leaner SKILL.md** ([#63](https://github.com/and3rn3t/apple-music-dj/issues/63)): move examples and long notes into `references/` so less
+      context is loaded on every trigger.
 
 ## Trust and reviews — keep the ClawHub verdict at Pass
 
@@ -71,6 +75,8 @@ read as a risk, rather than waiting to be flagged.
       `tests/test_openclaw_metadata.py`.
 - [x] Enable GitHub private vulnerability reporting (repo settings → Security) and point
       `SECURITY.md` at it.
+- [ ] **No tokens left on disk after a stalled request** ([#60](https://github.com/and3rn3t/apple-music-dj/issues/60)): curl timeouts, and
+      stop scripts with SIGTERM so their cleanup runs.
 - [ ] Optional hardening: signed tags, build provenance for releases.
 
 ### Verdict log

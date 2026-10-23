@@ -169,7 +169,8 @@ class MockAppleMusic:
                 self._handle("DELETE")
 
         self._server = ThreadingHTTPServer(("127.0.0.1", self._port), Handler)
-        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        # A short poll interval keeps stop() fast: shutdown() waits for the next poll (default 0.5 s).
+        threading.Thread(target=self._server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
         return self
 
     def stop(self) -> None:

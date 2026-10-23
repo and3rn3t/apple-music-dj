@@ -7,6 +7,7 @@ import pytest
 
 from compatibility import (
     artist_compatibility,
+    artist_genre_affinity,
     genre_overlap_score,
     genre_similarity,
     get_artist_genre_profile,
@@ -49,8 +50,36 @@ class TestGenreSimilarity:
 class TestGenreOverlapScore:
     def test_identical_distributions(self):
         genres = [{"genre": "Rock", "weight": 0.5}, {"genre": "Pop", "weight": 0.5}]
-        score = genre_overlap_score(genres, genres)
-        assert score > 0.5
+        assert genre_overlap_score(genres, genres) == pytest.approx(1.0)
+
+    def test_identical_varied_taste_is_still_a_full_match(self):
+        """#59: a varied listener used to score 0.2 against themselves."""
+        genres = [{"genre": g, "weight": 0.1} for g in
+                  ["Rock", "Pop", "Jazz", "Folk", "Classical", "Electronic", "Hip-Hop/Rap", "Country", "Blues", "Soundtrack"]]
+        assert genre_overlap_score(genres, genres) == pytest.approx(1.0)
+
+    def test_scale_free(self):
+        a = [{"genre": "Rock", "weight": 0.3}, {"genre": "Jazz", "weight": 0.1}]
+        b = [{"genre": "Rock", "weight": 3.0}, {"genre": "Jazz", "weight": 1.0}]
+        assert genre_overlap_score(a, b) == pytest.approx(1.0)
+
+    def test_symmetric(self):
+        a = [{"genre": "Rock", "weight": 0.5}, {"genre": "Alternative", "weight": 0.5}]
+        b = [{"genre": "Rock", "weight": 1.0}]
+        assert genre_overlap_score(a, b) == pytest.approx(genre_overlap_score(b, a))
+
+    def test_exact_share_overlap(self):
+        a = [{"genre": "Rock", "weight": 0.5}, {"genre": "Jazz", "weight": 0.5}]
+        b = [{"genre": "Rock", "weight": 0.5}, {"genre": "Classical", "weight": 0.5}]
+        assert genre_overlap_score(a, b) == pytest.approx(0.5)
+
+    def test_family_match_is_half_credit(self):
+        a = [{"genre": "Rock", "weight": 1.0}]
+        b = [{"genre": "Alternative", "weight": 1.0}]
+        assert genre_overlap_score(a, b) == pytest.approx(0.5)
+
+    def test_zero_weights_return_zero(self):
+        assert genre_overlap_score([{"genre": "Rock", "weight": 0}], [{"genre": "Rock", "weight": 1.0}]) == 0.0
 
     def test_completely_disjoint(self):
         a = [{"genre": "Classical", "weight": 1.0}]
@@ -77,6 +106,31 @@ class TestGenreOverlapScore:
         assert score > 0.0  # adjacent, not zero
         # With equal max weights and the 2x multiplier, adjacent genres can reach 1.0
         assert score <= 1.0
+
+
+class TestArtistGenreAffinity:
+    USER = [{"genre": "Alternative", "weight": 0.3}, {"genre": "Rock", "weight": 0.2},
+            {"genre": "Classical", "weight": 0.05}]
+
+    def _artist(self, *genres):
+        return [{"genre": g, "weight": 1 / len(genres)} for g in genres]
+
+    def test_users_top_genre_is_full_affinity(self):
+        assert artist_genre_affinity(self.USER, self._artist("Alternative")) == pytest.approx(1.0)
+
+    def test_scaled_by_users_weight(self):
+        # Alternative 0.3/0.3 and Rock 0.2/0.3, half each.
+        assert artist_genre_affinity(self.USER, self._artist("Alternative", "Rock")) == pytest.approx(5 / 6)
+
+    def test_family_match_is_half_credit(self):
+        assert artist_genre_affinity(self.USER, self._artist("Punk")) == pytest.approx(0.5)
+
+    def test_unknown_genre_is_zero(self):
+        assert artist_genre_affinity(self.USER, self._artist("Polka")) == 0.0
+
+    def test_empty_inputs(self):
+        assert artist_genre_affinity([], self._artist("Rock")) == 0.0
+        assert artist_genre_affinity(self.USER, []) == 0.0
 
 
 # ── get_artist_genre_profile ─────────────────────────────────────
@@ -107,7 +161,8 @@ class TestGetArtistGenreProfile:
 class TestProfileCompatibility:
     def test_identical_profiles(self, sample_profile):
         result = profile_compatibility(sample_profile, sample_profile)
-        assert result["compatibility_pct"] >= 70  # identical profiles score high
+        assert result["compatibility_pct"] == 100  # #59: was 75%
+        assert result["verdict"].startswith("Musical soulmates")
         assert "verdict" in result
 
     def test_empty_profiles(self, empty_profile):
@@ -196,7 +251,8 @@ class TestArtistCompatibility:
 
         monkeypatch.setattr("compatibility.resolve_artist", lambda sf, q: mock_artist)
         result = artist_compatibility(sample_profile, "us", "Muse")
-        assert result["compatibility_pct"] > 0
+        # #59: this scored 32% "Stretch pick" for a listener whose top genres are Alternative and Rock.
+        assert result["verdict"].startswith("Strong overlap")
         assert result["already_in_library"] is False
         assert len(result["matching_genres"]) > 0
 
@@ -257,7 +313,7 @@ NEW_ARTIST = {"id": "x1", "attributes": {"name": "Someone New", "genreNames": ["
 ])
 def test_artist_verdict_bands(monkeypatch, sample_profile, g_score, verdict_start):
     monkeypatch.setattr("compatibility.resolve_artist", lambda sf, q: NEW_ARTIST)
-    monkeypatch.setattr("compatibility.genre_overlap_score", lambda a, b: g_score)
+    monkeypatch.setattr("compatibility.artist_genre_affinity", lambda u, a: g_score)
     result = artist_compatibility(sample_profile, "us", "Someone New")
     assert result["verdict"].startswith(verdict_start)
 

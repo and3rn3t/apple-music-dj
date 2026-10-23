@@ -9,9 +9,10 @@ on:
 permissions:
   contents: read
 
-# A new push to a PR cancels that PR's previous run; runs on main always finish.
+# A new push to a PR cancels that PR's previous run. Other runs (pushes to main) each get their own
+# group via run_id: a shared group would still cancel a *pending* main run when a third one queued.
 concurrency:
-  group: tests-${{ github.event.pull_request.number || github.ref }}
+  group: tests-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

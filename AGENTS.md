@@ -40,6 +40,7 @@ tests/                # pytest; mock_api.py re-exports scripts/demo.py
 
 ```bash
 make test           # pytest tests/ -v
+make test-fast      # same, in parallel on every core (pytest-xdist)
 make coverage       # pytest with --cov-fail-under=80 (CI's floor)
 make ruff           # ruff check scripts tests .github/scripts + shellcheck scripts/*.sh
 make lint           # syntax-check every scripts/*.py and scripts/*.sh
@@ -49,7 +50,7 @@ make audit          # pre-publish self-audit (trust claims, listing, packaging, 
 make demo-svg       # regenerate assets/demo-tour.svg after the demo tour changes
 ```
 
-Dev deps: `pip install -e ".[dev]"` (pytest, pytest-cov, ruff, pyyaml); token generation
+Dev deps: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, pyyaml); token generation
 needs `requirements.txt` (`PyJWT`, `cryptography`). ShellCheck and actionlint come from the
 system (e.g. Homebrew).
 

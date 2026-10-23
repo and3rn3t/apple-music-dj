@@ -1,10 +1,14 @@
 PYTHON ?= python3
 
-.PHONY: test coverage coverage-html lint ruff actionlint ci audit demo-svg social-preview
+.PHONY: test test-fast coverage coverage-html lint ruff actionlint ci audit demo-svg social-preview
 
 ## Run all tests
 test:
 	$(PYTHON) -m pytest tests/ -v
+
+## Run all tests in parallel on every core (pytest-xdist)
+test-fast:
+	$(PYTHON) -m pytest tests/ -n auto -q
 
 ## Run tests with coverage summary
 coverage:

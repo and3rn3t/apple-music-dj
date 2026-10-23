@@ -86,9 +86,12 @@ Env vars (see `.env.example`): `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN`
   to `ALLOWED_ROOT` or to both ignore files on purpose.
 - Keep SKILL.md example commands free of flag names that read like secrets (ClawHub's
   review once flagged `--seed "<value>"`).
-- New feature: script in `scripts/`, plus SKILL.md feature section, Scripts table row,
-  Quick Commands entry and Example Interaction; README features list; strategies also go in
-  `references/playlist-strategies.md`; `CHANGELOG.md` under `[Unreleased]`.
+- New feature: script in `scripts/`, plus a short SKILL.md feature section (triggers, run line,
+  safety rules), Scripts table row and Quick Commands entry; the longer description in
+  `references/features.md` and an example in `references/examples.md`; README features list;
+  strategies also go in `references/playlist-strategies.md`; `CHANGELOG.md` under `[Unreleased]`.
+- **SKILL.md's body stays under 500 lines** (the Agent Skills guideline): detail goes in
+  `references/` and is listed in SKILL.md's Reference Files table.
 - Conventional commits; branches `type/short-description`. License is MIT-0.
 
 ## Releasing

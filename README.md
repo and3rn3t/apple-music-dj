@@ -215,6 +215,10 @@ apple-music-dj/
 ├── references/
 │   ├── auth-setup.md           # Token setup walkthrough
 │   ├── api-reference.md        # Apple Music API endpoint reference
+│   ├── architecture.md         # Request flow and the profiler's data sources
+│   ├── automation.md           # Scheduled jobs: schedules and exact commands
+│   ├── examples.md             # Worked request → feature examples
+│   ├── features.md             # Engagement features in detail
 │   ├── playlist-strategies.md  # Deep playbook for all 8 strategies
 │   ├── spotify-import.md       # Moving from Spotify: export, import, match quality
 │   └── troubleshooting.md      # Step-by-step fixes for common issues
@@ -343,7 +347,7 @@ make coverage          # Tests with coverage summary (fails below 80%)
 make coverage-html     # Generate HTML coverage report
 ```
 
-1,000+ tests across 27 modules — 91% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, all eight strategies and energy-arc sequencing, taste drift, playlist import, feedback, playlist health, history tracking, cron setup, token generation and guided setup, demo mode, end-to-end runs against a local mock API, and shared utilities.
+1,100+ tests across 27 modules — 91% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, all eight strategies and energy-arc sequencing, taste drift, playlist import, feedback, playlist health, history tracking, cron setup, token generation and guided setup, demo mode, end-to-end runs against a local mock API, and shared utilities.
 
 ## 📖 Full Documentation
 

@@ -25,7 +25,8 @@ Brief description of what this PR does.
 ### If adding a new feature
 
 - [ ] Script in `scripts/`
-- [ ] `SKILL.md`: feature section (triggers, run command), Scripts table row, Quick Commands entry, Example Interaction
+- [ ] `SKILL.md`: short feature section (triggers, run command, safety rules), Scripts table row, Quick Commands entry
+- [ ] Detail in `references/features.md` and an example in `references/examples.md` (SKILL.md's body stays under 500 lines)
 - [ ] `README.md` features list (and the project tree if a file was added)
 - [ ] `ROADMAP.md` item ticked, if it was one
 

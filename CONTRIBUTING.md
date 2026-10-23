@@ -177,10 +177,11 @@ Keep example commands in `SKILL.md` free of flag names that read like secrets (a
 If you're adding a new engagement feature or playlist strategy:
 
 1. Create the script in `scripts/`
-2. Add the feature section to `SKILL.md` (triggers, run command, description)
+2. Add a short feature section to `SKILL.md` (triggers, run command, safety rules) and the longer
+   description to `references/features.md`; SKILL.md's body stays under 500 lines
 3. Add the script to the Scripts table in `SKILL.md`
 4. Add a Quick Commands entry in `SKILL.md`
-5. Add an Example Interaction in `SKILL.md`
+5. Add an example to `references/examples.md`
 6. Update `README.md` features list, file structure, and examples
 7. If it's a playlist strategy, add the algorithm to `references/playlist-strategies.md`
 8. Update `CHANGELOG.md`

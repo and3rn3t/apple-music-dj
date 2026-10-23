@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CLI entry-point tests for daily picks, listening insights and the demo, including year limits and refusal of account paths, authentication and cron setup in demo mode.
 - **Token-renewal reminder in the daily drop:** when the developer token is close to expiry or the user token is getting old, `daily_pick.py daily` adds the warning to the day's pick message, so a scheduled job surfaces it where you'll see it instead of only in its log.
 - **Year-in-review caption:** `listening_insights.py year-review` adds a ready-to-post `caption` ("My 2025 on Apple Music: 500 hours of music, #1 artist …"), leaving out whatever is unknown.
 

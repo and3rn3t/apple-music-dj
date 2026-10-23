@@ -1,12 +1,55 @@
 """Tests for daily_pick.py — scoring, seeding, and time context."""
 
+import json
 import random
+import sys
 from datetime import datetime, UTC
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
-from daily_pick import daily_seed, get_time_context, score_candidate, get_candidates, cmd_daily, cmd_now
+from daily_pick import daily_seed, get_time_context, score_candidate, get_candidates, cmd_daily, cmd_now, main
+
+
+class TestMain:
+    @pytest.fixture(autouse=True)
+    def isolate_commands(self, monkeypatch):
+        for command in ("daily", "now"):
+            monkeypatch.setattr(
+                f"daily_pick.cmd_{command}", Mock(side_effect=AssertionError("Unexpected command dispatch"))
+            )
+
+    @pytest.mark.parametrize("command", ["daily", "now"])
+    def test_dispatches_with_the_loaded_profile_and_prints_json(
+        self, monkeypatch, capsys, tmp_path, sample_profile, command
+    ):
+        profile = tmp_path / "profile.json"
+        profile.write_text(json.dumps(sample_profile), encoding="utf-8")
+        result = {"command": command, "track": {"id": "example-track"}}
+        handler = Mock(return_value=result)
+        monkeypatch.setattr(f"daily_pick.cmd_{command}", handler)
+        monkeypatch.setattr(sys, "argv", ["daily_pick.py", command, str(profile), "gb"])
+
+        main()
+
+        handler.assert_called_once_with(sample_profile, "gb")
+        captured = capsys.readouterr()
+        assert json.loads(captured.out) == result
+        assert captured.err == ""
+
+    @pytest.mark.parametrize("argv", [[], ["unknown"], ["daily"], ["now", "profile.json"]])
+    def test_invalid_arguments_exit_before_loading_a_profile(self, monkeypatch, capsys, argv):
+        loader = Mock()
+        monkeypatch.setattr("daily_pick.load_profile", loader)
+        monkeypatch.setattr(sys, "argv", ["daily_pick.py", *argv])
+
+        with pytest.raises(SystemExit) as error:
+            main()
+
+        assert error.value.code == 2
+        loader.assert_not_called()
+        captured = capsys.readouterr()
+        assert captured.out == "" and "usage:" in captured.err
 
 
 # ── daily_seed ───────────────────────────────────────────────────

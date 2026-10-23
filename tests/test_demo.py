@@ -4,6 +4,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -13,6 +15,105 @@ SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "demo.py"
 
 needs_tools = pytest.mark.skipif(not (shutil.which("curl") and shutil.which("jq") and shutil.which("bash")),
                                  reason="needs curl, jq and bash")
+
+
+class TestMain:
+    @pytest.fixture(autouse=True)
+    def sandbox(self, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        real_data = home / ".apple-music-dj"
+        real_data.mkdir(parents=True)
+        (real_data / "sentinel.json").write_text('{"synthetic": true}', encoding="utf-8")
+        monkeypatch.setattr(demo, "DEMO_HOME", home / ".apple-music-dj-demo")
+        monkeypatch.setattr(demo, "REAL_APP_DIR", real_data)
+
+    @pytest.mark.parametrize(("argv", "handler_name", "args"), [
+        (["tour"], "cmd_tour", ()),
+        (["serve"], "cmd_serve", (8765,)),
+        (["serve", "--port", "1234"], "cmd_serve", (1234,)),
+    ])
+    def test_dispatches_tour_and_serve_and_returns_the_handler_status(
+        self, monkeypatch, argv, handler_name, args
+    ):
+        handler = Mock(return_value=7)
+        monkeypatch.setattr(demo, handler_name, handler)
+        monkeypatch.setattr(sys, "argv", ["demo.py", *argv])
+
+        assert demo.main() == 7
+        handler.assert_called_once_with(*args)
+
+    @pytest.mark.parametrize("use_profile", [False, True])
+    def test_run_forwards_arguments_substitutes_the_profile_and_stops_the_server(
+        self, monkeypatch, use_profile
+    ):
+        server = SimpleNamespace(url="http://127.0.0.1:1", stop=Mock())
+        monkeypatch.setattr(demo, "start_server", Mock(return_value=server))
+        ensure_profile = Mock()
+        monkeypatch.setattr(demo, "ensure_profile", ensure_profile)
+        runner = Mock(return_value=subprocess.CompletedProcess([], 4))
+        monkeypatch.setattr(demo, "_run", runner)
+        arguments = ["now", "DEMO_PROFILE", "gb"] if use_profile else ["--help"]
+        monkeypatch.setattr(sys, "argv", ["demo.py", "run", "daily_pick.py", *arguments])
+
+        assert demo.main() == 4
+
+        command, env = runner.call_args.args
+        expected_args = ["now", str(demo.demo_profile_path()), "gb"] if use_profile else ["--help"]
+        assert command == [sys.executable, str(demo.SCRIPT_DIR / "daily_pick.py"), *expected_args]
+        assert env["HOME"] == str(demo.DEMO_HOME)
+        assert env["APPLE_MUSIC_API_BASE"] == server.url and env["APPLE_MUSIC_DJ_DEMO"] == "1"
+        assert runner.call_count == 1
+        if use_profile:
+            ensure_profile.assert_called_once_with(env)
+        else:
+            ensure_profile.assert_not_called()
+        server.stop.assert_called_once_with()
+
+    @pytest.mark.parametrize("script", ["setup_cron.py", "setup_auth.py"])
+    def test_run_refuses_cron_and_auth_before_starting_a_server_or_child(self, monkeypatch, script):
+        server = Mock()
+        runner = Mock()
+        monkeypatch.setattr(demo, "start_server", server)
+        monkeypatch.setattr(demo, "_run", runner)
+        monkeypatch.setattr(sys, "argv", ["demo.py", "run", script])
+
+        with pytest.raises(SystemExit, match="can't run in demo mode"):
+            demo.main()
+
+        server.assert_not_called()
+        runner.assert_not_called()
+        assert not demo.DEMO_HOME.exists()
+        assert (demo.REAL_APP_DIR / "sentinel.json").read_text(encoding="utf-8") == '{"synthetic": true}'
+
+    @pytest.mark.parametrize("form", ["positional", "separate", "equals"])
+    def test_run_refuses_account_paths_before_starting_a_server_or_child(self, monkeypatch, form):
+        path = str(demo.REAL_APP_DIR / "sentinel.json")
+        args = {"positional": [path], "separate": ["--output", path], "equals": [f"--output={path}"]}[form]
+        server = Mock()
+        runner = Mock()
+        monkeypatch.setattr(demo, "start_server", server)
+        monkeypatch.setattr(demo, "_run", runner)
+        monkeypatch.setattr(sys, "argv", ["demo.py", "run", "taste_card.py", *args])
+
+        with pytest.raises(SystemExit, match="real data"):
+            demo.main()
+
+        server.assert_not_called()
+        runner.assert_not_called()
+        assert not demo.DEMO_HOME.exists()
+        assert (demo.REAL_APP_DIR / "sentinel.json").read_text(encoding="utf-8") == '{"synthetic": true}'
+
+    def test_reset_removes_only_the_synthetic_demo_folder(self, monkeypatch, capsys):
+        demo.DEMO_HOME.mkdir()
+        (demo.DEMO_HOME / "demo.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(sys, "argv", ["demo.py", "reset"])
+
+        assert demo.main() == 0
+        assert f"Removed {demo.DEMO_HOME}" in capsys.readouterr().out
+        assert not demo.DEMO_HOME.exists()
+        assert (demo.REAL_APP_DIR / "sentinel.json").read_text(encoding="utf-8") == '{"synthetic": true}'
+        assert demo.main() == 0
+        assert "No demo data to remove" in capsys.readouterr().out
 
 
 @pytest.fixture

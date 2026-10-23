@@ -1,7 +1,7 @@
 # 🎧 Apple Music DJ
 
 [![Tests](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml/badge.svg)](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml)
-![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.14%20%7C%203.15-blue)
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](LICENSE)
 [![ClawHub](https://img.shields.io/badge/ClawHub-apple--music--dj-orange)](https://clawhub.ai/and3rn3t/skills/apple-music-dj)

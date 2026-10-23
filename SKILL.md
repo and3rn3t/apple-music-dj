@@ -338,6 +338,10 @@ discovery rate, library size, rating activity.
 **Year in Review:** `python3 {baseDir}/scripts/listening_insights.py year-review <profile.json> [--year 2025]`
 Comprehensive year analysis — deeper than Apple Replay. Includes obscurity score, variety
 analysis, top songs/artists/albums, total listen time, and narrative insights.
+Card: `python3 {baseDir}/scripts/listening_insights.py year-review <profile.json> > review.json` then
+`python3 {baseDir}/scripts/taste_card.py <profile.json> --mode year-review --data review.json [--format text]`.
+Offer the output's `caption` as ready-to-post text alongside the card. Without Replay for that year,
+hours show as "—" and the top artist and genre come from the current profile (the first insight says so).
 
 ### Catalog Gap Analysis
 **Triggers:** "what have I missed", "what am I missing from [artist]", "catalog gaps",

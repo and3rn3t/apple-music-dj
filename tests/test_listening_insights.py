@@ -1,7 +1,8 @@
 """Tests for listening_insights.py — timeline, streaks, year-review."""
 
 
-from listening_insights import cmd_streaks, cmd_timeline, cmd_year_review
+from listening_insights import cmd_streaks, cmd_timeline, cmd_year_review, year_review_caption
+from taste_card import generate_year_review_svg, generate_year_review_text
 
 
 # ── cmd_timeline ─────────────────────────────────────────────────
@@ -266,3 +267,66 @@ class TestCmdYearReview:
         monkeypatch.setattr("listening_insights.call_api", lambda *a, **kw: None)
         result = cmd_year_review(profile, 2024)
         assert any("mainstream" in i for i in result["insights"])
+
+
+# ── year review → taste card ─────────────────────────────────────
+
+REPLAY_2025 = {
+    "replay-summary": {"data": [{"attributes": {
+        "listenTimeInMinutes": 30000,
+        "topArtists": [{"name": "Radiohead"}],
+        "topSongs": [{"name": "Reckoner", "artistName": "Radiohead"}],
+        "topGenres": [{"name": "Alternative"}],
+    }}]},
+    "replay-milestones": {"data": [{"attributes": {"description": "10,000 minutes"}}]},
+}
+
+
+class TestYearReviewCard:
+    """`taste_card.py --mode year-review` reads cmd_year_review's output as-is."""
+
+    def test_card_fields_from_replay(self, monkeypatch, sample_profile):
+        monkeypatch.setattr("listening_insights.call_api", lambda cmd, *a, **kw: REPLAY_2025.get(cmd))
+        result = cmd_year_review(sample_profile, 2025)
+        assert result["total_minutes"] == 30000
+        assert result["top_artist"] == "Radiohead"
+        assert result["top_genre"] == "Alternative"
+        assert result["top_songs"] == [{"name": "Reckoner", "artist": "Radiohead"}]
+
+    def test_round_trip_into_card(self, monkeypatch, sample_profile):
+        monkeypatch.setattr("listening_insights.call_api", lambda cmd, *a, **kw: REPLAY_2025.get(cmd))
+        result = cmd_year_review(sample_profile, 2025)
+        text = generate_year_review_text(result)
+        assert "Hours Listened:  500" in text
+        assert "#1 Artist:       Radiohead" in text
+        assert "#1 Genre:        Alternative" in text
+        assert "Reckoner — Radiohead" in text
+        svg = generate_year_review_svg(result)
+        assert ">500<" in svg and "Reckoner" in svg
+
+    def test_without_replay_falls_back_to_profile_and_says_so(self, monkeypatch, sample_profile):
+        monkeypatch.setattr("listening_insights.call_api", lambda *a, **kw: None)
+        result = cmd_year_review(sample_profile, 2025)
+        assert result["top_artist"] == "Radiohead"
+        assert result["top_genre"] == "Alternative"
+        assert result["total_minutes"] is None
+        assert "isn't available" in result["insights"][0]
+        text = generate_year_review_text(result)
+        assert "Hours Listened:  —" in text
+        assert "None" not in text and "None" not in generate_year_review_svg(result)
+
+    def test_empty_profile_without_replay(self, monkeypatch):
+        monkeypatch.setattr("listening_insights.call_api", lambda *a, **kw: None)
+        result = cmd_year_review({}, 2025)
+        assert result["top_artist"] is None and result["top_genre"] is None
+        assert "Unknown" in generate_year_review_text(result)
+        assert result["caption"] == "My 2025 on Apple Music: a year of music. 🎧"
+
+
+class TestYearReviewCaption:
+    def test_full(self):
+        assert (year_review_caption(2025, 30000, "Radiohead", "Alternative")
+                == "My 2025 on Apple Music: 500 hours of music, #1 artist Radiohead, mostly Alternative. 🎧")
+
+    def test_leaves_out_unknowns(self):
+        assert year_review_caption(2025, None, "Radiohead", None) == "My 2025 on Apple Music: #1 artist Radiohead. 🎧"

@@ -393,13 +393,13 @@ def generate_compatibility_text(result: dict) -> str:
 def generate_year_review_svg(review: dict) -> str:
     """Generate a shareable SVG card for a year-in-review summary."""
     year = review.get("year", "")
-    total_minutes = review.get("total_minutes", 0)
-    top_genre = review.get("top_genre", "Unknown")
-    top_artist = review.get("top_artist", "Unknown")
+    total_minutes = review.get("total_minutes")
+    top_genre = review.get("top_genre") or "Unknown"
+    top_artist = review.get("top_artist") or "Unknown"
     top_songs = review.get("top_songs", [])[:5]
     milestones = review.get("milestones", [])[:4]
     insights = review.get("insights", [])[:3]
-    hours = total_minutes // 60
+    hours = f"{total_minutes // 60:,}" if total_minutes else "—"  # unknown without Replay
 
     bg = "#1a1a2e"
     card_bg = "#16213e"
@@ -423,7 +423,7 @@ def generate_year_review_svg(review: dict) -> str:
     # Big stats
     y = 118
     stats = [
-        (f"{hours:,}", "Hours Listened"),
+        (hours, "Hours Listened"),
         (_escape(top_genre), "Top Genre"),
         (_escape(top_artist), "#1 Artist"),
     ]
@@ -485,19 +485,19 @@ def generate_year_review_svg(review: dict) -> str:
 def generate_year_review_text(review: dict) -> str:
     """Generate a terminal-friendly year-in-review card."""
     year = review.get("year", "")
-    total_minutes = review.get("total_minutes", 0)
-    top_genre = review.get("top_genre", "Unknown")
-    top_artist = review.get("top_artist", "Unknown")
+    total_minutes = review.get("total_minutes")
+    top_genre = review.get("top_genre") or "Unknown"
+    top_artist = review.get("top_artist") or "Unknown"
     top_songs = review.get("top_songs", [])[:5]
     milestones = review.get("milestones", [])[:4]
     insights = review.get("insights", [])[:3]
-    hours = total_minutes // 60
+    hours = f"{total_minutes // 60:,}" if total_minutes else "—"  # unknown without Replay
 
     lines = []
     lines.append("╔══════════════════════════════════════╗")
     lines.append(f"║       🎧  YEAR IN REVIEW {year}        ║")
     lines.append("╠══════════════════════════════════════╣")
-    lines.append(f"  Hours Listened:  {hours:,}")
+    lines.append(f"  Hours Listened:  {hours}")
     lines.append(f"  #1 Genre:        {top_genre}")
     lines.append(f"  #1 Artist:       {top_artist}")
     lines.append("")

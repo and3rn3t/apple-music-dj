@@ -27,6 +27,7 @@ CHECKS = [
     "tests/test_listing.py",
     "tests/test_packaging.py",
     "tests/test_openclaw_metadata.py",
+    "tests/test_docs.py",
 ]
 
 CONCERNS = """\

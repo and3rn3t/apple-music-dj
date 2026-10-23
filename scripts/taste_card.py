@@ -18,9 +18,9 @@ Requires: A taste profile JSON (from taste_profiler.py).
 """
 
 import sys
-if sys.version_info < (3, 10):
+if sys.version_info < (3, 11):
     sys.exit(
-        f"ERROR: Python 3.10+ is required (you have "
+        f"ERROR: Python 3.11+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -393,13 +393,15 @@ def generate_compatibility_text(result: dict) -> str:
 def generate_year_review_svg(review: dict) -> str:
     """Generate a shareable SVG card for a year-in-review summary."""
     year = review.get("year", "")
-    total_minutes = review.get("total_minutes", 0)
-    top_genre = review.get("top_genre", "Unknown")
-    top_artist = review.get("top_artist", "Unknown")
+    total_minutes = review.get("total_minutes")
+    top_genre = review.get("top_genre") or "Unknown"
+    top_artist = review.get("top_artist") or "Unknown"
     top_songs = review.get("top_songs", [])[:5]
     milestones = review.get("milestones", [])[:4]
     insights = review.get("insights", [])[:3]
-    hours = total_minutes // 60
+    hours = f"{total_minutes // 60:,}" if total_minutes else "—"  # unknown without Replay
+    # Without that year's Replay, artist and genre are today's taste (listening_insights falls back).
+    now = "" if review.get("replay_available", True) else " (now)"
 
     bg = "#1a1a2e"
     card_bg = "#16213e"
@@ -423,9 +425,9 @@ def generate_year_review_svg(review: dict) -> str:
     # Big stats
     y = 118
     stats = [
-        (f"{hours:,}", "Hours Listened"),
-        (_escape(top_genre), "Top Genre"),
-        (_escape(top_artist), "#1 Artist"),
+        (hours, "Hours Listened"),
+        (_escape(top_genre), "Top Genre" + now),
+        (_escape(top_artist), "#1 Artist" + now),
     ]
     col_w = 140
     for i, (val, label) in enumerate(stats):
@@ -485,21 +487,27 @@ def generate_year_review_svg(review: dict) -> str:
 def generate_year_review_text(review: dict) -> str:
     """Generate a terminal-friendly year-in-review card."""
     year = review.get("year", "")
-    total_minutes = review.get("total_minutes", 0)
-    top_genre = review.get("top_genre", "Unknown")
-    top_artist = review.get("top_artist", "Unknown")
+    total_minutes = review.get("total_minutes")
+    top_genre = review.get("top_genre") or "Unknown"
+    top_artist = review.get("top_artist") or "Unknown"
     top_songs = review.get("top_songs", [])[:5]
     milestones = review.get("milestones", [])[:4]
     insights = review.get("insights", [])[:3]
-    hours = total_minutes // 60
+    hours = f"{total_minutes // 60:,}" if total_minutes else "—"  # unknown without Replay
+    # Without that year's Replay, artist and genre are today's taste (listening_insights falls back).
+    now = "" if review.get("replay_available", True) else " (now)"
 
     lines = []
     lines.append("╔══════════════════════════════════════╗")
     lines.append(f"║       🎧  YEAR IN REVIEW {year}        ║")
     lines.append("╠══════════════════════════════════════╣")
-    lines.append(f"  Hours Listened:  {hours:,}")
-    lines.append(f"  #1 Genre:        {top_genre}")
-    lines.append(f"  #1 Artist:       {top_artist}")
+    lines.append(f"  Hours Listened:  {hours}")
+    if now:
+        lines.append(f"  #1 Genre (now):  {top_genre}")
+        lines.append(f"  #1 Artist (now): {top_artist}")
+    else:
+        lines.append(f"  #1 Genre:        {top_genre}")
+        lines.append(f"  #1 Artist:       {top_artist}")
     lines.append("")
     if top_songs:
         lines.append("  ── TOP SONGS ──")

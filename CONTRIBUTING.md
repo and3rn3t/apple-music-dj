@@ -5,8 +5,14 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Getting Started
 
 1. Fork the repo and clone your fork
-2. Copy `.env.example` to `.env` and fill in your Apple Music tokens
-3. Verify setup: `scripts/verify_setup.sh`
+2. Install the dev tools: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, pyyaml), plus ShellCheck
+   and actionlint (`brew install shellcheck actionlint`)
+3. Try it with no account: `python3 scripts/demo.py tour`, then `make ci` (everything CI checks)
+
+You don't need an Apple Developer account to contribute: the test suite and the demo run the real
+scripts against a local mock of the API (see [Testing without an Apple Developer account](#testing-without-an-apple-developer-account)).
+To try changes on your own library as well, run `python3 scripts/setup_auth.py` (or copy
+`.env.example` to `.env` and fill in your tokens) and check with `scripts/verify_setup.sh`.
 
 ## Development
 
@@ -14,8 +20,8 @@ Thanks for your interest in contributing! Here's how to get started.
 
 - macOS or Linux
 - `curl`, `jq`, `python3` installed
-- Apple Developer Program membership (for MusicKit tokens)
-- Active Apple Music subscription (for testing)
+- For live testing only: Apple Developer Program membership (for MusicKit tokens) and an active
+  Apple Music subscription
 
 ### Project Structure
 
@@ -35,30 +41,38 @@ Thanks for your interest in contributing! Here's how to get started.
 
 **Python:**
 
-- Python 3.10+ (tested on 3.10, 3.12, and 3.14)
+- Python 3.11+ (CI tests 3.11, 3.12, 3.14 and 3.15 on Linux, and 3.14 on macOS)
 - No pip dependencies for core scripts (stdlib only)
 - `PyJWT` is the only exception (for token generation)
 - Functions use `snake_case`, classes use `PascalCase`
 - Run tests before submitting: `python3 -m pytest tests/ -v`
-- One-time setup: `pip install ruff pytest pytest-cov` (the `dev` extras in `pyproject.toml`), install
-  ShellCheck and actionlint (`brew install shellcheck actionlint`), then `pre-commit install --hook-type
-  pre-commit --hook-type commit-msg` so ruff, ShellCheck and the conventional-commit check run on every commit
+- One-time setup: `pip install -e ".[dev]"`, install ShellCheck and actionlint
+  (`brew install shellcheck actionlint`), then `pre-commit install --hook-type pre-commit --hook-type
+  commit-msg` so ruff, ShellCheck and the conventional-commit check run on every commit
 - Before submitting: `make ci` runs everything CI checks (ruff, ShellCheck, tests with the 80% coverage
   floor, actionlint); `make ruff` is the quick lint-only run
 
 ### Testing Changes
 
 ```bash
-# Verify all scripts compile/parse cleanly
-for f in scripts/*.py; do python3 -c "import py_compile; py_compile.compile('$f', doraise=True)"; done
-for f in scripts/*.sh; do bash -n "$f"; done
+make ci                                   # what CI runs; `make lint` is a quick syntax check
+make test-fast                            # just the tests, in parallel on every core
 
-# Verify API connectivity
-scripts/apple_music_api.sh verify
-
-# Run a taste profile (uses real API)
-python3 scripts/taste_profiler.py --cache /tmp/test_profile.json
+# Run any script against the mock API, no tokens needed
+python3 scripts/demo.py run strategy_engine.py --profile DEMO_PROFILE --storefront us --strategy similar --similar-to Radiohead
 ```
+
+With your own tokens (live API):
+
+```bash
+scripts/apple_music_api.sh verify                                  # API connectivity
+python3 scripts/taste_profiler.py --cache /tmp/test_profile.json  # a real taste profile
+```
+
+CI picks what to run from the files a PR changes. A PR that only touches docs (`*.md`, `assets/`,
+`LICENSE`, issue templates) runs just the tests that read docs and assets, on one Python version.
+Anything else runs lint and the full matrix. The **CI result** check sums it up either way, and it's
+the one to require in branch protection.
 
 ### Testing without an Apple Developer account
 
@@ -91,6 +105,20 @@ Maintainers only. Releases are published by CI; the manual route below is the fa
 ### Automated (preferred)
 
 `.github/workflows/publish-clawhub.yml` publishes when you **publish a GitHub release**:
+
+```mermaid
+flowchart TD
+    audit["make audit<br/>(fix what a review flags)"] --> bump["Bump SKILL.md, pyproject.toml, clawhub.json<br/>+ CHANGELOG section, merge to main"]
+    bump --> release["Publish GitHub release vX.Y.Z"]
+    release --> verify["verify job (no secrets):<br/>tag = version, changelog, on main, tests"]
+    verify --> approve{"Reviewer approves<br/>clawhub environment?"}
+    approve -->|no| done([Nothing published])
+    approve -->|yes| publish["publish job: git archive → clawhub publish"]
+    publish --> verdict{ClawHub verdict}
+    verdict -->|benign| ok([Published])
+    verdict -->|suspicious| warn([Published, run warns])
+    verdict -->|"malicious / blocked / unknown"| fail([Run fails])
+```
 
 0. **Run `make audit` first.** ClawHub's reviewer sees only the published files (not `tests/` or this
    changelog), and its verdict has flipped on identical code, so fix what it could flag before
@@ -169,10 +197,11 @@ Keep example commands in `SKILL.md` free of flag names that read like secrets (a
 If you're adding a new engagement feature or playlist strategy:
 
 1. Create the script in `scripts/`
-2. Add the feature section to `SKILL.md` (triggers, run command, description)
+2. Add a short feature section to `SKILL.md` (triggers, run command, safety rules) and the longer
+   description to `references/features.md`; SKILL.md's body stays under 500 lines
 3. Add the script to the Scripts table in `SKILL.md`
 4. Add a Quick Commands entry in `SKILL.md`
-5. Add an Example Interaction in `SKILL.md`
+5. Add an example to `references/examples.md`
 6. Update `README.md` features list, file structure, and examples
 7. If it's a playlist strategy, add the algorithm to `references/playlist-strategies.md`
 8. Update `CHANGELOG.md`

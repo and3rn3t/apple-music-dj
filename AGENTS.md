@@ -15,7 +15,7 @@ drift, Spotify import, daily pick, concert prep, new releases, cron curation).
 `SKILL.md` is what OpenClaw reads; everything else supports it. A built-in demo
 (`scripts/demo.py`) works with no tokens.
 
-Runs on macOS and Linux. Needs `curl`, `jq`, `python3` (3.10+). Account writes are opt-in
+Runs on macOS and Linux. Needs `curl`, `jq`, `python3` (3.11+). Account writes are opt-in
 and confirmed before they happen.
 
 ## Layout
@@ -40,6 +40,7 @@ tests/                # pytest; mock_api.py re-exports scripts/demo.py
 
 ```bash
 make test           # pytest tests/ -v
+make test-fast      # same, in parallel on every core (pytest-xdist)
 make coverage       # pytest with --cov-fail-under=80 (CI's floor)
 make ruff           # ruff check scripts tests .github/scripts + shellcheck scripts/*.sh
 make lint           # syntax-check every scripts/*.py and scripts/*.sh
@@ -49,7 +50,7 @@ make audit          # pre-publish self-audit (trust claims, listing, packaging, 
 make demo-svg       # regenerate assets/demo-tour.svg after the demo tour changes
 ```
 
-Dev deps: `pip install -e ".[dev]"` (pytest, pytest-cov, ruff, pyyaml); token generation
+Dev deps: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, pyyaml); token generation
 needs `requirements.txt` (`PyJWT`, `cryptography`). ShellCheck and actionlint come from the
 system (e.g. Homebrew).
 
@@ -86,9 +87,23 @@ Env vars (see `.env.example`): `APPLE_MUSIC_DEV_TOKEN`, `APPLE_MUSIC_USER_TOKEN`
   to `ALLOWED_ROOT` or to both ignore files on purpose.
 - Keep SKILL.md example commands free of flag names that read like secrets (ClawHub's
   review once flagged `--seed "<value>"`).
-- New feature: script in `scripts/`, plus SKILL.md feature section, Scripts table row,
-  Quick Commands entry and Example Interaction; README features list; strategies also go in
-  `references/playlist-strategies.md`; `CHANGELOG.md` under `[Unreleased]`.
+- New feature: script in `scripts/`, plus a short SKILL.md feature section (triggers, run line,
+  safety rules), Scripts table row and Quick Commands entry; the longer description in
+  `references/features.md` and an example in `references/examples.md`; README features list;
+  strategies also go in `references/playlist-strategies.md`; `CHANGELOG.md` under `[Unreleased]`.
+- **SKILL.md's body stays under 500 lines** (the Agent Skills guideline): detail goes in
+  `references/` and is listed in SKILL.md's Reference Files table.
+- `tests/test_docs.py` keeps the docs in step with the code: every script and reference listed in
+  SKILL.md and README's tree, no broken links or paths, every documented `--flag` real, every
+  `apple_music_api.sh` command in `references/api-reference.md`, the Python badge matching CI, and
+  `references/automation.md` matching `setup_cron.py`'s schedules.
+- **CI runs less for docs-only PRs.** A PR that only touches `*.md`, `assets/`, `LICENSE` or issue
+  templates skips lint and the matrix and runs just the tests that read docs and assets (the `docs`
+  job in `test.yml`). A new test that reads a doc or asset must be added to that job's list;
+  `tests/test_ci_workflow.py` fails until it is. Branch protection should require **CI result**.
+- **Diagrams are Mermaid** (` ```mermaid ` fences, which GitHub renders), not ASCII art. Keep them out
+  of SKILL.md, which the agent reads as plain text and must stay under 500 lines; put them in
+  `references/`, README or CONTRIBUTING, next to the prose they illustrate.
 - Conventional commits; branches `type/short-description`. License is MIT-0.
 
 ## Releasing

@@ -3,8 +3,6 @@
 # When you add, rename, or remove a label in labels.yml and push to main,
 # this workflow updates the repo's labels to match.
 # You can also run it manually via workflow_dispatch.
-#
-# TODO: Review .github/labels.yml and customize labels for your project.
 
 name: Label Sync
 

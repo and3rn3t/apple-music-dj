@@ -39,9 +39,9 @@ Requires: APPLE_MUSIC_DEV_TOKEN and APPLE_MUSIC_USER_TOKEN env vars.
 import sys
 
 # Python version guard
-if sys.version_info < (3, 10):
+if sys.version_info < (3, 11):
     sys.exit(
-        f"ERROR: Python 3.10+ is required (you have "
+        f"ERROR: Python 3.11+ is required (you have "
         f"{sys.version_info.major}.{sys.version_info.minor}). Please upgrade."
     )
 
@@ -52,14 +52,18 @@ import re
 import subprocess
 import tempfile
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 from compatibility import profile_compatibility
 from share_code import load_profile_arg, resolve_artist_ids
 from _common import (
+    apply_user_filters,
+    passes_user_filters,
+    best_genre_match,
     call_api,
     filter_generic_genres,
+    genre_proximity,  # noqa: F401  (kept importable from here)
     get_album_tracks,
     get_storefront,
     load_config,
@@ -67,6 +71,7 @@ from _common import (
     require_env_tokens,
     search_artist,
     track_energy,
+    user_filters,
     write_private,
 )
 
@@ -124,42 +129,22 @@ MOOD_MAP = {
 }
 
 
-# ── Genre Adjacency (imported concept from compatibility.py) ─────
-
-GENRE_ADJACENCY = {
-    "rock_family": {"Rock", "Alternative", "Indie", "Punk", "Metal", "Grunge"},
-    "electronic_family": {"Electronic", "Dance", "House", "Techno", "Ambient", "IDM"},
-    "hiphop_family": {"Hip-Hop/Rap", "R&B/Soul", "Funk"},
-    "folk_family": {"Folk", "Singer/Songwriter", "Country", "Americana", "Bluegrass"},
-    "jazz_family": {"Jazz", "Blues", "Bossa Nova", "Soul"},
-    "classical_family": {"Classical", "Soundtrack", "New Age"},
-    "pop_family": {"Pop", "Synth Pop", "Indie Pop", "K-Pop", "J-Pop"},
+# Numeric target for each MOOD_MAP energy label, on GENRE_ENERGY's 0-1 scale
+MOOD_ENERGY = {
+    "very-low": 0.1, "low": 0.25, "low-med": 0.35, "medium": 0.5,
+    "med-high": 0.65, "high": 0.8, "very-high": 0.95,
 }
+MIN_ENERGY_FIT = 0.5  # mood candidates below this fit only fill the list when nothing closer is left
+OFF_ENERGY_PENALTY = 1.0  # larger than any fitting score, so off-energy tracks always rank last
 
-
-def genre_proximity(genre_a: str, genre_b: str) -> float:
-    """Score genre proximity: 1.0 exact, 0.5 same family, 0.0 different."""
-    if genre_a.lower() == genre_b.lower():
-        return 1.0
-    for family in GENRE_ADJACENCY.values():
-        lower = {g.lower() for g in family}
-        if genre_a.lower() in lower and genre_b.lower() in lower:
-            return 0.5
-    return 0.0
-
-
-def best_genre_match(track_genres: list[str], target_genres: list[str]) -> float:
-    """Best proximity score between any track genre and any target genre."""
-    best = 0.0
-    for tg in track_genres:
-        for target in target_genres:
-            best = max(best, genre_proximity(tg, target))
-    return best
+# config.json preferences and recent-playlist exclusions; main() fills this in
+USER_FILTERS: dict = {}
 
 
 # ── Sequencing ───────────────────────────────────────────────────
 
 ARCS = ("wave", "ascending", "descending", "none")
+ALBUM_CAP = 2  # max tracks from one album in any playlist
 
 
 def _arc_order(tracks: list[dict], arc: str) -> list[dict]:
@@ -210,7 +195,7 @@ def sequence_tracks(tracks: list[dict], max_same_artist: int = 5, arc: str = "wa
     filtered = []
     for t in tracks:
         album = t.get("album", "")
-        if album and album_counts[album] >= 2:
+        if album and album_counts[album] >= ALBUM_CAP:
             continue
         album_counts[album] += 1
         filtered.append(t)
@@ -244,12 +229,40 @@ def sequence_tracks(tracks: list[dict], max_same_artist: int = 5, arc: str = "wa
 
 # ── Strategy: Deep Cuts ──────────────────────────────────────────
 
+# Alternate takes of a song: a version tag in brackets or after " - ", e.g. "Song (Live)",
+# "Song - Demo". A bare title word ("Live Forever") doesn't count.
+_ALT_VERSION = re.compile(
+    r"(?:[(\[]| - )[^)\]]*\b(?:live|remix(?:ed)?|demo|instrumental|acoustic|karaoke|commentary"
+    r"|a ?cappella|radio edit|rehearsal|session)\b",
+    re.IGNORECASE,
+)
+# Albums that only repeat material: live recordings and hits collections
+_REPEAT_ALBUM = re.compile(r"\blive (?:at|from|in|on)\b|[(\[]live\b|\bgreatest hits\b|\bbest of\b",
+                           re.IGNORECASE)
+DEEP_CUT_ALBUMS_PER_ARTIST = 4
+DEEP_CUT_POSITION_BONUS = 0.15  # the last track of an album gets this much over the first
+
+
+def _is_alt_version(name: str) -> bool:
+    return bool(_ALT_VERSION.search(name))
+
+
+def _title_key(name: str) -> str:
+    """Song title without bracketed or " - " suffixes, for spotting one song on several releases."""
+    base = re.split(r"\s[(\[]|\s-\s", name, maxsplit=1)[0]
+    return re.sub(r"[\W_]", "", base.casefold())  # \W is Unicode-aware: 春 and 夏 stay distinct
+
+
 def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[dict]:
     """Hidden gems from artists the user already loves."""
     top_artists = profile.get("top_artists", [])[:15]
     library_ids = set(profile.get("library_song_ids", []))
     disliked = set(profile.get("disliked_song_ids", []))
+    rng = random.Random()
+    cap = 3
     candidates = []
+    seen_titles: set[tuple[str, str]] = set()
+    per_album: Counter = Counter()  # eligible candidates per (artist, album)
 
     for i, artist in enumerate(top_artists):
         artist_id = artist.get("id")
@@ -259,40 +272,41 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
         print(f"  [{i+1}/{len(top_artists)}] Scanning {artist_name}...", file=sys.stderr)
 
         # Get top songs to identify hits to exclude
-        top_data = call_api("artist-top", sf, artist_id)
-        top_song_names = set()
-        if top_data and "data" in top_data:
-            for ad in top_data["data"]:
-                views = ad.get("views", {})
-                for ts in views.get("top-songs", {}).get("data", []):
-                    name = ts.get("attributes", {}).get("name", "")
-                    if name:
-                        top_song_names.add(name.lower())
+        top_song_keys = {_title_key(ts.get("attributes", {}).get("name", ""))
+                         for ts in _artist_top_songs(sf, artist_id)}
+        top_song_keys.discard("")
 
-        # Fetch discography
+        # Fetch discography: full albums only, a random few per artist so the scan stays cheap
         albums_data = call_api("artist-albums", sf, artist_id)
         if not albums_data or "data" not in albums_data:
             continue
+        albums = [a for a in albums_data["data"]
+                  if not a.get("attributes", {}).get("isSingle", False)
+                  and not a.get("attributes", {}).get("isCompilation", False)
+                  and not _REPEAT_ALBUM.search(a.get("attributes", {}).get("name", ""))]
+        rng.shuffle(albums)
 
-        for album in albums_data["data"]:
+        # Artists you play more get a head start, as in the era strategy
+        artist_weight = min(artist.get("play_weight", 0) * 2, 0.3)
+        for album in albums[:DEEP_CUT_ALBUMS_PER_ARTIST]:
             album_attrs = album.get("attributes", {})
-            if album_attrs.get("isSingle", False):
-                continue
-
             album_tracks = get_album_tracks(sf, album["id"])
-            for track in album_tracks:
+            last_position = max(len(album_tracks) - 1, 1)
+            for position, track in enumerate(album_tracks):
                 tid = track.get("id", "")
                 attrs = track.get("attributes", {})
                 name = attrs.get("name", "")
+                key = (attrs.get("artistName", artist_name).lower(), _title_key(name))
 
-                # Exclude: in library, disliked, top songs
+                # Exclude: in library, disliked, top songs, alternate takes, repeats from another release
                 if tid in library_ids or tid in disliked:
                     continue
-                if name.lower() in top_song_names:
+                if key[1] in top_song_keys or _is_alt_version(name) or key in seen_titles:
                     continue
+                seen_titles.add(key)
 
-                track_num = attrs.get("trackNumber", 1)
-                candidates.append({
+                track_num = attrs.get("trackNumber", position + 1)
+                candidate = {
                     "id": tid,
                     "name": name,
                     "artist": attrs.get("artistName", artist_name),
@@ -300,50 +314,52 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
                     "genre": filter_generic_genres(attrs.get("genreNames", [])),
                     "source": "deep_cut",
                     "reason": f"A deep cut from {artist_name} — album track you haven't heard.",
-                    "_score": 0.5 + (track_num / 30),  # later tracks score slightly higher
-                })
+                    # later tracks score slightly higher
+                    "_score": 0.5 + artist_weight
+                              + DEEP_CUT_POSITION_BONUS * min(max(track_num - 1, 0) / last_position, 1.0),
+                }
+                if not passes_user_filters(candidate, USER_FILTERS):
+                    continue
+                candidates.append(candidate)
+                per_album[(candidate["artist"], candidate["album"])] += 1
 
-        if len(candidates) >= target_size * 3:
-            break  # enough candidates
+        # Enough candidates, and enough of them under the album (2) and artist caps to fill the list
+        usable_per_artist: Counter = Counter()
+        for (artist_key, _album), n in per_album.items():
+            usable_per_artist[artist_key] += min(n, ALBUM_CAP)
+        capacity = sum(min(n, cap) for n in usable_per_artist.values())
+        if len(candidates) >= target_size * 3 and capacity >= target_size:
+            break
 
-    # Score and sort
-    rng = random.Random()
-    for c in candidates:
-        c["_score"] += rng.random() * 0.2
-
-    candidates.sort(key=lambda c: c["_score"], reverse=True)
-    selected = candidates[:target_size]
-
-    # Clean up internal fields
-    for c in selected:
-        c.pop("_score", None)
-
-    return sequence_tracks(selected)
+    return _finish(candidates, target_size, cap=cap)
 
 
 # ── Strategy: Mood/Activity ──────────────────────────────────────
 
 def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> list[dict]:
-    """Mood/Activity-matched playlist filtered through user taste."""
+    """Mood/Activity-matched playlist filtered through user taste.
+
+    Score = 0.5 x mood-genre match + 0.35 x energy fit + 0.15 x taste match (+0.1 for your
+    own artists). Energy fit is 1 - |track energy - the mood's target|; tracks below
+    MIN_ENERGY_FIT rank behind every track that fits, so a "sleep" mix only reaches for a
+    loud track when the catalog has nothing quieter.
+    """
     mood_config = MOOD_MAP.get(mood)
     if not mood_config:
         print(f"ERROR: Unknown mood '{mood}'. Available: {', '.join(MOOD_MAP)}", file=sys.stderr)
         sys.exit(1)
 
     target_genres = mood_config["genres"]
+    target_energy = MOOD_ENERGY[mood_config["energy"]]
     user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:10]]
     library_ids = set(profile.get("library_song_ids", []))
     disliked = set(profile.get("disliked_song_ids", []))
 
-    # Cross-reference mood genres with user preferences
-    personalized_genres = []
-    for mg in target_genres:
-        if mg in user_genres:
-            personalized_genres.append(mg)
-    # Add mood genres even if not in user taste (that's the point)
-    for mg in target_genres:
-        if mg not in personalized_genres:
-            personalized_genres.append(mg)
+    def score(genres: list[str]) -> float:
+        energy_fit = 1 - abs(track_energy(genres) - target_energy)
+        total = (0.5 * best_genre_match(genres, target_genres) + 0.35 * energy_fit
+                 + 0.15 * best_genre_match(genres, user_genres))
+        return total - OFF_ENERGY_PENALTY if energy_fit < MIN_ENERGY_FIT else total
 
     candidates = []
 
@@ -360,8 +376,7 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                         tid = item.get("id", "")
                         if tid in library_ids or tid in disliked:
                             continue
-                        match = best_genre_match(item_genres, personalized_genres)
-                        if match > 0:
+                        if best_genre_match(item_genres, target_genres) > 0:
                             candidates.append({
                                 "id": tid,
                                 "name": attrs.get("name", ""),
@@ -370,7 +385,7 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                                 "genre": item_genres,
                                 "source": "trending",
                                 "reason": f"Matches your {mood} vibe.",
-                                "_score": match,
+                                "_score": score(item_genres),
                             })
 
     # Source 2: Deep cuts from user's artists in mood-relevant genres
@@ -391,8 +406,7 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                 if tid in library_ids or tid in disliked:
                     continue
                 item_genres = filter_generic_genres(attrs.get("genreNames", []))
-                match = best_genre_match(item_genres, personalized_genres)
-                if match > 0:
+                if best_genre_match(item_genres, target_genres) > 0:
                     candidates.append({
                         "id": tid,
                         "name": attrs.get("name", ""),
@@ -401,20 +415,10 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                         "genre": item_genres,
                         "source": "deep_cut",
                         "reason": f"From {artist['name']} — fits your {mood} mood.",
-                        "_score": match + 0.1,  # slight boost for familiar artists
+                        "_score": score(item_genres) + 0.1,  # slight boost for familiar artists
                     })
 
-    # Add randomness and sort
-    rng = random.Random()
-    for c in candidates:
-        c["_score"] += rng.random() * 0.2
-
-    candidates.sort(key=lambda c: c["_score"], reverse=True)
-    selected = candidates[:target_size]
-    for c in selected:
-        c.pop("_score", None)
-
-    return sequence_tracks(selected, arc=mood_config.get("arc", "wave"))
+    return _finish(candidates, target_size, arc=mood_config.get("arc", "wave"))
 
 
 # ── Strategy: Trend Radar ────────────────────────────────────────
@@ -436,7 +440,8 @@ def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
         for section in charts.get("results", {}).values():
             if isinstance(section, list):
                 for chart in section:
-                    for rank, item in enumerate(chart.get("data", [])):
+                    chart_items = chart.get("data", [])
+                    for rank, item in enumerate(chart_items):
                         attrs = item.get("attributes", {})
                         tid = item.get("id", "")
                         if not tid or tid in library_ids or tid in disliked or tid in seen_ids:
@@ -449,7 +454,7 @@ def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
                         if artist_name.lower() in user_artist_names:
                             taste_match = max(taste_match, 0.8)
 
-                        rank_weight = 1.0 - (rank / 25) * 0.3  # top-ranked gets slight bonus
+                        rank_weight = 1.0 - (rank / len(chart_items)) * 0.3  # top-ranked gets slight bonus
                         score = taste_match * rank_weight
 
                         candidates.append({
@@ -465,16 +470,17 @@ def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
                         })
 
     # Separate wildcards (zero taste match) and matched
+    candidates = apply_user_filters(candidates, USER_FILTERS)
     matched = [c for c in candidates if not c.get("_is_wildcard")]
     wildcards = [c for c in candidates if c.get("_is_wildcard")]
 
     # Sort matched by score
     matched.sort(key=lambda c: c["_score"], reverse=True)
 
-    # Pick main tracks + 2-3 wildcards
-    wildcard_count = min(3, len(wildcards))
+    # Pick main tracks (max 3 per artist) + 2-3 wildcards
+    wildcard_count = min(3, len(wildcards), max(target_size, 0))
     main_count = target_size - wildcard_count
-    selected = matched[:main_count]
+    selected = _cap_per_artist(matched, main_count)
 
     if wildcards:
         rng = random.Random()
@@ -508,19 +514,17 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
         artist_name = artist.get("name", "")
         print(f"  Exploring from {artist_name}...", file=sys.stderr)
 
-        # Search for adjacent artists using name + genre terms
-        artist_obj = search_artist(sf, artist_name)
-        if not artist_obj:
-            continue
-        artist_genres = [g for g in artist_obj.get("attributes", {}).get("genreNames", [])
-                         if g.lower() != "music"]
-        search_query = f"{artist_name} {' '.join(artist_genres[:2])}"
+        # Apple's similar artists when the catalog has them; otherwise search by name + genre
+        candidates = _similar_artists(sf, artist["id"]) if artist.get("id") else []
+        if not candidates:
+            artist_obj = search_artist(sf, artist_name)
+            if not artist_obj:
+                continue
+            artist_genres = [g for g in artist_obj.get("attributes", {}).get("genreNames", [])
+                             if g.lower() != "music"]
+            search_query = f"{artist_name} {' '.join(artist_genres[:2])}"
+            candidates = _first_data(call_api("search", sf, search_query, "artists"), "artists")
 
-        results = call_api("search", sf, search_query, "artists")
-        if not results:
-            continue
-
-        candidates = results.get("results", {}).get("artists", {}).get("data", [])
         for c in candidates:
             cid = c.get("id", "")
             cname = c.get("attributes", {}).get("name", "")
@@ -572,28 +576,46 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
                     "zone": disc["zone"],
                     "reason": f"Discovered via {disc['seed_artist']} — {disc['zone']} zone.",
                     "_proximity": disc["proximity"],
+                    "_score": 0.0,  # only the user filters' preferred-genre boost ranks within a zone
                 })
 
     # Build gradient: familiar first, then expansion, then frontier
+    all_tracks = apply_user_filters(all_tracks, USER_FILTERS)
     familiar = [t for t in all_tracks if t.get("zone") == "familiar"]
     expansion = [t for t in all_tracks if t.get("zone") == "expansion"]
     frontier = [t for t in all_tracks if t.get("zone") == "frontier"]
 
     # Allocate proportionally to target:  ~30% familiar, ~45% expansion, ~25% frontier
-    fam_count = max(1, int(target_size * 0.3))
-    exp_count = max(1, int(target_size * 0.45))
-    fro_count = target_size - fam_count - exp_count
+    # (no max(1, ...): for tiny sizes that made the frontier quota negative, and a negative
+    # slice returns almost the whole zone)
+    fam_count = int(target_size * 0.3)
+    exp_count = int(target_size * 0.45)
+    fro_count = max(target_size - fam_count - exp_count, 0)
 
     rng = random.Random()
-    rng.shuffle(familiar)
-    rng.shuffle(expansion)
-    rng.shuffle(frontier)
+    zones = {"familiar": familiar, "expansion": expansion, "frontier": frontier}
+    for tracks in zones.values():
+        rng.shuffle(tracks)  # random order among equally preferred tracks
+        tracks.sort(key=lambda t: t["_score"], reverse=True)  # stable: preferred genres first
+    picked = {"familiar": familiar[:fam_count], "expansion": expansion[:exp_count],
+              "frontier": frontier[:fro_count]}
 
-    selected = familiar[:fam_count] + expansion[:exp_count] + frontier[:fro_count]
+    # A short zone is backfilled from the others' leftovers, middle zone first,
+    # so the playlist still reaches its length and keeps the gradient order
+    short = target_size - sum(len(t) for t in picked.values())
+    for zone in ("expansion", "familiar", "frontier"):
+        if short <= 0:
+            break
+        extra = zones[zone][len(picked[zone]):][:short]
+        picked[zone] += extra
+        short -= len(extra)
+
+    selected = picked["familiar"] + picked["expansion"] + picked["frontier"]
 
     # Clean internal fields
     for c in selected:
         c.pop("_proximity", None)
+        c.pop("_score", None)
 
     # Don't re-sequence — the gradient order IS the sequence
     return selected
@@ -674,7 +696,9 @@ def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int =
         albums_data = call_api("artist-albums", sf, artist["id"])
         if not albums_data or "data" not in albums_data:
             continue
-        for album in albums_data["data"][:2]:
+        newest_first = sorted(albums_data["data"], key=lambda a: a.get("attributes", {}).get("releaseDate", ""),
+                              reverse=True)
+        for album in newest_first[:2]:
             album_tracks = get_album_tracks(sf, album["id"])
             for track in album_tracks:
                 tid = track.get("id", "")
@@ -692,16 +716,8 @@ def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int =
                     "_score": 0.7,
                 })
 
-    rng = random.Random()
-    for c in candidates:
-        c["_score"] += rng.random() * 0.2
-
-    candidates.sort(key=lambda c: c["_score"], reverse=True)
-    selected = candidates[:target_add]
-    for c in selected:
-        c.pop("_score", None)
-
-    return selected
+    # Additions keep their score order (no arc): they're appended to a playlist that already has one
+    return _finish(candidates, target_add, arc="none")
 
 
 # ── Shared helpers for seed / era / blend ────────────────────────
@@ -756,22 +772,29 @@ def _similar_artists(sf: str, artist_id: str) -> list[dict]:
 
 def _cap_per_artist(candidates: list[dict], target_size: int, cap: int = 3,
                     side_cap: int | None = None) -> list[dict]:
-    """Pick the best-scoring candidates with at most `cap` tracks per artist.
+    """Pick the best-scoring candidates with at most `cap` tracks per artist and
+    ALBUM_CAP per album (the same album rule sequence_tracks applies, so nothing picked
+    here is dropped there).
 
     `side_cap` (blend only) limits how many tracks may come from each of the
     "a" / "b" sources so neither listener dominates.
     """
     counts: Counter = Counter()
     sides: Counter = Counter()
-    picked = []
+    albums: Counter = Counter()
+    picked: list[dict] = []
+    if target_size <= 0:
+        return picked
     for c in candidates:
         artist = c.get("artist", "")
+        album = c.get("album", "")
         side = c.get("source")
-        if counts[artist] >= cap:
+        if counts[artist] >= cap or (album and albums[album] >= ALBUM_CAP):
             continue
         if side_cap is not None and side in ("a", "b") and sides[side] >= side_cap:
             continue
         counts[artist] += 1
+        albums[album] += 1
         sides[side] += 1
         picked.append(c)
         if len(picked) >= target_size:
@@ -796,11 +819,11 @@ def _enforce_share(selected: list[dict], max_share: float) -> list[dict]:
 
 def _finish(candidates: list[dict], target_size: int, arc: str = "wave", cap: int = 3,
             side_cap: int | None = None, max_share: float | None = None) -> list[dict]:
-    """Jitter, sort, cap per artist, strip internals, then sequence."""
+    """Apply the user's filters, jitter, sort, cap per artist, strip internals, then sequence."""
     rng = random.Random()
     seen: set[str] = set()
     unique = []
-    for c in candidates:
+    for c in apply_user_filters(candidates, USER_FILTERS):
         if c["id"] and c["id"] not in seen:
             seen.add(c["id"])
             c["_score"] += rng.random() * 0.1
@@ -1077,7 +1100,7 @@ def generate_name(strategy: str, mood: str | None = None,
                   profile: dict | None = None, seed: str | None = None,
                   decade: str | None = None) -> str:
     """Auto-generate a playlist name."""
-    date_str = datetime.now(timezone.utc).strftime("%b %Y")
+    date_str = datetime.now(UTC).strftime("%b %Y")
     if strategy == "deep-cuts":
         artists = profile.get("top_artists", [])[:2] if profile else []
         artist_str = " & ".join(a["name"] for a in artists) if artists else "Your Favorites"
@@ -1250,6 +1273,15 @@ def main():
     sf = get_storefront(args.storefront or config.get("default_storefront"))
 
     target_size = args.size or config.get("playlist_size", 30)
+
+    # excluded_artists / preferred_genres from config.json, and tracks the DJ used recently
+    repeat_days = config.get("avoid_repeat_days", 30)
+    recent_ids: set[str] = set()
+    if isinstance(repeat_days, int) and repeat_days > 0:
+        from playlist_history import get_recent_track_ids
+        recent_ids = get_recent_track_ids(repeat_days)
+    USER_FILTERS.clear()
+    USER_FILTERS.update(user_filters(config, recent_ids))
 
     print(f"🎧 Strategy: {args.strategy} | Target: {target_size} tracks", file=sys.stderr)
 

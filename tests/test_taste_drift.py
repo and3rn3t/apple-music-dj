@@ -128,14 +128,10 @@ class TestSnapshotErrors:
 
     def test_unreadable_snapshot_is_a_clean_error(self, tmp_path):
         save_snapshot(_profile([("Rock", 1.0)], ["A"], day="2026-04-01"), tmp_path)
-        bad = tmp_path / "2026-01-01.json"
-        bad.write_text("{}")
-        bad.chmod(0)
-        try:
-            with pytest.raises(ValueError, match="Can't read snapshot"):
-                td.run(_args(), tmp_path)
-        finally:
-            bad.chmod(0o600)
+        # A directory with a snapshot's name fails to open for every user, root included.
+        (tmp_path / "2026-01-01.json").mkdir()
+        with pytest.raises(ValueError, match="Can't read snapshot"):
+            td.run(_args(), tmp_path)
 
     def test_cli_reports_instead_of_tracebacks(self, tmp_path, monkeypatch, capsys):
         import sys

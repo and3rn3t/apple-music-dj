@@ -16,12 +16,12 @@ import stat
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 import contextlib
 
 # ── Python version guard ──────────────────────────────────────────
-_MIN_PYTHON = (3, 10)
+_MIN_PYTHON = (3, 11)
 if sys.version_info < _MIN_PYTHON:
     sys.exit(
         f"ERROR: Python {_MIN_PYTHON[0]}.{_MIN_PYTHON[1]}+ is required "
@@ -47,6 +47,18 @@ GENRE_ENERGY = {
 HIGH_ENERGY = 0.7
 LOW_ENERGY = 0.3
 
+# Genres in the same family get half credit when tastes and tracks are compared
+GENRE_ADJACENCY = {
+    "rock_family": {"Rock", "Alternative", "Indie", "Punk", "Metal", "Grunge"},
+    "electronic_family": {"Electronic", "Dance", "House", "Techno", "Ambient", "IDM"},
+    "hiphop_family": {"Hip-Hop/Rap", "R&B/Soul", "Funk"},
+    "folk_family": {"Folk", "Singer/Songwriter", "Country", "Americana", "Bluegrass"},
+    "jazz_family": {"Jazz", "Blues", "Bossa Nova", "Soul"},
+    "classical_family": {"Classical", "Soundtrack", "New Age"},
+    "pop_family": {"Pop", "Synth Pop", "Indie Pop", "K-Pop", "J-Pop"},
+}
+_GENRE_FAMILIES = [{g.lower() for g in family} for family in GENRE_ADJACENCY.values()]
+
 SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
 
@@ -62,6 +74,7 @@ DEFAULT_CONFIG = {
     "excluded_artists": [],
     "playlist_size": 30,
     "cache_ttl_hours": 168,
+    "avoid_repeat_days": 30,
 }
 
 
@@ -330,7 +343,7 @@ def user_token_fingerprint(token: str) -> str:
 
 def record_user_token(token: str, path: Path | None = None, when: datetime | None = None) -> None:
     """Remember today (or `when`) as the day this user token was issued or first seen."""
-    when = when or datetime.now(timezone.utc)
+    when = when or datetime.now(UTC)
     write_private(Path(path) if path else USER_TOKEN_SEEN,
                   json.dumps({"fingerprint": user_token_fingerprint(token),
                               "first_seen": when.date().isoformat()}) + "\n")
@@ -347,7 +360,7 @@ def check_user_token_age(warn_days: int = 14, path: Path | None = None) -> dict 
     if not token or os.environ.get("APPLE_MUSIC_DJ_DEMO"):
         return None
     path = Path(path) if path else USER_TOKEN_SEEN
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     try:
         seen = json.loads(path.read_text()) if path.is_file() else {}
         if not isinstance(seen, dict) or seen.get("fingerprint") != user_token_fingerprint(token):
@@ -423,6 +436,62 @@ def track_energy(genres: list[str]) -> float:
     return sum(known) / len(known) if known else 0.5
 
 
+def genre_proximity(genre_a: str, genre_b: str) -> float:
+    """Score genre proximity: 1.0 exact, 0.5 same family, 0.0 different."""
+    a, b = genre_a.lower(), genre_b.lower()
+    if a == b:
+        return 1.0
+    if any(a in family and b in family for family in _GENRE_FAMILIES):
+        return 0.5
+    return 0.0
+
+
+def best_genre_match(track_genres: list[str], target_genres: list[str]) -> float:
+    """Best proximity score between any track genre and any target genre."""
+    return max((genre_proximity(tg, target) for tg in track_genres for target in target_genres), default=0.0)
+
+
+# ── User preferences applied to every playlist ───────────────────
+
+PREFERRED_GENRE_BOOST = 0.1
+
+
+def user_filters(config: dict, recent_track_ids: set[str] | None = None) -> dict:
+    """The parts of config.json (and recent playlist history) that every strategy honours."""
+    return {
+        "excluded_artists": {a.lower() for a in config.get("excluded_artists") or [] if isinstance(a, str)},
+        "preferred_genres": [g for g in config.get("preferred_genres") or [] if isinstance(g, str)],
+        "recent_track_ids": set(recent_track_ids or ()),
+    }
+
+
+def passes_user_filters(candidate: dict, filters: dict | None) -> bool:
+    """False for an excluded artist or a track used in a recent DJ playlist."""
+    if not filters:
+        return True
+    return (candidate.get("artist", "").lower() not in (filters.get("excluded_artists") or set())
+            and candidate.get("id") not in (filters.get("recent_track_ids") or set()))
+
+
+def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dict]:
+    """Drop excluded artists and recently used tracks; nudge preferred genres up.
+
+    Candidates with a ``_score`` get ``PREFERRED_GENRE_BOOST`` scaled by how well they
+    match a preferred genre (half for a family match).
+    """
+    if not filters:
+        return candidates
+    preferred = filters.get("preferred_genres") or []
+    kept = []
+    for c in candidates:
+        if not passes_user_filters(c, filters):
+            continue
+        if preferred and "_score" in c:
+            c["_score"] += PREFERRED_GENRE_BOOST * best_genre_match(c.get("genre", []), preferred)
+        kept.append(c)
+    return kept
+
+
 # ── Taste snapshots (for drift tracking) ─────────────────────────
 
 def make_snapshot(profile: dict) -> dict:
@@ -443,7 +512,7 @@ def make_snapshot(profile: dict) -> dict:
         "energy_profile": profile.get("energy_profile", "balanced"),
         "variety_score": profile.get("variety_score", 0.5),
         "mainstream_score": profile.get("mainstream_score", 0.5),
-        "generated_at": profile.get("generated_at") or datetime.now(timezone.utc).isoformat(),
+        "generated_at": profile.get("generated_at") or datetime.now(UTC).isoformat(),
     }
 
 

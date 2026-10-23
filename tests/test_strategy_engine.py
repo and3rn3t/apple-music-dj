@@ -1,6 +1,7 @@
 """Tests for strategy_engine — playlist strategy engine."""
 
 import json
+from collections import Counter
 from unittest.mock import MagicMock
 import pytest
 
@@ -1101,3 +1102,299 @@ class TestMainCli:
         with pytest.raises(SystemExit):
             cli["run"]("--strategy", "trend", "--create", "--favorite")
         assert cli["favorited"] == []
+
+
+# ── Scoring fixes (deep cuts, mood energy, constellation, trend, refresh, user filters) ──
+
+@pytest.fixture(autouse=True)
+def _no_user_filters():
+    """main() fills USER_FILTERS from config; strategy tests start from none."""
+    se.USER_FILTERS.clear()
+    yield
+    se.USER_FILTERS.clear()
+
+
+def _track(tid, name, artist, genres=("Alternative",), number=1):
+    return {"id": tid, "attributes": {"name": name, "artistName": artist,
+                                      "genreNames": list(genres), "trackNumber": number}}
+
+
+class TestAltVersions:
+    @pytest.mark.parametrize("name", ["Creep (Live)", "Creep - Live at Glastonbury", "Lucky [Demo]",
+                                      "Reckoner (Remix)", "Nude (Acoustic Version)", "Airbag - Radio Edit",
+                                      "Song (BBC Session)"])
+    def test_alternate_takes(self, name):
+        assert se._is_alt_version(name)
+
+    @pytest.mark.parametrize("name", ["Live Forever", "Demolition Man", "Remix to Ignition", "Song (Remastered)"])
+    def test_plain_titles(self, name):
+        assert not se._is_alt_version(name)
+
+    def test_title_key_ignores_suffixes(self):
+        assert se._title_key("Lucky (2017 Remaster)") == se._title_key("Lucky") == se._title_key("Lucky - Edit")
+
+
+class TestDeepCutsScoring:
+    PROFILE = {"top_artists": [{"name": "Big", "id": "big", "play_weight": 0.5},
+                               {"name": "Mid", "id": "mid", "play_weight": 0.1},
+                               {"name": "Small", "id": "small", "play_weight": 0.05}],
+               "library_song_ids": [], "disliked_song_ids": []}
+
+    def _mock(self, monkeypatch, albums, tracks, top_songs=()):
+        def api(cmd, *args, **kw):
+            if cmd == "artist-albums":
+                return {"data": albums(args[1])}
+            if cmd == "artist-top":
+                return _top([{"attributes": {"name": n}} for n in top_songs])
+            return None
+        monkeypatch.setattr(se, "call_api", api)
+        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: tracks(aid))
+
+    def test_one_prolific_artist_cannot_fill_the_playlist(self, monkeypatch):
+        """Regression: the first artist's discography used to fill the whole list."""
+        self._mock(monkeypatch,
+                   lambda artist: [{"id": f"{artist}-alb{i}", "attributes": {"name": f"{artist} {i}"}}
+                                   for i in range(5)],
+                   lambda aid: [_track(f"{aid}-{n}", f"{aid} song {n}", aid.split("-")[0].title(), number=n)
+                                for n in range(1, 13)])
+        result = se.strategy_deep_cuts(self.PROFILE, "us", target_size=9)
+        counts = Counter(t["artist"] for t in result)
+        assert len(result) == 9
+        assert max(counts.values()) <= 3
+
+    def test_skips_alt_versions_repeats_hits_and_live_albums(self, monkeypatch):
+        albums = lambda artist: [  # noqa: E731
+            {"id": "studio", "attributes": {"name": "Studio"}},
+            {"id": "deluxe", "attributes": {"name": "Studio (Deluxe)"}},
+            {"id": "live", "attributes": {"name": "Live at Wembley"}},
+            {"id": "hits", "attributes": {"name": "Hits", "isCompilation": True}},
+        ] if artist == "big" else []
+        tracks = {
+            "studio": [_track("s1", "Gem", "Big"), _track("s2", "Hit Song", "Big"),
+                       _track("s3", "Gem (Live)", "Big")],
+            "deluxe": [_track("d1", "Gem (2020 Remaster)", "Big"), _track("d2", "Bonus", "Big")],
+            "live": [_track("l1", "Concert Only", "Big")],
+            "hits": [_track("h1", "Compiled", "Big")],
+        }
+        self._mock(monkeypatch, albums, lambda aid: tracks[aid], top_songs=["Hit Song"])
+        names = sorted(t["name"] for t in se.strategy_deep_cuts(self.PROFILE, "us", target_size=10))
+        assert names in (["Bonus", "Gem"], ["Bonus", "Gem (2020 Remaster)"])
+
+    def test_position_bonus_is_bounded(self, monkeypatch):
+        """A track numbered 40 used to score +1.3; now nothing beats the artist weight by more than 0.15."""
+        captured = {}
+        monkeypatch.setattr(se, "_finish", lambda cands, *a, **k: captured.setdefault("c", cands) and [])
+        self._mock(monkeypatch, lambda a: [{"id": "a", "attributes": {"name": "Long"}}] if a == "small" else [],
+                   lambda aid: [_track(f"t{n}", f"Song {n}", "Small", number=n) for n in (1, 20, 40)])
+        se.strategy_deep_cuts(self.PROFILE, "us", target_size=5)
+        scores = [c["_score"] for c in captured["c"]]
+        assert min(scores) == pytest.approx(0.6)  # 0.5 + play_weight 0.05 * 2
+        assert max(scores) == pytest.approx(0.75)
+
+
+class TestMoodEnergy:
+    def _charts(self, *items):
+        return {"results": {"songs": [{"data": [
+            {"id": tid, "attributes": {"name": tid, "artistName": tid, "genreNames": genres}}
+            for tid, genres in items]}]}}
+
+    def test_quiet_track_beats_a_loud_genre_match(self, monkeypatch):
+        charts = self._charts(("loud", ["Electronic"]), ("quiet", ["Ambient"]))
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        result = se.strategy_mood({"genre_distribution": [{"genre": "Electronic", "weight": 1}]},
+                                  "us", "sleep", target_size=1)
+        assert [t["id"] for t in result] == ["quiet"]
+
+    def test_off_energy_tracks_still_fill_when_nothing_fits(self, monkeypatch):
+        charts = self._charts(("loud", ["Electronic"]))
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        assert [t["id"] for t in se.strategy_mood({}, "us", "sleep", target_size=3)] == ["loud"]
+
+    def test_every_mood_energy_has_a_target(self):
+        assert {m["energy"] for m in se.MOOD_MAP.values()} <= set(se.MOOD_ENERGY)
+
+
+class TestConstellationDiscovery:
+    PROFILE = {"top_artists": [{"name": "Seed", "id": "seed"}],
+               "genre_distribution": [{"genre": "Alternative", "weight": 1.0}]}
+
+    def test_uses_similar_artists_before_search(self, monkeypatch):
+        """#61: discovery comes from Apple's similar artists, not a text search."""
+        calls = []
+
+        def api(cmd, *args, **kw):
+            calls.append(cmd)
+            if cmd == "similar-artists":
+                return {"data": [_artist("n1", "Neighbour")]}
+            if cmd == "artist-top":
+                return _top([_song("x1", "Song", "Neighbour")])
+            return None
+        monkeypatch.setattr(se, "call_api", api)
+        monkeypatch.setattr(se, "search_artist", lambda *a: pytest.fail("searched despite similar artists"))
+        result = se.strategy_constellation(self.PROFILE, "us", target_size=5)
+        assert [t["artist"] for t in result] == ["Neighbour"]
+        assert "search" not in calls
+
+    def test_short_zones_are_backfilled(self, monkeypatch):
+        """Only familiar-zone artists exist: the playlist still reaches its length."""
+        neighbours = [_artist(f"n{i}", f"Band {i}") for i in range(4)]
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+                            {"data": neighbours} if cmd == "similar-artists"
+                            else _top([_song(f"{a[1]}-{j}", f"S{j}", a[1]) for j in range(3)])
+                            if cmd == "artist-top" else None)
+        result = se.strategy_constellation(self.PROFILE, "us", target_size=10)
+        assert len(result) == 10
+        assert {t["zone"] for t in result} == {"familiar"}
+
+
+class TestTrendCaps:
+    def test_long_chart_and_artist_cap(self, sample_profile, monkeypatch):
+        charts = {"results": {"songs": [{"data": [
+            {"id": f"t{i}", "attributes": {"name": f"T{i}", "artistName": "Hog" if i < 30 else f"A{i}",
+                                            "genreNames": ["Alternative"]}}
+            for i in range(60)]}]}}
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        result = se.strategy_trend(sample_profile, "us", target_size=12)
+        assert len(result) == 12
+        assert Counter(t["artist"] for t in result)["Hog"] <= 3
+
+
+class TestRefreshNewest:
+    def test_new_from_artist_uses_newest_albums(self, sample_profile, monkeypatch):
+        playlist = {"data": [{"id": "p", "attributes": {"name": "Old", "artistName": "Band",
+                                                          "genreNames": ["Rock"]}}]}
+        albums = {"data": [{"id": "old", "attributes": {"name": "Old", "releaseDate": "1999-01-01"}},
+                           {"id": "new", "attributes": {"name": "New", "releaseDate": "2024-01-01"}},
+                           {"id": "mid", "attributes": {"name": "Mid", "releaseDate": "2010-01-01"}}]}
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+                            playlist if cmd == "playlist-tracks" else albums if cmd == "artist-albums" else None)
+        monkeypatch.setattr(se, "search_artist", lambda sf, name: {"id": "b", "attributes": {"name": name}})
+        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [_track(f"{aid}1", aid, "Band")])
+        ids = {t["id"] for t in se.strategy_refresh(sample_profile, "us", "pl", target_add=5)}
+        assert ids == {"new1", "mid1"}
+
+
+class TestUserFiltersInStrategies:
+    def test_finish_drops_excluded_and_recent(self):
+        se.USER_FILTERS.update(se.user_filters({"excluded_artists": ["Nope"]}, {"r1"}))
+        cands = [{"id": "a", "artist": "Nope", "_score": 1.0}, {"id": "r1", "artist": "X", "_score": 1.0},
+                 {"id": "k", "artist": "Y", "_score": 1.0}]
+        assert [t["id"] for t in se._finish(cands, 10, arc="none")] == ["k"]
+
+    def test_main_loads_config_and_recent_history(self, monkeypatch, tmp_path, sample_profile):
+        import sys
+        import playlist_history
+        playlist_history.log_playlist("Last week", "trend", ["used1"])
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {"excluded_artists": ["Nope"], "avoid_repeat_days": 7})
+        seen = {}
+        monkeypatch.setattr(se, "strategy_trend", lambda *a: seen.update(se.USER_FILTERS) or
+                            [{"id": "t", "name": "N", "artist": "A", "album": "", "genre": []}])
+        monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--profile", str(profile), "--strategy", "trend"])
+        se.main()
+        assert seen["excluded_artists"] == {"nope"} and seen["recent_track_ids"] == {"used1"}
+
+    def test_avoid_repeat_days_zero_turns_history_off(self, monkeypatch, tmp_path, sample_profile):
+        import sys
+        import playlist_history
+        playlist_history.log_playlist("Last week", "trend", ["used1"])
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {"avoid_repeat_days": 0})
+        seen = {}
+        monkeypatch.setattr(se, "strategy_trend", lambda *a: seen.update(se.USER_FILTERS) or
+                            [{"id": "t", "name": "N", "artist": "A", "album": "", "genre": []}])
+        monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--profile", str(profile), "--strategy", "trend"])
+        se.main()
+        assert seen["recent_track_ids"] == set()
+
+
+# ── Review follow-ups (PR #92) ───────────────────────────────────
+
+class TestReviewFollowUps:
+    def test_title_key_keeps_non_latin_titles_distinct(self):
+        assert se._title_key("春") != se._title_key("夏")
+        assert se._title_key("春 (Live)") == se._title_key("春") != ""
+
+    def test_non_latin_deep_cuts_are_not_collapsed(self, monkeypatch):
+        profile = {"top_artists": [{"name": "Band", "id": "b", "play_weight": 0.1}]}
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+                            {"data": [{"id": "alb", "attributes": {"name": "Album"}}]} if cmd == "artist-albums"
+                            else _top([{"attributes": {"name": "冬"}}]) if cmd == "artist-top" else None)
+        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [
+            _track("1", "春", "Band"), _track("2", "夏", "Band"), _track("3", "冬", "Band")])
+        names = {t["name"] for t in se.strategy_deep_cuts(profile, "us", target_size=5)}
+        assert names == {"春", "夏"}  # 冬 is the hit
+
+    def test_deep_cuts_keep_scanning_until_the_cap_can_fill_the_list(self, monkeypatch):
+        """20 tracks from one artist and 1 from another used to stop the scan with only 4 usable."""
+        profile = {"top_artists": [{"name": n, "id": n, "play_weight": 0.1} for n in ("A", "B", "C", "D")]}
+        # one album each for A and B; two for C and D
+        albums = {"A": ["A1"], "B": ["B1"], "C": ["C1", "C2"], "D": ["D1", "D2"]}
+        sizes = {"A1": 20, "B1": 1, "C1": 2, "C2": 2, "D1": 2, "D2": 2}
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+                            {"data": [{"id": x, "attributes": {"name": x}} for x in albums[a[1]]]}
+                            if cmd == "artist-albums" else _top([]) if cmd == "artist-top" else None)
+        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [
+            _track(f"{aid}-{i}", f"{aid} song {i}", aid[0]) for i in range(sizes[aid])])
+        result = se.strategy_deep_cuts(profile, "us", target_size=6)
+        assert len(result) == 6
+        assert max(Counter(t["album"] for t in result).values()) <= 2
+
+    def test_deep_cuts_stop_condition_ignores_excluded_artists(self, monkeypatch):
+        profile = {"top_artists": [{"name": n, "id": n, "play_weight": 0.1} for n in ("Nope", "B", "C")]}
+        se.USER_FILTERS.update(se.user_filters({"excluded_artists": ["Nope"]}))
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+                            {"data": [{"id": f"{a[1]}-{j}", "attributes": {"name": f"{a[1]} {j}"}} for j in (1, 2)]}
+                            if cmd == "artist-albums" else _top([]) if cmd == "artist-top" else None)
+        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [
+            _track(f"{aid}{i}", f"{aid} song {i}", aid.split("-")[0]) for i in range(20 if "Nope" in aid else 2)])
+        result = se.strategy_deep_cuts(profile, "us", target_size=6)
+        assert len(result) == 6 and "Nope" not in {t["artist"] for t in result}
+
+    def test_trend_never_exceeds_requested_size(self, sample_profile, monkeypatch):
+        charts = {"results": {"songs": [{"data": [
+            {"id": "m1", "attributes": {"name": "M", "artistName": "Radiohead", "genreNames": ["Alternative"]}},
+        ] + [{"id": f"w{i}", "attributes": {"name": f"W{i}", "artistName": f"B{i}", "genreNames": ["Polka"]}}
+             for i in range(3)]}]}}
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        for size in (1, 2, 3):
+            assert len(se.strategy_trend(sample_profile, "us", target_size=size)) == size
+
+    def test_cap_per_artist_zero_target(self):
+        assert se._cap_per_artist([{"artist": "A"}], 0) == []
+
+    def test_constellation_prefers_preferred_genres_within_a_zone(self, monkeypatch):
+        profile = {"top_artists": [{"name": "Seed", "id": "seed"}],
+                   "genre_distribution": [{"genre": "Alternative", "weight": 1.0}]}
+        # all frontier artists (no genre overlap); only the Jazz one matches a preferred genre
+        neighbours = [_artist(f"n{i}", f"Band {i}", genres=("Polka",)) for i in range(6)]
+        neighbours.append(_artist("jz", "Jazz Band", genres=("Jazz",)))
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+                            {"data": neighbours} if cmd == "similar-artists"
+                            else _top([_song(f"{a[1]}-s", "S", "x", genres=("Jazz",) if a[1] == "jz" else ("Polka",))])
+                            if cmd == "artist-top" else None)
+        se.USER_FILTERS.update(se.user_filters({"preferred_genres": ["Jazz"]}))
+        for _ in range(5):  # the shuffle must never push the preferred track out
+            result = se.strategy_constellation(profile, "us", target_size=1)
+            assert [t["artist"] for t in result] == ["Jazz Band"]
+            assert "_score" not in result[0]
+
+    def test_cap_per_artist_respects_album_cap(self):
+        cands = [{"artist": "A", "album": "X"}] * 3 + [{"artist": "A", "album": "Y"}]
+        assert [c["album"] for c in se._cap_per_artist(cands, 10)] == ["X", "X", "Y"]
+
+    @pytest.mark.parametrize("size", [1, 2, 3])
+    def test_constellation_tiny_sizes(self, monkeypatch, size):
+        profile = {"top_artists": [{"name": "Seed", "id": "seed"}],
+                   "genre_distribution": [{"genre": "Alternative", "weight": 1.0}]}
+        neighbours = [_artist(f"n{i}", f"Band {i}", genres=("Polka",)) for i in range(6)]
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+                            {"data": neighbours} if cmd == "similar-artists"
+                            else _top([_song(f"{a[1]}-s", "S", "x", genres=("Polka",))]) if cmd == "artist-top" else None)
+        assert len(se.strategy_constellation(profile, "us", target_size=size)) == size

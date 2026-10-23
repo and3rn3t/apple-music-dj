@@ -5,7 +5,7 @@ import http.client
 import json
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 import pytest
 
@@ -53,6 +53,13 @@ class TestPage:
         assert status == 200 and b"Connect Apple Music" in body and b"dev.tok.en" in body
         assert request(catcher, "GET", "/")[0] == 404
         assert request(catcher, "GET", "/wrong/")[0] == 404
+
+    def test_server_skips_the_reverse_dns_lookup(self, monkeypatch):
+        """HTTPServer.server_bind calls socket.getfqdn(), which hangs ~35 s on some macOS setups."""
+        def no_lookup(*_args):
+            raise AssertionError("socket.getfqdn() called")
+        monkeypatch.setattr(setup_auth.socketserver.socket, "getfqdn", no_lookup)
+        setup_auth.TokenCatcher("dev.tok.en").start().stop()
 
     def test_foreign_host_header_is_refused(self, catcher):
         """A DNS-rebinding page would arrive with its own Host name."""
@@ -217,12 +224,12 @@ class TestUserTokenAge:
 
     def test_old_token_warns(self, monkeypatch):
         monkeypatch.setenv("APPLE_MUSIC_USER_TOKEN", "abc")
-        _common.record_user_token("abc", when=datetime.now(timezone.utc) - timedelta(days=170))
+        _common.record_user_token("abc", when=datetime.now(UTC) - timedelta(days=170))
         status = _common.check_user_token_age()
         assert status["age_days"] == 170 and status["warning"] and "setup_auth.py" in status["message"]
 
     def test_a_different_token_resets_the_clock(self, monkeypatch):
-        _common.record_user_token("old", when=datetime.now(timezone.utc) - timedelta(days=170))
+        _common.record_user_token("old", when=datetime.now(UTC) - timedelta(days=170))
         monkeypatch.setenv("APPLE_MUSIC_USER_TOKEN", "new")
         assert _common.check_user_token_age()["age_days"] == 0
 

@@ -172,7 +172,7 @@ class TestWrapper:
 
         socketserver.ThreadingTCPServer.daemon_threads = True  # don't wait for the hung handler on shutdown
         server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Hang)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
         env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{server.server_address[1]}"}
         proc = subprocess.Popen(["bash", str(SCRIPTS / "apple_music_api.sh"), *command], env=env,
                                 stderr=subprocess.DEVNULL, start_new_session=True)
@@ -205,9 +205,16 @@ class TestWrapper:
             def log_message(self, *args):
                 pass
 
+        # A stub `sleep` first on PATH records the backoff delays instead of waiting them out.
+        stub_bin = api.tmp / "bin"
+        stub_bin.mkdir()
+        slept = api.tmp / "slept"
+        (stub_bin / "sleep").write_text(f'#!/bin/sh\necho "$1" >> "{slept}"\n')
+        (stub_bin / "sleep").chmod(0o755)
         server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Flaky)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{server.server_address[1]}"}
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
+        env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{server.server_address[1]}",
+               "PATH": f"{stub_bin}{os.pathsep}{api.env['PATH']}"}
         try:
             r = subprocess.run(["bash", str(SCRIPTS / "apple_music_api.sh"), "heavy-rotation"],
                                capture_output=True, text=True, env=env, timeout=30)
@@ -216,6 +223,7 @@ class TestWrapper:
             server.server_close()
         assert r.returncode == 0 and json.loads(r.stdout)["data"] == [{"id": "ok"}]
         assert len(seen) == 3 and r.stderr.count("Rate limited") == 2
+        assert slept.read_text().split() == ["1", "2"]  # exponential backoff
         assert list(api.tmpdir.glob("am_*")) == []
 
     def test_connection_failure_is_reported_and_cleans_up(self, api):
@@ -240,7 +248,7 @@ class TestWrapper:
 
         socketserver.ThreadingTCPServer.daemon_threads = True
         server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Hang)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
         port = server.server_address[1]
         env = {**api.env, "APPLE_MUSIC_API_BASE": f"http://127.0.0.1:{port}"}
         proc = subprocess.Popen(["bash", str(SCRIPTS / "apple_music_api.sh"), "favorite", "songs", "s1", "--yes"],
@@ -272,10 +280,32 @@ class TestWrapper:
 
 # ── Profile ──────────────────────────────────────────────────────
 
+@pytest.fixture(scope="module")
+def built_profile(tmp_path_factory):
+    """One real taste_profiler.py run per module; `profile` copies its output into each test.
+
+    The profiler only reads from the API, so a fresh mock per test sees the same state either way.
+    """
+    tmp = tmp_path_factory.mktemp("built_profile")
+    home = tmp / "home"
+    home.mkdir()
+    mock = MockAppleMusic().start()
+    env = {**os.environ, "HOME": str(home), "TMPDIR": str(tmp), "APPLE_MUSIC_API_BASE": mock.url,
+           "APPLE_MUSIC_DEV_TOKEN": "dev", "APPLE_MUSIC_USER_TOKEN": "user", "PYTHONDONTWRITEBYTECODE": "1"}
+    env.pop("APPLE_MUSIC_STOREFRONT", None)
+    try:
+        subprocess.run([sys.executable, str(SCRIPTS / "taste_profiler.py"), "--output", str(tmp / "profile.json")],
+                       check=True, capture_output=True, env=env, timeout=60)
+    finally:
+        mock.stop()
+    return tmp
+
+
 @pytest.fixture
-def profile(api):
+def profile(api, built_profile):
     path = api.tmp / "profile.json"
-    api("taste_profiler.py", "--output", path)
+    shutil.copy2(built_profile / "profile.json", path)
+    shutil.copytree(built_profile / "home", api.home, dirs_exist_ok=True)  # snapshot, storefront cache, …
     return path
 
 
@@ -471,6 +501,7 @@ class TestOtherScripts:
         api("feedback.py", "dislike", "--playlist-name", "Pos Test", "--position", "1", "--yes")
         assert next(r for r in api.mock.writes() if r["method"] == "PUT")["path"].endswith(first_id)
 
+    @pytest.mark.skipif(not shutil.which("crontab"), reason="needs crontab")
     def test_setup_cron_lists_opt_in_job(self, api):
         out = api("setup_cron.py", "list", "--python", sys.executable).stdout
         assert "monthly-drift" in out and "opt-in" in out
@@ -647,7 +678,7 @@ def _hanging_server():
 
     socketserver.ThreadingTCPServer.daemon_threads = True
     server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Hang)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
     return server
 
 

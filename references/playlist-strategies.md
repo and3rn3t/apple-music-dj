@@ -19,6 +19,12 @@ Be the friend who says "have you heard this album track?"
 5. Score and rank, pick 25–35 tracks
 6. Sequence for flow
 
+In code: up to 4 random full albums per artist (singles, compilations, live albums and
+"greatest hits"/"best of" are skipped); alternate takes such as "(Live)", "(Remix)" or "- Demo"
+and the same title on a second release are dropped. Score = 0.5 + min(2 × play weight, 0.3)
++ 0.15 × position in the album (first track 0, last track 0.15), then max 3 tracks per artist.
+Scanning stops once there are 3× the target candidates from enough artists to fill the list.
+
 ### Naming
 
 - "Deep Cuts · Radiohead & Björk · Feb 2026"
@@ -52,6 +58,18 @@ taste so it doesn't feel like a generic Spotify editorial playlist.
 | Sad / Reflective | 60-90 BPM | Low | Emotional, raw | Singer/songwriter, Indie, Classical |
 | Anger / Catharsis | 130-180 BPM | Very High | Aggressive | Metal, Punk, Hard rock |
 
+### Scoring in code
+
+Each mood's energy label maps to a target on `GENRE_ENERGY`'s 0–1 scale (`MOOD_ENERGY`:
+very-low 0.1, low 0.25, low-med 0.35, medium 0.5, med-high 0.65, high 0.8, very-high 0.95).
+A candidate must share or neighbour a mood genre, then scores
+
+`0.5 × mood-genre match + 0.35 × energy fit + 0.15 × taste match` (+0.1 for your own artists)
+
+where energy fit = 1 − |track energy − target|. A track with energy fit under 0.5 ranks behind
+every track that fits, so a sleep mix only reaches for a loud track when nothing quieter is
+left. Max 3 tracks per artist.
+
 ### Personalization Key
 
 If the user loves indie rock, their "workout" playlist should feature high-energy indie,
@@ -83,10 +101,11 @@ filters it through the user's unique taste.
 2. Fetch genre-specific charts for user's top 3 genres
 3. Score: `taste_match × chart_rank_weight`
    - taste_match: genre overlap + artist proximity to profile
-   - chart_rank: higher-ranked gets slight bonus
+   - chart_rank: higher-ranked gets slight bonus (`1 − 0.3 × rank / chart length`)
 4. Remove songs already in library/recently played
 5. Add 2–3 wildcards from outside user's genres (expand horizons)
-6. Target: 15–25 tracks
+6. Max 3 tracks per artist (wildcards aside)
+7. Target: 15–25 tracks
 
 ### Genre Filtering
 
@@ -117,24 +136,25 @@ Named "Constellation" because it maps outward from known stars to discover new o
 ### Algorithm
 
 1. Take user's top 5 artists from taste profile
-2. For each, search catalog with `artist name + primary genre terms`
-   (e.g., "Radiohead alternative experimental rock") to surface adjacent artists
+2. For each, take Apple's similar artists; when the catalog has none, search with
+   `artist name + primary genre terms` (e.g., "Radiohead alternative experimental rock")
 3. From results, extract artist IDs NOT in user's library
 4. For each discovered artist, fetch their top songs
-5. Score by genre proximity to user's taste profile:
-   - 1.0 = exact genre match
-   - 0.7 = adjacent genre (e.g., indie rock → post-punk)
-   - 0.4 = loosely related (e.g., indie rock → electronic)
-   - 0.1 = different genre entirely (wildcard zone)
-6. Build playlist with intentional gradient:
+5. Zone each artist by genre proximity to the user's top 10 genres:
+   - 1.0 = exact genre match → familiar
+   - 0.5 = same genre family (e.g., Alternative → Rock) → expansion
+   - 0.0 = different family → frontier
+6. Fill ~30% familiar, ~45% expansion, ~25% frontier; a short zone is backfilled from the
+   others (expansion first) so the playlist still reaches its length
+7. Build playlist with intentional gradient:
 
-```
-Tracks 1–8:   FAMILIAR ZONE — Close to taste. Adjacent artists, same genres.
-               User thinks: "Oh I like this, this makes sense."
-Tracks 9–18:  EXPANSION ZONE — Same broad genre, less obvious artists.
-               User thinks: "I haven't heard this but it fits."
-Tracks 19–25: FRONTIER ZONE — Genre-adjacent, unexpected picks.
-               User thinks: "This is different but actually cool."
+```mermaid
+flowchart LR
+    known(("Top 5 artists"))
+    familiar["<b>Tracks 1–8: Familiar zone</b><br/>Adjacent artists, same genres<br/><i>“Oh I like this, this makes sense.”</i>"]
+    expansion["<b>Tracks 9–18: Expansion zone</b><br/>Same broad genre, less obvious artists<br/><i>“I haven't heard this but it fits.”</i>"]
+    frontier["<b>Tracks 19–25: Frontier zone</b><br/>Genre-adjacent, unexpected picks<br/><i>“This is different but actually cool.”</i>"]
+    known --> familiar --> expansion --> frontier
 ```
 
 1. The key insight: the familiar opening builds trust, so the user keeps listening
@@ -230,13 +250,15 @@ contributes only what plausibly fits the other's taste.
 
 ### The Arc
 
-```
-Tracks 1–3:   OPENER — Familiar or instantly engaging. Sets tone.
-Tracks 4–8:   BUILD — Energy rises, variety expands. Best discovery at 5–7.
-Tracks 9–15:  PEAK — Heart of playlist. Most exciting finds.
-Tracks 16–22: SUSTAIN — Maintain interest, introduce textures.
-Tracks 23–28: WIND DOWN — Energy gradually decreases.
-Tracks 29–30: CLOSER — Memorable, leaves listener satisfied.
+```mermaid
+flowchart LR
+    opener["<b>1–3 Opener</b><br/>Familiar or instantly<br/>engaging; sets tone"]
+    build["<b>4–8 Build</b><br/>Energy rises, variety expands;<br/>best discovery at 5–7"]
+    peak["<b>9–15 Peak</b><br/>Heart of the playlist;<br/>most exciting finds"]
+    sustain["<b>16–22 Sustain</b><br/>Maintain interest,<br/>introduce textures"]
+    wind["<b>23–28 Wind down</b><br/>Energy gradually<br/>decreases"]
+    closer["<b>29–30 Closer</b><br/>Memorable; leaves the<br/>listener satisfied"]
+    opener --> build --> peak --> sustain --> wind --> closer
 ```
 
 ### Energy arcs in code
@@ -249,6 +271,26 @@ Each track's `energy` (0–1) is the mean of its genres' values in `GENRE_ENERGY
 - `descending` — sleep, focus, sad moods
 - `none` — keep the incoming order
 
+The shape each arc gives a 30-track playlist. `wave` plots the slot targets `_arc_order` assigns
+(opener 0.55, peak 1.0 mid-playlist, closer 0.2; the lowest-energy tracks fill the lowest-target
+slots). `ascending` and `descending` simply sort by energy, shown as a straight ramp.
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#7c3aed, #0284c7, #ea580c"
+---
+xychart-beta
+    title "Energy arcs, 30 tracks"
+    x-axis "Track position" [1, 5, 10, 15, 20, 25, 30]
+    y-axis "Relative energy" 0 --> 1
+    line "wave" [0.55, 0.67, 0.83, 0.98, 0.75, 0.48, 0.2]
+    line "ascending" [0, 0.14, 0.31, 0.48, 0.66, 0.83, 1]
+    line "descending" [1, 0.86, 0.69, 0.52, 0.34, 0.17, 0]
+```
+
 ### Hard Rules
 
 - No artist repeat within 5 tracks
@@ -257,6 +299,17 @@ Each track's `energy` (0–1) is the mean of its genres' values in `GENRE_ENERGY
 - No explicit content unless user's library contains explicit
 - Exclude disliked artists (from ratings data)
 - End on a strong note, never a filler track
+
+### Your preferences (`~/.apple-music-dj/config.json`)
+
+Every strategy (and the daily pick) reads these optional keys:
+
+| Key | Default | Effect |
+|---|---|---|
+| `excluded_artists` | `[]` | Never pick these artists (case-insensitive) |
+| `preferred_genres` | `[]` | +0.1 to a candidate's score for a matching genre, +0.05 for the same family |
+| `avoid_repeat_days` | `30` | Skip tracks used in playlists the DJ created in the last N days (`0` turns it off; not used by the daily pick) |
+| `playlist_size` | `30` | Default playlist length |
 
 ---
 

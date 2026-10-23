@@ -1,12 +1,55 @@
 """Tests for daily_pick.py — scoring, seeding, and time context."""
 
+import json
 import random
-from datetime import datetime, timezone
-from unittest.mock import patch
+import sys
+from datetime import datetime, UTC
+from unittest.mock import Mock, patch
 
 import pytest
 
-from daily_pick import daily_seed, get_time_context, score_candidate, get_candidates, cmd_daily, cmd_now
+from daily_pick import daily_seed, get_time_context, score_candidate, get_candidates, cmd_daily, cmd_now, main
+
+
+class TestMain:
+    @pytest.fixture(autouse=True)
+    def isolate_commands(self, monkeypatch):
+        for command in ("daily", "now"):
+            monkeypatch.setattr(
+                f"daily_pick.cmd_{command}", Mock(side_effect=AssertionError("Unexpected command dispatch"))
+            )
+
+    @pytest.mark.parametrize("command", ["daily", "now"])
+    def test_dispatches_with_the_loaded_profile_and_prints_json(
+        self, monkeypatch, capsys, tmp_path, sample_profile, command
+    ):
+        profile = tmp_path / "profile.json"
+        profile.write_text(json.dumps(sample_profile), encoding="utf-8")
+        result = {"command": command, "track": {"id": "example-track"}}
+        handler = Mock(return_value=result)
+        monkeypatch.setattr(f"daily_pick.cmd_{command}", handler)
+        monkeypatch.setattr(sys, "argv", ["daily_pick.py", command, str(profile), "gb"])
+
+        main()
+
+        handler.assert_called_once_with(sample_profile, "gb")
+        captured = capsys.readouterr()
+        assert json.loads(captured.out) == result
+        assert captured.err == ""
+
+    @pytest.mark.parametrize("argv", [[], ["unknown"], ["daily"], ["now", "profile.json"]])
+    def test_invalid_arguments_exit_before_loading_a_profile(self, monkeypatch, capsys, argv):
+        loader = Mock()
+        monkeypatch.setattr("daily_pick.load_profile", loader)
+        monkeypatch.setattr(sys, "argv", ["daily_pick.py", *argv])
+
+        with pytest.raises(SystemExit) as error:
+            main()
+
+        assert error.value.code == 2
+        loader.assert_not_called()
+        captured = capsys.readouterr()
+        assert captured.out == "" and "usage:" in captured.err
 
 
 # ── daily_seed ───────────────────────────────────────────────────
@@ -20,12 +63,12 @@ class TestDailySeed:
 
     def test_different_days_differ(self):
         with patch("daily_pick.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2025, 1, 1, tzinfo=timezone.utc)
+            mock_dt.now.return_value = datetime(2025, 1, 1, tzinfo=UTC)
             mock_dt.side_effect = datetime
             seed_a = daily_seed()
 
         with patch("daily_pick.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2025, 1, 2, tzinfo=timezone.utc)
+            mock_dt.now.return_value = datetime(2025, 1, 2, tzinfo=UTC)
             mock_dt.side_effect = datetime
             seed_b = daily_seed()
 
@@ -93,10 +136,24 @@ class TestScoreCandidate:
             "source": "deep_cut",
         }
 
-    def test_base_score(self, base_candidate, sample_profile):
+    def test_base_score(self, base_candidate):
         rng = random.Random(42)
-        score = score_candidate(base_candidate, sample_profile, rng=rng)
-        assert 0.5 <= score <= 0.8  # base 0.5 + random(0, 0.3)
+        score = score_candidate(base_candidate, {}, rng=rng)
+        assert 0.5 <= score <= 0.65  # base 0.5 + random(0, 0.15); no taste to match
+
+    def test_taste_match_adds_up_to_point_three(self, base_candidate, sample_profile):
+        """Rock is in the sample profile's top genres: a full match adds 0.3."""
+        no_taste = score_candidate(base_candidate, {}, rng=random.Random(42))
+        with_taste = score_candidate(base_candidate, sample_profile, rng=random.Random(42))
+        assert with_taste - no_taste == pytest.approx(0.3)
+
+    def test_taste_outweighs_chance(self, sample_profile):
+        """A track in your genres beats one outside them whatever the random draw."""
+        fits = {"genre": ["Alternative"], "source": "charts"}
+        far = {"genre": ["Polka"], "source": "charts"}
+        lowest = score_candidate(fits, sample_profile, rng=type("R", (), {"random": lambda self: 0.0})())
+        highest = score_candidate(far, sample_profile, rng=type("R", (), {"random": lambda self: 0.999})())
+        assert lowest > highest
 
     def test_deep_cut_bonus(self, deep_cut, sample_profile):
         rng = random.Random(42)
@@ -203,6 +260,16 @@ class TestGetCandidates:
         assert "t1" not in ids
         assert "t2" in ids
 
+    def test_excludes_disliked_songs(self, monkeypatch):
+        profile = {"top_artists": [], "disliked_song_ids": ["bad"],
+                   "genre_distribution": [{"genre": "Rock", "weight": 1.0}]}
+        charts = {"results": {"songs": [{"data": [
+            {"id": "bad", "attributes": {"name": "Disliked", "artistName": "X", "genreNames": ["Rock"]}},
+            {"id": "ok", "attributes": {"name": "Fine", "artistName": "Y", "genreNames": ["Rock"]}},
+        ]}]}}
+        monkeypatch.setattr("daily_pick.call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        assert [c["id"] for c in get_candidates(profile, "us")] == ["ok"]
+
     def test_chart_candidates_filtered_by_genre(self, monkeypatch):
         profile = {
             "top_artists": [],
@@ -238,6 +305,72 @@ class TestGetCandidates:
 # ── cmd_daily ────────────────────────────────────────────────────
 
 class TestCmdDaily:
+    @pytest.fixture
+    def mock_candidates(self, monkeypatch):
+        monkeypatch.setattr("daily_pick.get_candidates", lambda *args, **kwargs: [{
+            "id": "t99",
+            "name": "Song",
+            "artist": "Radiohead",
+            "genre": ["Rock"],
+            "source": "deep_cut",
+            "reason": "A deep cut from Radiohead you haven't heard yet.",
+        }])
+
+    def test_excluded_artists_from_config_are_never_picked(self, monkeypatch, sample_profile):
+        monkeypatch.setattr("daily_pick.get_candidates", lambda *a, **k: [
+            {"id": "t1", "name": "A", "artist": "Nickelback", "genre": ["Rock"], "source": "deep_cut"},
+            {"id": "t2", "name": "B", "artist": "Radiohead", "genre": ["Rock"], "source": "charts"},
+        ])
+        monkeypatch.setattr("daily_pick.load_config", lambda: {"excluded_artists": ["nickelback"]})
+        monkeypatch.setattr("daily_pick.get_token_renewal_reminder", lambda: "")
+        assert cmd_daily(sample_profile, "us")["track"]["artist"] == "Radiohead"
+
+    @pytest.mark.parametrize("command", ["daily", "now"])
+    def test_preferred_genres_change_the_pick(self, monkeypatch, command):
+        """Candidates are scored before the filters run, so the preferred-genre boost counts."""
+        monkeypatch.setattr("daily_pick.get_candidates", lambda *a, **k: [
+            {"id": "t1", "name": "A", "artist": "X", "genre": ["Polka"], "source": "charts"},
+            {"id": "t2", "name": "B", "artist": "Y", "genre": ["Jazz"], "source": "charts"},
+        ])
+        monkeypatch.setattr("daily_pick.get_token_renewal_reminder", lambda: "")
+        monkeypatch.setattr("daily_pick.get_time_context", lambda: {"period": "x", "mood": "y", "genres_boost": []})
+        monkeypatch.setattr("daily_pick.load_config", lambda: {"preferred_genres": ["Jazz"]})
+        monkeypatch.setattr("daily_pick.score_candidate", lambda c, *a, **k: 0.5)
+        run = cmd_daily if command == "daily" else cmd_now
+        if command == "daily":
+            monkeypatch.setattr("daily_pick.random.Random", lambda *a: type("R", (), {"choice": lambda self, xs: xs[0]})())
+        assert run({}, "us")["track"]["id"] == "t2"
+
+    def test_token_renewal_reminder_is_added(self, monkeypatch, sample_profile, mock_candidates):
+        monkeypatch.setattr(
+            "daily_pick.check_token_expiry",
+            lambda: {"warning": True, "message": "Dev token expires in 9 days."},
+        )
+        monkeypatch.setattr(
+            "daily_pick.check_user_token_age",
+            lambda: {"warning": False, "message": "User token is healthy."},
+        )
+
+        result = cmd_daily(sample_profile, "us")
+
+        assert "Dev token expires in 9 days." in result["message"]
+
+    def test_token_renewal_reminder_is_omitted_when_not_needed(
+        self, monkeypatch, sample_profile, mock_candidates
+    ):
+        monkeypatch.setattr(
+            "daily_pick.check_token_expiry",
+            lambda: {"warning": False, "message": "Dev token is healthy."},
+        )
+        monkeypatch.setattr(
+            "daily_pick.check_user_token_age",
+            lambda: {"warning": False, "message": "User token is healthy."},
+        )
+
+        result = cmd_daily(sample_profile, "us")
+
+        assert "token" not in result["message"].lower()
+
     def test_returns_daily_pick(self, monkeypatch, sample_profile):
         def mock_api(cmd, *args, **kw):
             if cmd == "artist-albums":

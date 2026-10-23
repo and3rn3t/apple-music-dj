@@ -31,7 +31,7 @@ import argparse
 import json
 from pathlib import Path
 
-from _common import call_api, load_profile, require_env_tokens, write_private
+from _common import call_api, load_profile, record_rating, require_env_tokens, write_private
 from playlist_history import load_history
 
 RATING_VALUE = {"like": "1", "dislike": "-1"}
@@ -62,10 +62,16 @@ def resolve_positions(playlist_name: str | None, positions: list[int]) -> list[s
 
 # ── Profile update ───────────────────────────────────────────────
 
-def apply_to_profile(profile: dict, action: str, song_ids: list[str]) -> dict:
-    """Move IDs between the profile's loved / disliked lists (returns the same dict)."""
+def apply_to_profile(profile: dict, action: str, song_ids: list[str],
+                     songs: dict[str, dict] | None = None) -> dict:
+    """Move IDs between the profile's loved / disliked lists (returns the same dict).
+
+    With `songs` (song ID -> catalog attributes), also update ``rating_signals``, the
+    artist and genre like/dislike counts that steer every playlist strategy.
+    """
     loved = list(profile.get("loved_track_ids", []))
     disliked = list(profile.get("disliked_song_ids", []))
+    before = {sid: 1 if sid in loved else -1 if sid in disliked else 0 for sid in song_ids}
     if action in ("dislike", "clear"):
         loved = [i for i in loved if i not in song_ids]
     if action in ("like", "clear"):
@@ -76,6 +82,12 @@ def apply_to_profile(profile: dict, action: str, song_ids: list[str]) -> dict:
         disliked += song_ids
     profile["loved_track_ids"] = list(dict.fromkeys(loved))
     profile["disliked_song_ids"] = list(dict.fromkeys(disliked))
+    if songs:
+        after = int(RATING_VALUE.get(action, "0"))
+        signals = profile.setdefault("rating_signals", {"artists": {}, "genres": {}})
+        for sid in dict.fromkeys(song_ids):
+            if sid in songs:
+                record_rating(signals, songs[sid], before[sid], after)
     return profile
 
 
@@ -97,13 +109,25 @@ def rate_songs(action: str, song_ids: list[str]) -> list[dict]:
     return results
 
 
-def run_rating(action: str, song_ids: list[str], profile_path: str | None) -> dict:
+def song_attributes(song_ids: list[str], storefront: str) -> dict[str, dict]:
+    """Catalog attributes (artist, genres, ...) per song ID; songs the lookup can't find are left out."""
+    found = {}
+    for sid in song_ids:
+        resp = call_api("song-detail", storefront, sid)
+        data = resp.get("data", []) if isinstance(resp, dict) else []
+        if data:
+            found[sid] = data[0].get("attributes", {})
+    return found
+
+
+def run_rating(action: str, song_ids: list[str], profile_path: str | None, storefront: str = "us") -> dict:
     results = rate_songs(action, song_ids)
     ok_ids = [r["id"] for r in results if r["ok"]]
     profile_updated = False
     if profile_path and ok_ids:
         profile = load_profile(profile_path)
-        save_profile(apply_to_profile(profile, action, ok_ids), profile_path)
+        songs = song_attributes(ok_ids, profile.get("storefront") or storefront)
+        save_profile(apply_to_profile(profile, action, ok_ids, songs), profile_path)
         profile_updated = True
     return {"action": action, "results": results, "profile_updated": profile_updated}
 
@@ -160,7 +184,7 @@ def main():
         return
 
     require_env_tokens()  # only the confirmed apply path calls the API
-    result = run_rating(args.action, song_ids, args.profile)
+    result = run_rating(args.action, song_ids, args.profile, args.storefront)
     print(json.dumps(result, indent=2))
     failed = [r["id"] for r in result["results"] if not r["ok"]]
     if failed:

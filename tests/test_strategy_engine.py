@@ -1443,3 +1443,23 @@ class TestWeightedTasteInStrategies:
                             if cmd == "similar-artists" else _top([_song("g1", "S", "Garage Band")])
                             if cmd == "artist-top" else None)
         assert [t["zone"] for t in se.strategy_constellation(profile, "us", target_size=3)] == ["familiar"]
+
+
+class TestSteeredByRatings:
+    def test_output_lists_boosted_and_demoted_artists(self, monkeypatch, tmp_path, sample_profile, capsys):
+        import sys
+        from _common import rating_signals_from
+        sample_profile["rating_signals"] = rating_signals_from(
+            [(1, {"artistName": "Liked"}), (-1, {"artistName": "Nope"}), (-1, {"artistName": "Nope"})])
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {"avoid_repeat_days": 0})
+        monkeypatch.setattr(se, "strategy_trend", lambda *a, **k: [{"id": "t", "name": "N", "artist": "A",
+                                                                     "album": "", "genre": []}])
+        monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--profile", str(profile), "--strategy", "trend"])
+        se.main()
+        out = json.loads(capsys.readouterr().out)
+        assert out["steered_by_ratings"] == {"boosted_artists": ["Liked"], "demoted_artists": ["Nope"]}
+        assert "nope" in se.USER_FILTERS["excluded_artists"]

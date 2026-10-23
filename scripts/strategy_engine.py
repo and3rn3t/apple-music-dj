@@ -68,6 +68,7 @@ from _common import (
     get_storefront,
     load_config,
     load_profile,
+    rating_summary,
     require_env_tokens,
     SUBGENRE_PROXIMITY,
     search_artist,
@@ -1331,7 +1332,7 @@ def main():
         from playlist_history import get_recent_track_ids
         recent_ids = get_recent_track_ids(repeat_days)
     USER_FILTERS.clear()
-    USER_FILTERS.update(user_filters(config, recent_ids))
+    USER_FILTERS.update(user_filters(config, recent_ids, profile))
 
     print(f"🎧 Strategy: {args.strategy} | Target: {target_size} tracks", file=sys.stderr)
 
@@ -1394,6 +1395,9 @@ def main():
         "track_count": len(tracks),
         "tracks": tracks,
     }
+    steered = rating_summary(profile.get("rating_signals") or {})
+    if steered["boosted_artists"] or steered["demoted_artists"]:
+        result["steered_by_ratings"] = steered
     if args.strategy == "blend":
         compat = profile_compatibility(profile, profile_b)
         result["compatibility"] = {k: compat[k] for k in ("compatibility_pct", "verdict", "shared_artists")}

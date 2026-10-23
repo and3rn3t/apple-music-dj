@@ -484,7 +484,8 @@ class TestUserFilters:
     def test_built_from_config(self):
         from _common import user_filters
         f = user_filters({"excluded_artists": ["Nickelback", 3], "preferred_genres": ["Jazz"]}, {"t1"})
-        assert f == {"excluded_artists": {"nickelback"}, "preferred_genres": ["Jazz"], "recent_track_ids": {"t1"}}
+        assert f == {"excluded_artists": {"nickelback"}, "preferred_genres": ["Jazz"], "recent_track_ids": {"t1"},
+                     "rating_signals": {}, "play_weights": {}}
 
     def test_defaults_filter_nothing(self):
         from _common import DEFAULT_CONFIG, apply_user_filters, user_filters
@@ -583,3 +584,83 @@ class TestTasteAffinity:
         from _common import taste_affinity
         assert taste_affinity([], self.DIST) == 0.0
         assert taste_affinity(["Rock"], []) == 0.0
+
+
+# ── Rating signals (#64) ─────────────────────────────────────────
+
+def _attrs(artist, *genres):
+    return {"artistName": artist, "genreNames": [*genres, "Music"]}
+
+
+class TestRatingSignals:
+    def test_counts_from_ratings(self):
+        from _common import rating_signals_from
+        s = rating_signals_from([(1, _attrs("Radiohead", "Alternative")), (1, _attrs("Radiohead", "Alternative")),
+                                 (-1, _attrs("Nickelback", "Rock"))])
+        assert s["artists"]["radiohead"] == {"name": "Radiohead", "likes": 2, "dislikes": 0}
+        assert s["artists"]["nickelback"]["dislikes"] == 1
+        assert s["genres"] == {"Alternative": {"likes": 2, "dislikes": 0}, "Rock": {"likes": 0, "dislikes": 1}}
+
+    def test_changing_a_rating_moves_the_count(self):
+        from _common import record_rating
+        s = {}
+        record_rating(s, _attrs("X", "Pop"), 0, 1)
+        record_rating(s, _attrs("X", "Pop"), 1, -1)
+        assert s["artists"]["x"]["likes"] == 0 and s["artists"]["x"]["dislikes"] == 1
+        record_rating(s, _attrs("X", "Pop"), -1, 0)
+        assert s == {"artists": {}, "genres": {}}  # cleared entries are removed
+        assert record_rating(s, _attrs("X"), 1, 1) == s
+
+    def test_one_dislike_changes_nothing_two_demote(self):
+        from _common import ARTIST_DISLIKE_PENALTY, rating_adjustment, rating_signals_from
+        one = rating_signals_from([(-1, _attrs("Nope"))])
+        two = rating_signals_from([(-1, _attrs("Nope")), (-1, _attrs("Nope"))])
+        assert rating_adjustment("Nope", [], one) == (0.0, None)
+        adjustment, note = rating_adjustment("nope", [], two)
+        assert adjustment == -ARTIST_DISLIKE_PENALTY
+        assert note == "demoted: you disliked 2 songs by Nope"
+
+    def test_an_artist_you_play_a_lot_is_demoted_less(self):
+        from _common import ARTIST_DISLIKE_PENALTY, FAVOURITE_PENALTY_FACTOR, rating_adjustment, rating_signals_from
+        two = rating_signals_from([(-1, _attrs("Fave")), (-1, _attrs("Fave"))])
+        assert rating_adjustment("Fave", [], two, play_weight=0.2)[0] == -ARTIST_DISLIKE_PENALTY * FAVOURITE_PENALTY_FACTOR
+
+    def test_a_like_saves_an_artist_from_demotion(self):
+        from _common import rating_adjustment, rating_signals_from
+        mixed = rating_signals_from([(-1, _attrs("M")), (-1, _attrs("M")), (1, _attrs("M"))])
+        assert rating_adjustment("M", [], mixed) == (0.0, None)
+
+    def test_likes_boost_is_capped(self):
+        from _common import LIKE_BOOST_MAX, LIKE_BOOST_PER_SONG, rating_adjustment, rating_signals_from
+        one = rating_signals_from([(1, _attrs("Y"))])
+        many = rating_signals_from([(1, _attrs("Y"))] * 10)
+        assert rating_adjustment("Y", [], one) == (LIKE_BOOST_PER_SONG, "boosted: you liked 1 song by Y")
+        assert rating_adjustment("Y", [], many)[0] == LIKE_BOOST_MAX
+
+    def test_liked_genres_nudge_other_artists(self):
+        from _common import GENRE_LIKE_BOOST_MAX, GENRE_LIKE_BOOST_PER_SONG, rating_adjustment, rating_signals_from
+        s = rating_signals_from([(1, _attrs("A", "Jazz")), (1, _attrs("B", "Jazz")), (-1, _attrs("C", "Jazz"))])
+        assert rating_adjustment("Someone Else", ["Jazz"], s) == (GENRE_LIKE_BOOST_PER_SONG, None)  # net 1
+        lots = rating_signals_from([(1, _attrs(f"A{i}", "Jazz")) for i in range(20)])
+        assert rating_adjustment("Z", ["Jazz"], lots)[0] == GENRE_LIKE_BOOST_MAX
+
+    def test_summary(self):
+        from _common import rating_signals_from, rating_summary
+        s = rating_signals_from([(1, _attrs("Liked")), (-1, _attrs("Nope")), (-1, _attrs("Nope")), (-1, _attrs("Once"))])
+        assert rating_summary(s) == {"boosted_artists": ["Liked"], "demoted_artists": ["Nope"]}
+
+    def test_shared_filter_applies_and_explains(self):
+        from _common import apply_user_filters, rating_signals_from, user_filters
+        profile = {"rating_signals": rating_signals_from([(1, _attrs("Liked")), (1, _attrs("Liked"))]),
+                   "top_artists": [{"name": "Liked", "play_weight": 0.1}]}
+        cands = [{"id": "a", "artist": "Liked", "genre": [], "reason": "Fits.", "_score": 0.5}]
+        apply_user_filters(cands, user_filters({}, profile=profile))
+        assert cands[0]["_score"] == pytest.approx(0.6)
+        assert cands[0]["reason"] == "Fits. (boosted: you liked 2 songs by Liked)"
+
+    def test_demoted_artists_are_excluded_unless_you_play_them_a_lot(self):
+        from _common import passes_user_filters, rating_signals_from, user_filters
+        signals = rating_signals_from([(-1, _attrs(n)) for n in ("Nope", "Nope", "Fave", "Fave")])
+        f = user_filters({}, profile={"rating_signals": signals, "top_artists": [{"name": "Fave", "play_weight": 0.2}]})
+        assert not passes_user_filters({"id": "x", "artist": "NOPE"}, f)
+        assert passes_user_filters({"id": "y", "artist": "Fave"}, f)  # only scored down

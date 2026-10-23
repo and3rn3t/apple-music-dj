@@ -719,3 +719,38 @@ class TestRecentSignals:
         monkeypatch.setattr("taste_profiler.get_storefront", lambda sf=None: "us")
         profile = build_profile(MagicMock(verbose=False, storefront="us", skip_replay=True))
         assert profile["recently_added_artists"] == [] and profile["station_genres"] == []
+
+
+# ── Rating signals (#64) ─────────────────────────────────────────
+
+class TestBuildRatingSignals:
+    RATINGS = {"data": [{"id": "c1", "attributes": {"value": 1}}, {"id": "c2", "attributes": {"value": -1}},
+                        {"id": "c3", "attributes": {"value": -1}}, {"id": "c4", "attributes": {"value": 0}}]}
+
+    def test_uses_tracks_already_fetched_and_catalog_ids(self, monkeypatch):
+        import taste_profiler as tp
+        known = [{"id": "c1", "attributes": {"artistName": "Liked", "genreNames": ["Jazz"]}},
+                 {"id": "i.lib", "attributes": {"artistName": "Nope", "genreNames": ["Rock"]},
+                  "relationships": {"catalog": {"data": [{"id": "c2"}]}}},
+                 {"id": "c3", "attributes": {"artistName": "Nope", "genreNames": ["Rock"]}}]
+        monkeypatch.setattr(tp, "call_api", lambda *a, **k: pytest.fail("no lookup needed"))
+        signals, resolved = tp.build_rating_signals(self.RATINGS, known, "us")
+        assert resolved == 3
+        assert signals["artists"]["nope"]["dislikes"] == 2 and signals["artists"]["liked"]["likes"] == 1
+
+    def test_looks_up_the_rest_dislikes_first_with_a_cap(self, monkeypatch):
+        import taste_profiler as tp
+        monkeypatch.setattr(tp, "MAX_RATING_LOOKUPS", 2)
+        looked_up = []
+
+        def api(cmd, sf, sid, **kw):
+            looked_up.append(sid)
+            return {"data": [{"attributes": {"artistName": f"A-{sid}", "genreNames": []}}]}
+        monkeypatch.setattr(tp, "call_api", api)
+        signals, resolved = tp.build_rating_signals(self.RATINGS, [], "us")
+        assert looked_up == ["c2", "c3"] and resolved == 2  # dislikes first, then the cap
+        assert set(signals["artists"]) == {"a-c2", "a-c3"}
+
+    def test_no_ratings(self):
+        import taste_profiler as tp
+        assert tp.build_rating_signals(None, [], "us") == ({"artists": {}, "genres": {}}, 0)

@@ -198,7 +198,7 @@ def cmd_daily(profile: dict, sf: str) -> dict:
     candidates = get_candidates(profile, sf)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, rng=rng)
-    candidates = apply_user_filters(candidates, user_filters(load_config()))
+    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile))
     if not candidates:
         return {"error": "No candidates found. Try refreshing your taste profile."}
 
@@ -234,7 +234,7 @@ def cmd_now(profile: dict, sf: str) -> dict:
     candidates = get_candidates(profile, sf, context)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, context, rng=rng)
-    candidates = apply_user_filters(candidates, user_filters(load_config()))
+    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile))
     if not candidates:
         return {"error": "No candidates found.", "context": context}
 

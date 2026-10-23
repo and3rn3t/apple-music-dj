@@ -44,6 +44,7 @@ from _common import (
     check_token_expiry,
     check_user_token_age,
     get_storefront,
+    rating_signals_from,
     require_env_tokens,
     save_snapshot,
     write_private,
@@ -245,6 +246,36 @@ def extract_ratings(ratings_data: dict | None) -> tuple[list[str], list[str]]:
     return loved_ids, disliked_song_ids
 
 
+MAX_RATING_LOOKUPS = 25  # rated songs not already fetched cost one catalog lookup each; cap the calls
+
+
+def build_rating_signals(ratings_data: dict | None, known_tracks: list[dict], storefront: str) -> tuple[dict, int]:
+    """Artist and genre like/dislike counts from your ratings, and how many rated songs fed them.
+
+    Ratings carry only a song ID and a value, so each song's artist and genres come from
+    tracks already fetched for the profile, else from a catalog lookup (at most
+    MAX_RATING_LOOKUPS, dislikes first since they steer hardest).
+    """
+    known: dict[str, dict] = {}
+    for track in known_tracks:
+        attrs = track.get("attributes", {})
+        ids = [track.get("id")] + [c.get("id") for c in track.get("relationships", {}).get("catalog", {}).get("data", [])]
+        for tid in filter(None, ids):
+            known.setdefault(tid, attrs)
+    items = [(i.get("attributes", {}).get("value"), i.get("id")) for i in (ratings_data or {}).get("data", [])]
+    items = sorted(((v, rid) for v, rid in items if v in (1, -1) and rid), key=lambda item: item[0])
+    rated, lookups = [], 0
+    for value, rid in items:
+        attrs = known.get(rid)
+        if attrs is None and lookups < MAX_RATING_LOOKUPS:
+            lookups += 1
+            data = (call_api("song-detail", storefront, rid) or {}).get("data", [])
+            attrs = data[0].get("attributes") if data else None
+        if attrs and attrs.get("artistName"):
+            rated.append((value, attrs))
+    return rating_signals_from(rated), len(rated)
+
+
 def extract_replay_highlights(summary_data: dict | None, milestones_data: dict | None) -> dict:
     """Extract Replay / Music Summaries highlights."""
     highlights = {
@@ -419,6 +450,8 @@ def build_profile(args) -> dict:
     variety = compute_variety_score(artists, all_tracks)
     mainstream = compute_mainstream_score(artists, chart_data)
     loved, disliked_songs = extract_ratings(ratings)
+    log("Reading your ratings for artist and genre signals...", verbose)
+    rating_signals, rated_resolved = build_rating_signals(ratings, all_tracks, sf)
     replay = extract_replay_highlights(replay_summary, replay_milestones)
 
     # Listening velocity — compare library size to recent diversity
@@ -443,6 +476,7 @@ def build_profile(args) -> dict:
         "listening_velocity": velocity,
         "loved_track_ids": loved,
         "disliked_song_ids": disliked_songs,
+        "rating_signals": rating_signals,
         "library_song_ids": library_song_ids,
         "recently_added_artists": recently_added_artists[:10],
         "station_genres": sorted(set(station_genres)),
@@ -458,6 +492,7 @@ def build_profile(args) -> dict:
             "recent_stations": len((recent_stations or {}).get("data", [])),
             "loved_count": len(loved),
             "disliked_count": len(disliked_songs),
+            "rated_songs_resolved": rated_resolved,
         },
         "storefront": sf,
         "generated_at": datetime.now(UTC).isoformat(),

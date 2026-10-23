@@ -24,7 +24,7 @@ import argparse
 import json
 from pathlib import Path
 
-from _common import call_api, load_profile
+from _common import call_api, genre_proximity, load_profile
 from share_code import load_profile_arg
 
 SCRIPT_DIR = Path(__file__).parent
@@ -32,26 +32,8 @@ SCRIPT_DIR = Path(__file__).parent
 
 # ── Genre Similarity ─────────────────────────────────────────────
 
-# Adjacency groups — genres in the same group get partial credit
-GENRE_ADJACENCY = {
-    "rock_family": {"Rock", "Alternative", "Indie", "Punk", "Metal", "Grunge"},
-    "electronic_family": {"Electronic", "Dance", "House", "Techno", "Ambient", "IDM"},
-    "hiphop_family": {"Hip-Hop/Rap", "R&B/Soul", "Funk"},
-    "folk_family": {"Folk", "Singer/Songwriter", "Country", "Americana", "Bluegrass"},
-    "jazz_family": {"Jazz", "Blues", "Bossa Nova", "Soul"},
-    "classical_family": {"Classical", "Soundtrack", "New Age"},
-    "pop_family": {"Pop", "Synth Pop", "Indie Pop", "K-Pop", "J-Pop"},
-}
-
-
-def genre_similarity(genre_a: str, genre_b: str) -> float:
-    if genre_a.lower() == genre_b.lower():
-        return 1.0
-    for family in GENRE_ADJACENCY.values():
-        lower = {g.lower() for g in family}
-        if genre_a.lower() in lower and genre_b.lower() in lower:
-            return 0.5
-    return 0.0
+# genre_similarity is kept as this module's name for the shared proximity score
+genre_similarity = genre_proximity
 
 
 def _normalized(genres: list[dict]) -> list[tuple[str, float]]:
@@ -93,6 +75,21 @@ def artist_genre_affinity(user_genres: list[dict], artist_genres: list[dict]) ->
     return min(sum(share * max((genre_similarity(ga, ug["genre"]) * ug.get("weight", 0) / top
                                 for ug in user_genres), default=0.0)
                    for ga, share in pa), 1.0)
+
+
+def _era_shares(eras: list[dict]) -> dict[str, float]:
+    """Decade -> share of listening. Entries without weights count equally."""
+    decades = [e for e in eras if e.get("decade")]
+    total = sum(max(e.get("weight", 0) or 0, 0) for e in decades)
+    if total <= 0:
+        return {e["decade"]: 1 / len(decades) for e in decades} if decades else {}
+    return {e["decade"]: max(e.get("weight", 0) or 0, 0) / total for e in decades}
+
+
+def era_overlap_score(eras_a: list[dict], eras_b: list[dict]) -> float:
+    """Share of listening two era distributions have in common (histogram intersection, 0-1)."""
+    sa, sb = _era_shares(eras_a), _era_shares(eras_b)
+    return min(sum(min(share, sb.get(decade, 0.0)) for decade, share in sa.items()), 1.0)
 
 
 # ── Artist Compatibility ─────────────────────────────────────────
@@ -199,9 +196,7 @@ def profile_compatibility(profile_a: dict, profile_b: dict) -> dict:
     artist_overlap = len(shared_artists) / max(len(artists_a | artists_b), 1)
 
     # Era overlap
-    eras_a = {e["decade"] for e in profile_a.get("era_distribution", [])}
-    eras_b = {e["decade"] for e in profile_b.get("era_distribution", [])}
-    era_overlap = len(eras_a & eras_b) / max(len(eras_a | eras_b), 1)
+    era_overlap = era_overlap_score(profile_a.get("era_distribution", []), profile_b.get("era_distribution", []))
 
     # Energy match
     energy_match = 1.0 if profile_a.get("energy_profile") == profile_b.get("energy_profile") else 0.3
@@ -226,7 +221,8 @@ def profile_compatibility(profile_a: dict, profile_b: dict) -> dict:
         "genre_overlap": round(g_score, 2),
         "shared_artists": sorted(shared_artists),
         "artist_overlap_pct": int(artist_overlap * 100),
-        "shared_eras": sorted(eras_a & eras_b),
+        "shared_eras": sorted({e["decade"] for e in profile_a.get("era_distribution", [])}
+                              & {e["decade"] for e in profile_b.get("era_distribution", [])}),
         "energy_match": profile_a.get("energy_profile") == profile_b.get("energy_profile"),
     }
 

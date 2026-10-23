@@ -31,11 +31,15 @@ from datetime import datetime, UTC
 from pathlib import Path
 
 from _common import (
+    apply_user_filters,
+    best_genre_match,
     call_api,
     check_token_expiry,
     check_user_token_age,
     filter_generic_genres,
+    load_config,
     load_profile,
+    user_filters,
 )
 
 SCRIPT_DIR = Path(__file__).parent
@@ -83,7 +87,8 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
     """Gather candidate tracks from multiple sources."""
     candidates = []
     top_artists = profile.get("top_artists", [])[:15]
-    library_song_ids = set(profile.get("library_song_ids", []))
+    # Songs you own or disliked are never picked
+    skip_ids = set(profile.get("library_song_ids", [])) | set(profile.get("disliked_song_ids", []))
     user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:5]]
 
     # Source 1: Deep cuts from top artists (tracks NOT in library)
@@ -103,7 +108,7 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
             for ad in detail["data"]:
                 for track in ad.get("relationships", {}).get("tracks", {}).get("data", []):
                     tid = track.get("id", "")
-                    if tid and tid not in library_song_ids:
+                    if tid and tid not in skip_ids:
                         attrs = track.get("attributes", {})
                         candidates.append({
                             "id": tid,
@@ -127,7 +132,7 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
                         # Only include if genre overlaps with user taste
                         if any(g in user_genres for g in item_genres):
                             tid = item.get("id", "")
-                            if tid and tid not in library_song_ids:
+                            if tid and tid not in skip_ids:
                                 candidates.append({
                                     "id": tid,
                                     "name": attrs.get("name", ""),
@@ -141,9 +146,17 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
 
 
 def score_candidate(candidate: dict, profile: dict, context: dict | None = None, rng: random.Random | None = None) -> float:
-    """Score a candidate track. Higher = better pick."""
+    """Score a candidate track. Higher = better pick.
+
+    0.5 base + 0.2 for a deep cut + 0.3 x taste match + 0.3 for a time-of-day genre + up to
+    0.15 random, so taste and context outweigh chance.
+    """
     _rng = rng or random.Random()
     score = 0.5  # base score
+
+    # How close the track is to your top genres (half for a family match)
+    user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:10]]
+    score += 0.3 * best_genre_match(candidate.get("genre", []), user_genres)
 
     # Boost deep cuts slightly (the interesting picks)
     if candidate.get("source") == "deep_cut":
@@ -157,7 +170,7 @@ def score_candidate(candidate: dict, profile: dict, context: dict | None = None,
             score += 0.3
 
     # Add some randomness so picks vary
-    score += _rng.random() * 0.3
+    score += _rng.random() * 0.15
 
     return score
 
@@ -177,7 +190,7 @@ def cmd_daily(profile: dict, sf: str) -> dict:
     """Pick one track for today's daily song drop."""
     rng = random.Random(daily_seed())
 
-    candidates = get_candidates(profile, sf)
+    candidates = apply_user_filters(get_candidates(profile, sf), user_filters(load_config()))
     if not candidates:
         return {"error": "No candidates found. Try refreshing your taste profile."}
 
@@ -212,7 +225,7 @@ def cmd_now(profile: dict, sf: str) -> dict:
     """Context-aware instant recommendation."""
     context = get_time_context()
 
-    candidates = get_candidates(profile, sf, context)
+    candidates = apply_user_filters(get_candidates(profile, sf, context), user_filters(load_config()))
     if not candidates:
         return {"error": "No candidates found.", "context": context}
 

@@ -136,10 +136,24 @@ class TestScoreCandidate:
             "source": "deep_cut",
         }
 
-    def test_base_score(self, base_candidate, sample_profile):
+    def test_base_score(self, base_candidate):
         rng = random.Random(42)
-        score = score_candidate(base_candidate, sample_profile, rng=rng)
-        assert 0.5 <= score <= 0.8  # base 0.5 + random(0, 0.3)
+        score = score_candidate(base_candidate, {}, rng=rng)
+        assert 0.5 <= score <= 0.65  # base 0.5 + random(0, 0.15); no taste to match
+
+    def test_taste_match_adds_up_to_point_three(self, base_candidate, sample_profile):
+        """Rock is in the sample profile's top genres: a full match adds 0.3."""
+        no_taste = score_candidate(base_candidate, {}, rng=random.Random(42))
+        with_taste = score_candidate(base_candidate, sample_profile, rng=random.Random(42))
+        assert with_taste - no_taste == pytest.approx(0.3)
+
+    def test_taste_outweighs_chance(self, sample_profile):
+        """A track in your genres beats one outside them whatever the random draw."""
+        fits = {"genre": ["Alternative"], "source": "charts"}
+        far = {"genre": ["Polka"], "source": "charts"}
+        lowest = score_candidate(fits, sample_profile, rng=type("R", (), {"random": lambda self: 0.0})())
+        highest = score_candidate(far, sample_profile, rng=type("R", (), {"random": lambda self: 0.999})())
+        assert lowest > highest
 
     def test_deep_cut_bonus(self, deep_cut, sample_profile):
         rng = random.Random(42)
@@ -246,6 +260,16 @@ class TestGetCandidates:
         assert "t1" not in ids
         assert "t2" in ids
 
+    def test_excludes_disliked_songs(self, monkeypatch):
+        profile = {"top_artists": [], "disliked_song_ids": ["bad"],
+                   "genre_distribution": [{"genre": "Rock", "weight": 1.0}]}
+        charts = {"results": {"songs": [{"data": [
+            {"id": "bad", "attributes": {"name": "Disliked", "artistName": "X", "genreNames": ["Rock"]}},
+            {"id": "ok", "attributes": {"name": "Fine", "artistName": "Y", "genreNames": ["Rock"]}},
+        ]}]}}
+        monkeypatch.setattr("daily_pick.call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        assert [c["id"] for c in get_candidates(profile, "us")] == ["ok"]
+
     def test_chart_candidates_filtered_by_genre(self, monkeypatch):
         profile = {
             "top_artists": [],
@@ -291,6 +315,15 @@ class TestCmdDaily:
             "source": "deep_cut",
             "reason": "A deep cut from Radiohead you haven't heard yet.",
         }])
+
+    def test_excluded_artists_from_config_are_never_picked(self, monkeypatch, sample_profile):
+        monkeypatch.setattr("daily_pick.get_candidates", lambda *a, **k: [
+            {"id": "t1", "name": "A", "artist": "Nickelback", "genre": ["Rock"], "source": "deep_cut"},
+            {"id": "t2", "name": "B", "artist": "Radiohead", "genre": ["Rock"], "source": "charts"},
+        ])
+        monkeypatch.setattr("daily_pick.load_config", lambda: {"excluded_artists": ["nickelback"]})
+        monkeypatch.setattr("daily_pick.get_token_renewal_reminder", lambda: "")
+        assert cmd_daily(sample_profile, "us")["track"]["artist"] == "Radiohead"
 
     def test_token_renewal_reminder_is_added(self, monkeypatch, sample_profile, mock_candidates):
         monkeypatch.setattr(

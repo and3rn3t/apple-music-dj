@@ -19,6 +19,12 @@ Be the friend who says "have you heard this album track?"
 5. Score and rank, pick 25–35 tracks
 6. Sequence for flow
 
+In code: up to 4 random full albums per artist (singles, compilations, live albums and
+"greatest hits"/"best of" are skipped); alternate takes such as "(Live)", "(Remix)" or "- Demo"
+and the same title on a second release are dropped. Score = 0.5 + min(2 × play weight, 0.3)
++ 0.15 × position in the album (first track 0, last track 0.15), then max 3 tracks per artist.
+Scanning stops once there are 3× the target candidates from enough artists to fill the list.
+
 ### Naming
 
 - "Deep Cuts · Radiohead & Björk · Feb 2026"
@@ -52,6 +58,18 @@ taste so it doesn't feel like a generic Spotify editorial playlist.
 | Sad / Reflective | 60-90 BPM | Low | Emotional, raw | Singer/songwriter, Indie, Classical |
 | Anger / Catharsis | 130-180 BPM | Very High | Aggressive | Metal, Punk, Hard rock |
 
+### Scoring in code
+
+Each mood's energy label maps to a target on `GENRE_ENERGY`'s 0–1 scale (`MOOD_ENERGY`:
+very-low 0.1, low 0.25, low-med 0.35, medium 0.5, med-high 0.65, high 0.8, very-high 0.95).
+A candidate must share or neighbour a mood genre, then scores
+
+`0.5 × mood-genre match + 0.35 × energy fit + 0.15 × taste match` (+0.1 for your own artists)
+
+where energy fit = 1 − |track energy − target|. A track with energy fit under 0.5 ranks behind
+every track that fits, so a sleep mix only reaches for a loud track when nothing quieter is
+left. Max 3 tracks per artist.
+
 ### Personalization Key
 
 If the user loves indie rock, their "workout" playlist should feature high-energy indie,
@@ -83,10 +101,11 @@ filters it through the user's unique taste.
 2. Fetch genre-specific charts for user's top 3 genres
 3. Score: `taste_match × chart_rank_weight`
    - taste_match: genre overlap + artist proximity to profile
-   - chart_rank: higher-ranked gets slight bonus
+   - chart_rank: higher-ranked gets slight bonus (`1 − 0.3 × rank / chart length`)
 4. Remove songs already in library/recently played
 5. Add 2–3 wildcards from outside user's genres (expand horizons)
-6. Target: 15–25 tracks
+6. Max 3 tracks per artist (wildcards aside)
+7. Target: 15–25 tracks
 
 ### Genre Filtering
 
@@ -117,16 +136,17 @@ Named "Constellation" because it maps outward from known stars to discover new o
 ### Algorithm
 
 1. Take user's top 5 artists from taste profile
-2. For each, search catalog with `artist name + primary genre terms`
-   (e.g., "Radiohead alternative experimental rock") to surface adjacent artists
+2. For each, take Apple's similar artists; when the catalog has none, search with
+   `artist name + primary genre terms` (e.g., "Radiohead alternative experimental rock")
 3. From results, extract artist IDs NOT in user's library
 4. For each discovered artist, fetch their top songs
-5. Score by genre proximity to user's taste profile:
-   - 1.0 = exact genre match
-   - 0.7 = adjacent genre (e.g., indie rock → post-punk)
-   - 0.4 = loosely related (e.g., indie rock → electronic)
-   - 0.1 = different genre entirely (wildcard zone)
-6. Build playlist with intentional gradient:
+5. Zone each artist by genre proximity to the user's top 10 genres:
+   - 1.0 = exact genre match → familiar
+   - 0.5 = same genre family (e.g., Alternative → Rock) → expansion
+   - 0.0 = different family → frontier
+6. Fill ~30% familiar, ~45% expansion, ~25% frontier; a short zone is backfilled from the
+   others (expansion first) so the playlist still reaches its length
+7. Build playlist with intentional gradient:
 
 ```mermaid
 flowchart LR
@@ -279,6 +299,17 @@ xychart-beta
 - No explicit content unless user's library contains explicit
 - Exclude disliked artists (from ratings data)
 - End on a strong note, never a filler track
+
+### Your preferences (`~/.apple-music-dj/config.json`)
+
+Every strategy (and the daily pick) reads these optional keys:
+
+| Key | Default | Effect |
+|---|---|---|
+| `excluded_artists` | `[]` | Never pick these artists (case-insensitive) |
+| `preferred_genres` | `[]` | +0.1 to a candidate's score for a matching genre, +0.05 for the same family |
+| `avoid_repeat_days` | `30` | Skip tracks used in playlists the DJ created in the last N days (`0` turns it off; not used by the daily pick) |
+| `playlist_size` | `30` | Default playlist length |
 
 ---
 

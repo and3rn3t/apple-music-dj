@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from compatibility import (
+    era_overlap_score,
     artist_compatibility,
     artist_genre_affinity,
     genre_overlap_score,
@@ -364,3 +365,24 @@ class TestMain:
         with pytest.raises(SystemExit) as exc:
             main()
         assert exc.value.code == 2
+
+
+# ── era_overlap_score ────────────────────────────────────────────
+
+class TestEraOverlap:
+    def test_identical_is_full(self):
+        eras = [{"decade": "1990s", "weight": 0.7}, {"decade": "2000s", "weight": 0.3}]
+        assert era_overlap_score(eras, eras) == pytest.approx(1.0)
+
+    def test_weighted_not_just_shared_decades(self):
+        """Sharing a decade one listener barely plays counts for little."""
+        a = [{"decade": "1990s", "weight": 0.95}, {"decade": "2010s", "weight": 0.05}]
+        b = [{"decade": "2010s", "weight": 1.0}]
+        assert era_overlap_score(a, b) == pytest.approx(0.05)
+
+    def test_unweighted_entries_count_equally(self):
+        assert era_overlap_score([{"decade": "2000s"}, {"decade": "2010s"}],
+                                 [{"decade": "2000s"}]) == pytest.approx(0.5)
+
+    def test_empty(self):
+        assert era_overlap_score([], [{"decade": "2000s"}]) == 0.0

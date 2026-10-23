@@ -476,3 +476,37 @@ class TestSnapshots:
         (tmp_path / "notes.txt").write_text("x")
         assert list_snapshots(tmp_path) == []
         assert list_snapshots(tmp_path / "nope") == []
+
+
+# ── User filters (config.json + recent history) ──────────────────
+
+class TestUserFilters:
+    def test_built_from_config(self):
+        from _common import user_filters
+        f = user_filters({"excluded_artists": ["Nickelback", 3], "preferred_genres": ["Jazz"]}, {"t1"})
+        assert f == {"excluded_artists": {"nickelback"}, "preferred_genres": ["Jazz"], "recent_track_ids": {"t1"}}
+
+    def test_defaults_filter_nothing(self):
+        from _common import DEFAULT_CONFIG, apply_user_filters, user_filters
+        cands = [{"id": "a", "artist": "X", "genre": ["Rock"], "_score": 0.5}]
+        assert apply_user_filters(cands, user_filters(DEFAULT_CONFIG)) == cands
+        assert cands[0]["_score"] == 0.5
+        assert apply_user_filters(cands, None) == cands
+
+    def test_drops_excluded_artists_and_recent_tracks(self):
+        from _common import apply_user_filters, user_filters
+        cands = [{"id": "a", "artist": "NICKELBACK"}, {"id": "b", "artist": "X"}, {"id": "c", "artist": "Y"}]
+        kept = apply_user_filters(cands, user_filters({"excluded_artists": ["Nickelback"]}, {"b"}))
+        assert [c["id"] for c in kept] == ["c"]
+
+    def test_preferred_genres_boost_scored_candidates(self):
+        from _common import PREFERRED_GENRE_BOOST, apply_user_filters, user_filters
+        cands = [{"id": "a", "artist": "X", "genre": ["Jazz"], "_score": 0.5},
+                 {"id": "b", "artist": "Y", "genre": ["Blues"], "_score": 0.5},
+                 {"id": "c", "artist": "Z", "genre": ["Metal"], "_score": 0.5},
+                 {"id": "d", "artist": "W", "genre": ["Jazz"]}]
+        apply_user_filters(cands, user_filters({"preferred_genres": ["Jazz"]}))
+        assert cands[0]["_score"] == pytest.approx(0.5 + PREFERRED_GENRE_BOOST)
+        assert cands[1]["_score"] == pytest.approx(0.5 + PREFERRED_GENRE_BOOST / 2)  # same family
+        assert cands[2]["_score"] == 0.5
+        assert "_score" not in cands[3]

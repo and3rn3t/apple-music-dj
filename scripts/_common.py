@@ -465,6 +465,14 @@ def user_filters(config: dict, recent_track_ids: set[str] | None = None) -> dict
     }
 
 
+def passes_user_filters(candidate: dict, filters: dict | None) -> bool:
+    """False for an excluded artist or a track used in a recent DJ playlist."""
+    if not filters:
+        return True
+    return (candidate.get("artist", "").lower() not in (filters.get("excluded_artists") or set())
+            and candidate.get("id") not in (filters.get("recent_track_ids") or set()))
+
+
 def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dict]:
     """Drop excluded artists and recently used tracks; nudge preferred genres up.
 
@@ -473,12 +481,10 @@ def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dic
     """
     if not filters:
         return candidates
-    excluded = filters.get("excluded_artists") or set()
-    recent = filters.get("recent_track_ids") or set()
     preferred = filters.get("preferred_genres") or []
     kept = []
     for c in candidates:
-        if c.get("artist", "").lower() in excluded or c.get("id") in recent:
+        if not passes_user_filters(c, filters):
             continue
         if preferred and "_score" in c:
             c["_score"] += PREFERRED_GENRE_BOOST * best_genre_match(c.get("genre", []), preferred)

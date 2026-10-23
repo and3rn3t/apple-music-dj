@@ -325,6 +325,22 @@ class TestCmdDaily:
         monkeypatch.setattr("daily_pick.get_token_renewal_reminder", lambda: "")
         assert cmd_daily(sample_profile, "us")["track"]["artist"] == "Radiohead"
 
+    @pytest.mark.parametrize("command", ["daily", "now"])
+    def test_preferred_genres_change_the_pick(self, monkeypatch, command):
+        """Candidates are scored before the filters run, so the preferred-genre boost counts."""
+        monkeypatch.setattr("daily_pick.get_candidates", lambda *a, **k: [
+            {"id": "t1", "name": "A", "artist": "X", "genre": ["Polka"], "source": "charts"},
+            {"id": "t2", "name": "B", "artist": "Y", "genre": ["Jazz"], "source": "charts"},
+        ])
+        monkeypatch.setattr("daily_pick.get_token_renewal_reminder", lambda: "")
+        monkeypatch.setattr("daily_pick.get_time_context", lambda: {"period": "x", "mood": "y", "genres_boost": []})
+        monkeypatch.setattr("daily_pick.load_config", lambda: {"preferred_genres": ["Jazz"]})
+        monkeypatch.setattr("daily_pick.score_candidate", lambda c, *a, **k: 0.5)
+        run = cmd_daily if command == "daily" else cmd_now
+        if command == "daily":
+            monkeypatch.setattr("daily_pick.random.Random", lambda *a: type("R", (), {"choice": lambda self, xs: xs[0]})())
+        assert run({}, "us")["track"]["id"] == "t2"
+
     def test_token_renewal_reminder_is_added(self, monkeypatch, sample_profile, mock_candidates):
         monkeypatch.setattr(
             "daily_pick.check_token_expiry",

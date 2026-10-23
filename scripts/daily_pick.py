@@ -190,13 +190,13 @@ def cmd_daily(profile: dict, sf: str) -> dict:
     """Pick one track for today's daily song drop."""
     rng = random.Random(daily_seed())
 
-    candidates = apply_user_filters(get_candidates(profile, sf), user_filters(load_config()))
-    if not candidates:
-        return {"error": "No candidates found. Try refreshing your taste profile."}
-
-    # Score all candidates
+    # Score first so the user filters can boost preferred genres, then drop excluded artists
+    candidates = get_candidates(profile, sf)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, rng=rng)
+    candidates = apply_user_filters(candidates, user_filters(load_config()))
+    if not candidates:
+        return {"error": "No candidates found. Try refreshing your taste profile."}
 
     # Sort by score and pick from top tier (add deterministic variety)
     candidates.sort(key=lambda c: c["_score"], reverse=True)
@@ -225,14 +225,14 @@ def cmd_now(profile: dict, sf: str) -> dict:
     """Context-aware instant recommendation."""
     context = get_time_context()
 
-    candidates = apply_user_filters(get_candidates(profile, sf, context), user_filters(load_config()))
-    if not candidates:
-        return {"error": "No candidates found.", "context": context}
-
-    # Score with time context
+    # Score with time context first so the user filters can boost preferred genres
     rng = random.Random()  # fresh RNG for "now" mode
+    candidates = get_candidates(profile, sf, context)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, context, rng=rng)
+    candidates = apply_user_filters(candidates, user_filters(load_config()))
+    if not candidates:
+        return {"error": "No candidates found.", "context": context}
 
     candidates.sort(key=lambda c: c["_score"], reverse=True)
     pick = candidates[0]

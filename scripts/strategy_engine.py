@@ -59,6 +59,7 @@ from compatibility import profile_compatibility
 from share_code import load_profile_arg, resolve_artist_ids
 from _common import (
     apply_user_filters,
+    passes_user_filters,
     best_genre_match,
     call_api,
     filter_generic_genres,
@@ -143,6 +144,7 @@ USER_FILTERS: dict = {}
 # ── Sequencing ───────────────────────────────────────────────────
 
 ARCS = ("wave", "ascending", "descending", "none")
+ALBUM_CAP = 2  # max tracks from one album in any playlist
 
 
 def _arc_order(tracks: list[dict], arc: str) -> list[dict]:
@@ -193,7 +195,7 @@ def sequence_tracks(tracks: list[dict], max_same_artist: int = 5, arc: str = "wa
     filtered = []
     for t in tracks:
         album = t.get("album", "")
-        if album and album_counts[album] >= 2:
+        if album and album_counts[album] >= ALBUM_CAP:
             continue
         album_counts[album] += 1
         filtered.append(t)
@@ -248,7 +250,7 @@ def _is_alt_version(name: str) -> bool:
 def _title_key(name: str) -> str:
     """Song title without bracketed or " - " suffixes, for spotting one song on several releases."""
     base = re.split(r"\s[(\[]|\s-\s", name, maxsplit=1)[0]
-    return re.sub(r"[^a-z0-9]", "", base.lower())
+    return re.sub(r"[\W_]", "", base.casefold())  # \W is Unicode-aware: 春 and 夏 stay distinct
 
 
 def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[dict]:
@@ -260,7 +262,7 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
     cap = 3
     candidates = []
     seen_titles: set[tuple[str, str]] = set()
-    artists_used = 0
+    per_album: Counter = Counter()  # eligible candidates per (artist, album)
 
     for i, artist in enumerate(top_artists):
         artist_id = artist.get("id")
@@ -286,7 +288,6 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
 
         # Artists you play more get a head start, as in the era strategy
         artist_weight = min(artist.get("play_weight", 0) * 2, 0.3)
-        found_before = len(candidates)
         for album in albums[:DEEP_CUT_ALBUMS_PER_ARTIST]:
             album_attrs = album.get("attributes", {})
             album_tracks = get_album_tracks(sf, album["id"])
@@ -305,7 +306,7 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
                 seen_titles.add(key)
 
                 track_num = attrs.get("trackNumber", position + 1)
-                candidates.append({
+                candidate = {
                     "id": tid,
                     "name": name,
                     "artist": attrs.get("artistName", artist_name),
@@ -316,11 +317,18 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
                     # later tracks score slightly higher
                     "_score": 0.5 + artist_weight
                               + DEEP_CUT_POSITION_BONUS * min(max(track_num - 1, 0) / last_position, 1.0),
-                })
-        artists_used += len(candidates) > found_before
+                }
+                if not passes_user_filters(candidate, USER_FILTERS):
+                    continue
+                candidates.append(candidate)
+                per_album[(candidate["artist"], candidate["album"])] += 1
 
-        # Enough candidates *and* enough artists that the per-artist cap can still fill the list
-        if len(candidates) >= target_size * 3 and artists_used * cap >= target_size:
+        # Enough candidates, and enough of them under the album (2) and artist caps to fill the list
+        usable_per_artist: Counter = Counter()
+        for (artist_key, _album), n in per_album.items():
+            usable_per_artist[artist_key] += min(n, ALBUM_CAP)
+        capacity = sum(min(n, cap) for n in usable_per_artist.values())
+        if len(candidates) >= target_size * 3 and capacity >= target_size:
             break
 
     return _finish(candidates, target_size, cap=cap)
@@ -470,7 +478,7 @@ def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
     matched.sort(key=lambda c: c["_score"], reverse=True)
 
     # Pick main tracks (max 3 per artist) + 2-3 wildcards
-    wildcard_count = min(3, len(wildcards))
+    wildcard_count = min(3, len(wildcards), max(target_size, 0))
     main_count = target_size - wildcard_count
     selected = _cap_per_artist(matched, main_count)
 
@@ -568,6 +576,7 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
                     "zone": disc["zone"],
                     "reason": f"Discovered via {disc['seed_artist']} — {disc['zone']} zone.",
                     "_proximity": disc["proximity"],
+                    "_score": 0.0,  # only the user filters' preferred-genre boost ranks within a zone
                 })
 
     # Build gradient: familiar first, then expansion, then frontier
@@ -577,14 +586,17 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
     frontier = [t for t in all_tracks if t.get("zone") == "frontier"]
 
     # Allocate proportionally to target:  ~30% familiar, ~45% expansion, ~25% frontier
-    fam_count = max(1, int(target_size * 0.3))
-    exp_count = max(1, int(target_size * 0.45))
-    fro_count = target_size - fam_count - exp_count
+    # (no max(1, ...): for tiny sizes that made the frontier quota negative, and a negative
+    # slice returns almost the whole zone)
+    fam_count = int(target_size * 0.3)
+    exp_count = int(target_size * 0.45)
+    fro_count = max(target_size - fam_count - exp_count, 0)
 
     rng = random.Random()
     zones = {"familiar": familiar, "expansion": expansion, "frontier": frontier}
     for tracks in zones.values():
-        rng.shuffle(tracks)
+        rng.shuffle(tracks)  # random order among equally preferred tracks
+        tracks.sort(key=lambda t: t["_score"], reverse=True)  # stable: preferred genres first
     picked = {"familiar": familiar[:fam_count], "expansion": expansion[:exp_count],
               "frontier": frontier[:fro_count]}
 
@@ -603,6 +615,7 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
     # Clean internal fields
     for c in selected:
         c.pop("_proximity", None)
+        c.pop("_score", None)
 
     # Don't re-sequence — the gradient order IS the sequence
     return selected
@@ -759,22 +772,29 @@ def _similar_artists(sf: str, artist_id: str) -> list[dict]:
 
 def _cap_per_artist(candidates: list[dict], target_size: int, cap: int = 3,
                     side_cap: int | None = None) -> list[dict]:
-    """Pick the best-scoring candidates with at most `cap` tracks per artist.
+    """Pick the best-scoring candidates with at most `cap` tracks per artist and
+    ALBUM_CAP per album (the same album rule sequence_tracks applies, so nothing picked
+    here is dropped there).
 
     `side_cap` (blend only) limits how many tracks may come from each of the
     "a" / "b" sources so neither listener dominates.
     """
     counts: Counter = Counter()
     sides: Counter = Counter()
-    picked = []
+    albums: Counter = Counter()
+    picked: list[dict] = []
+    if target_size <= 0:
+        return picked
     for c in candidates:
         artist = c.get("artist", "")
+        album = c.get("album", "")
         side = c.get("source")
-        if counts[artist] >= cap:
+        if counts[artist] >= cap or (album and albums[album] >= ALBUM_CAP):
             continue
         if side_cap is not None and side in ("a", "b") and sides[side] >= side_cap:
             continue
         counts[artist] += 1
+        albums[album] += 1
         sides[side] += 1
         picked.append(c)
         if len(picked) >= target_size:

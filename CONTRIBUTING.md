@@ -5,8 +5,9 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Getting Started
 
 1. Fork the repo and clone your fork
-2. Install the dev tools: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, mypy, pyyaml), plus ShellCheck
-   and actionlint (`brew install shellcheck actionlint`)
+2. Set up: `make setup` creates `.venv`, installs the dev tools (pytest, pytest-cov, pytest-xdist, ruff, mypy,
+   ShellCheck, pyyaml) and checks that `bash`, `curl` and `jq` are installed. Then `. .venv/bin/activate`. `make ci` also
+   needs actionlint (`brew install actionlint`)
 3. Try it with no account: `python3 scripts/demo.py tour`, then `make ci` (everything CI checks)
 
 You don't need an Apple Developer account to contribute: the test suite and the demo run the real

@@ -64,6 +64,9 @@ version; read this when a request doesn't obviously match one of its rows.
 **"Make a playlist for me and my sister"**
 → Strategy 8 (Blend). Ask for her taste code (or profile JSON); shared artists first, balanced 60/40 at most.
 
+**"Remix Today's Hits for me" (with the link)**
+→ Strategy 9 (Remix). Keeps the tracks that fit their taste, swaps the rest, and says "you'd keep 14 of 50".
+
 **"How has my taste changed since spring?"**
 → Taste drift with `--from`. Rising/falling genres, new top artists, archetype change.
 

@@ -12,10 +12,12 @@ import errno
 import json
 import os
 import re
+import signal
 import stat
 import subprocess
 import sys
 import time
+from typing import Any, Literal, overload
 from datetime import datetime, UTC
 from pathlib import Path
 import contextlib
@@ -252,14 +254,66 @@ def require_env_tokens():
         sys.exit(1)
 
 
-def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None:
+def _signal_group(proc: subprocess.Popen, sig: int) -> None:
+    """Send `sig` to the child's whole process group (the script, its pipelines and its curl)."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, sig)
+
+
+def _run_with_term_grace(cmd: list[str], timeout: float, grace: float = 5) -> subprocess.CompletedProcess:
+    """Like subprocess.run(timeout=...), but ends a stuck child with SIGTERM before SIGKILL.
+
+    subprocess.run kills with SIGKILL, which bash can't trap, so apple_music_api.sh would
+    leave its token-bearing temp files behind. SIGTERM lets its cleanup trap run first.
+
+    The child runs in its own process group and the signals go to the whole group: killing
+    only the shell would leave a curl or a sibling script holding the output pipes open, and
+    the final read would block past the timeout. That read is bounded too.
+    """
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            start_new_session=True)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except BaseException as e:  # a timeout, or Ctrl-C: the child is in another group and won't see it
+        _signal_group(proc, signal.SIGTERM)
+        try:
+            proc.communicate(timeout=grace)
+        except subprocess.TimeoutExpired:
+            _signal_group(proc, signal.SIGKILL)
+            with contextlib.suppress(subprocess.TimeoutExpired):  # a process outside the group holds the pipes
+                proc.communicate(timeout=grace)
+        if isinstance(e, subprocess.TimeoutExpired):
+            raise subprocess.TimeoutExpired(cmd, timeout) from None
+        raise
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
+
+def run_script(script: str, *args: str, timeout: float = 30) -> subprocess.CompletedProcess:
+    """Run a sibling shell script from scripts/ and capture its output.
+
+    The one place the Python scripts shell out: SIGTERM-first timeouts (see _run_with_term_grace),
+    stdout/stderr captured as text, tokens never on the command line (the shell scripts read them
+    from the environment). Writes still need the caller's explicit `--yes` argument. Raises
+    subprocess.TimeoutExpired on timeout and OSError if the script can't be run.
+    """
+    if Path(script).name != script:
+        raise ValueError(f"run_script takes a bare script name from scripts/, not {script!r}")
+    return _run_with_term_grace([str(SCRIPT_DIR / script), *args], timeout=timeout)
+
+
+@overload
+def call_api(command: str, *args: str, raw: Literal[True]) -> str | None:
+    """With raw=True: stdout as a stripped string (None on failure)."""
+@overload
+def call_api(command: str, *args: str, raw: Literal[False] = False) -> Any:
+    """Otherwise: the parsed JSON (None on failure)."""
+def call_api(command: str, *args: str, raw: bool = False) -> Any:
     """Call apple_music_api.sh and parse JSON output.
 
     If raw=True, return stdout as a stripped string instead of parsing JSON.
     """
-    cmd = [str(API_SCRIPT), command] + list(args)
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = run_script(API_SCRIPT.name, command, *args)
         if result.returncode != 0:
             stderr_msg = result.stderr.strip()
             if stderr_msg:
@@ -585,11 +639,17 @@ def _rater(profile: dict, who: str) -> dict:
     }
 
 
+CLEAN_LOOKUP_LIMIT = 15  # catalog searches per run spent looking for clean versions of explicit songs
+
+
 def user_filters(config: dict, recent_track_ids: set[str] | None = None, profile: dict | None = None,
-                 profile_b: dict | None = None) -> dict:
+                 profile_b: dict | None = None, *, clean_only: bool | None = None,
+                 storefront: str | None = None, include_library: bool = False) -> dict:
     """The parts of config.json, recent playlist history and ratings that every strategy honours.
 
     `profile_b` is the second listener of a blend: both listeners' ratings count.
+    `clean_only` (default: config.json's `clean_only`) keeps explicit songs out; it needs
+    `storefront` to look up clean versions.
     """
     raters = [_rater(p, who) for p, who in ((profile, "you"), (profile_b, "they")) if p]
     excluded = {a.lower() for a in config.get("excluded_artists") or [] if isinstance(a, str)}
@@ -607,15 +667,58 @@ def user_filters(config: dict, recent_track_ids: set[str] | None = None, profile
         "preferred_genres": [g for g in config.get("preferred_genres") or [] if isinstance(g, str)],
         "recent_track_ids": set(recent_track_ids or ()),
         "raters": raters,
+        # ids a clean-version swap must not introduce: dislikes (either listener) and, unless the run
+        # allows them, songs already in the library. Strategies add their own (the seed, a playlist's tracks).
+        "blocked_ids": {tid for p in (profile, profile_b) if p
+                        for tid in (p.get("disliked_song_ids") or []) + ([] if include_library
+                                                                          else p.get("library_song_ids") or [])},
+        "clean_only": config.get("clean_only") is True if clean_only is None else clean_only,
+        "storefront": storefront,
+        "clean_lookups_left": CLEAN_LOOKUP_LIMIT,
+        "clean_cache": {},
     }
 
 
 def passes_user_filters(candidate: dict, filters: dict | None) -> bool:
-    """False for an excluded artist or a track used in a recent DJ playlist."""
+    """False for an excluded artist, a track used in a recent DJ playlist, or (clean mode) an explicit song."""
     if not filters:
         return True
+    if filters.get("clean_only") and candidate.get("explicit"):
+        return False
     return (candidate.get("artist", "").lower() not in (filters.get("excluded_artists") or set())
             and candidate.get("id") not in (filters.get("recent_track_ids") or set()))
+
+
+def swap_explicit_for_clean(candidate: dict, filters: dict | None) -> dict:
+    """In clean mode, replace an explicit song with its clean version when the catalog has one.
+
+    The clean version is the same title by the same artist whose `contentRating` isn't explicit.
+    One catalog search per distinct song, at most CLEAN_LOOKUP_LIMIT per run; anything not
+    swapped stays explicit and is dropped by passes_user_filters.
+    """
+    if not filters or not filters.get("clean_only") or not candidate.get("explicit") or not filters.get("storefront"):
+        return candidate
+    name, artist = candidate.get("name", ""), candidate.get("artist", "")
+    key = (name.lower(), artist.lower())
+    cache: dict = filters.setdefault("clean_cache", {})
+    if key not in cache:
+        if filters.get("clean_lookups_left", 0) <= 0 or not name or not artist:
+            return candidate
+        filters["clean_lookups_left"] -= 1
+        found = call_api("search", filters["storefront"], f"{name} {artist}", "songs")
+        cache[key] = next((s for s in ((found or {}).get("results", {}).get("songs", {}) or {}).get("data", [])
+                           if s.get("attributes", {}).get("name", "").lower() == key[0]
+                           and s.get("attributes", {}).get("artistName", "").lower() == key[1]
+                           and s.get("attributes", {}).get("contentRating") != "explicit"), None)
+    clean = cache[key]
+    blocked = (filters.get("blocked_ids") or set()) | (filters.get("recent_track_ids") or set())
+    if not clean or clean.get("id") in blocked:
+        return candidate
+    attrs = clean.get("attributes", {})
+    return {**candidate, "id": clean.get("id", candidate.get("id")), "explicit": False,
+            "album": attrs.get("albumName", candidate.get("album", "")),
+            "duration_ms": attrs.get("durationInMillis", candidate.get("duration_ms")),
+            "reason": f"{candidate.get('reason', '')} (clean version)".strip()}
 
 
 def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dict]:
@@ -631,9 +734,15 @@ def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dic
     preferred = filters.get("preferred_genres") or []
     raters = filters.get("raters") or []
     kept = []
+    seen_ids: set[str] = set()
     for c in candidates:
+        c = swap_explicit_for_clean(c, filters)
         if not passes_user_filters(c, filters):
             continue
+        if filters.get("clean_only") and c.get("id"):  # an explicit song and its clean twin become one entry
+            if c["id"] in seen_ids:
+                continue
+            seen_ids.add(c["id"])
         if "_score" in c:
             if preferred:
                 c["_score"] += PREFERRED_GENRE_BOOST * best_genre_match(c.get("genre", []), preferred)

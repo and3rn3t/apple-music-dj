@@ -655,7 +655,7 @@ def load_data_file(path: str) -> dict:
     """Load an extra-data JSON file, reporting a missing or malformed file cleanly."""
     try:
         with open(path) as f:
-            return json.load(f)
+            data = json.load(f)
     except FileNotFoundError:
         print(f"ERROR: --data file not found: {path}", file=sys.stderr)
         sys.exit(1)
@@ -666,6 +666,10 @@ def load_data_file(path: str) -> dict:
     except OSError as e:
         print(f"ERROR: Cannot read --data file: {path} ({e.strerror})", file=sys.stderr)
         sys.exit(1)
+    if not isinstance(data, dict):  # e.g. `[]` or `null` from a script that failed part-way
+        print(f"ERROR: --data file must hold a JSON object, not {type(data).__name__}: {path}", file=sys.stderr)
+        sys.exit(1)
+    return data
 
 
 # ── Main ─────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Getting Started
 
 1. Fork the repo and clone your fork
-2. Install the dev tools: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, pyyaml), plus ShellCheck
+2. Install the dev tools: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, mypy, pyyaml), plus ShellCheck
    and actionlint (`brew install shellcheck actionlint`)
 3. Try it with no account: `python3 scripts/demo.py tour`, then `make ci` (everything CI checks)
 
@@ -49,7 +49,7 @@ To try changes on your own library as well, run `python3 scripts/setup_auth.py` 
 - One-time setup: `pip install -e ".[dev]"`, install ShellCheck and actionlint
   (`brew install shellcheck actionlint`), then `pre-commit install --hook-type pre-commit --hook-type
   commit-msg` so ruff, ShellCheck and the conventional-commit check run on every commit
-- Before submitting: `make ci` runs everything CI checks (ruff, ShellCheck, tests with the 80% coverage
+- Before submitting: `make ci` runs everything CI checks (ruff, ShellCheck, mypy, tests with the 90% coverage
   floor, actionlint); `make ruff` is the quick lint-only run
 
 ### Testing Changes

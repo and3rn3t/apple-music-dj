@@ -9,6 +9,7 @@ import time
 import pytest
 
 from _common import (
+    run_script,
     call_api,
     check_token_expiry,
     filter_generic_genres,
@@ -152,7 +153,7 @@ class TestCallApi:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout='{"data": []}', stderr=""
         )
-        monkeypatch.setattr("_common.subprocess.run", lambda *a, **kw: mock_result)
+        monkeypatch.setattr("_common._run_with_term_grace", lambda *a, **kw: mock_result)
         result = call_api("recent-tracks")
         assert result == {"data": []}
 
@@ -160,7 +161,7 @@ class TestCallApi:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="us\n", stderr=""
         )
-        monkeypatch.setattr("_common.subprocess.run", lambda *a, **kw: mock_result)
+        monkeypatch.setattr("_common._run_with_term_grace", lambda *a, **kw: mock_result)
         result = call_api("user-storefront", raw=True)
         assert result == "us"
 
@@ -168,26 +169,26 @@ class TestCallApi:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=1, stdout="", stderr="Error"
         )
-        monkeypatch.setattr("_common.subprocess.run", lambda *a, **kw: mock_result)
+        monkeypatch.setattr("_common._run_with_term_grace", lambda *a, **kw: mock_result)
         assert call_api("verify") is None
 
     def test_returns_none_on_timeout(self, monkeypatch):
         def mock_run(*a, **kw):
             raise subprocess.TimeoutExpired(cmd="test", timeout=30)
-        monkeypatch.setattr("_common.subprocess.run", mock_run)
+        monkeypatch.setattr("_common._run_with_term_grace", mock_run)
         assert call_api("slow-command") is None
 
     def test_returns_none_on_malformed_json(self, monkeypatch):
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="not json{", stderr=""
         )
-        monkeypatch.setattr("_common.subprocess.run", lambda *a, **kw: mock_result)
+        monkeypatch.setattr("_common._run_with_term_grace", lambda *a, **kw: mock_result)
         assert call_api("broken") is None
 
     def test_returns_none_on_missing_script(self, monkeypatch):
         def mock_run(*a, **kw):
             raise FileNotFoundError("No such file")
-        monkeypatch.setattr("_common.subprocess.run", mock_run)
+        monkeypatch.setattr("_common._run_with_term_grace", mock_run)
         assert call_api("any") is None
 
 
@@ -485,7 +486,8 @@ class TestUserFilters:
         from _common import user_filters
         f = user_filters({"excluded_artists": ["Nickelback", 3], "preferred_genres": ["Jazz"]}, {"t1"})
         assert f == {"excluded_artists": {"nickelback"}, "preferred_genres": ["Jazz"], "recent_track_ids": {"t1"},
-                     "raters": []}
+                     "raters": [], "clean_only": False, "storefront": None, "blocked_ids": set(), "clean_lookups_left": 15,
+                     "clean_cache": {}}
 
     def test_defaults_filter_nothing(self):
         from _common import DEFAULT_CONFIG, apply_user_filters, user_filters
@@ -719,3 +721,47 @@ def _signals(pairs):
     """rating_signals_from with a distinct song ID per (value, attrs) pair."""
     from _common import rating_signals_from
     return rating_signals_from([(f"song{i}", value, attrs) for i, (value, attrs) in enumerate(pairs)])
+
+
+class TestRunScript:
+    def test_runs_a_sibling_script_by_bare_name(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr("_common._run_with_term_grace",
+                            lambda cmd, timeout: seen.append((cmd, timeout)) or "done")
+        assert run_script("build_playlist.sh", "create", "N", timeout=60) == "done"
+        (cmd, timeout), = seen
+        assert cmd[0].endswith("/scripts/build_playlist.sh") and cmd[1:] == ["create", "N"] and timeout == 60
+
+    @pytest.mark.parametrize("script", ["../evil.sh", "/bin/sh", "sub/x.sh"])
+    def test_refuses_anything_but_a_bare_script_name(self, script):
+        with pytest.raises(ValueError):
+            run_script(script)
+
+
+class TestRunWithTermGrace:
+    def test_a_stuck_descendant_cannot_hold_the_call_past_the_timeout(self):
+        """Killing only the shell leaves `sleep` holding the output pipes; the whole group is ended."""
+        import time
+
+        from _common import _run_with_term_grace
+
+        started = time.time()
+        with pytest.raises(subprocess.TimeoutExpired):
+            _run_with_term_grace(["bash", "-c", "sleep 30 & wait"], timeout=0.5, grace=1)
+        assert time.time() - started < 5
+
+    def test_a_child_that_ignores_term_is_killed_after_the_grace_period(self):
+        import time
+
+        from _common import _run_with_term_grace
+
+        started = time.time()
+        with pytest.raises(subprocess.TimeoutExpired):
+            _run_with_term_grace(["bash", "-c", "trap '' TERM; sleep 30 & sleep 30"], timeout=0.5, grace=1)
+        assert time.time() - started < 6
+
+    def test_a_script_that_finishes_returns_its_output(self):
+        from _common import _run_with_term_grace
+
+        r = _run_with_term_grace(["bash", "-c", "echo out; echo err >&2; exit 3"], timeout=5)
+        assert (r.returncode, r.stdout, r.stderr) == (3, "out\n", "err\n")

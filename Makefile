@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: test test-fast coverage coverage-html lint ruff actionlint ci audit demo-svg social-preview
+.PHONY: test test-fast coverage coverage-html lint ruff typecheck actionlint ci audit demo-svg social-preview
 
 ## Run all tests
 test:
@@ -12,7 +12,7 @@ test-fast:
 
 ## Run tests with coverage summary
 coverage:
-	$(PYTHON) -m pytest tests/ --cov=scripts --cov-report=term-missing --cov-fail-under=80
+	$(PYTHON) -m pytest tests/ --cov=scripts --cov-report=term-missing --cov-fail-under=90
 
 ## Generate HTML coverage report
 coverage-html:
@@ -24,12 +24,16 @@ ruff:
 	$(PYTHON) -m ruff check scripts tests .github/scripts
 	shellcheck scripts/*.sh
 
+## Type-check scripts/ (non-strict; tests/ is out of scope for now)
+typecheck:
+	$(PYTHON) -m mypy
+
 ## Lint the GitHub Actions workflows (same check as CI's actionlint job)
 actionlint:
 	actionlint
 
-## Everything CI checks, in one command: ruff + ShellCheck, tests with the coverage floor, workflows
-ci: ruff coverage actionlint
+## Everything CI checks, in one command: ruff + ShellCheck, mypy, tests with the coverage floor, workflows
+ci: ruff typecheck coverage actionlint
 	@echo "CI checks passed"
 
 ## Syntax-check all scripts

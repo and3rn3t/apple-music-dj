@@ -9,7 +9,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS = sorted((ROOT / "scripts").glob("*.py")) + sorted((ROOT / "scripts").glob("*.sh"))
+SCRIPTS = (sorted((ROOT / "scripts").glob("*.py")) + sorted((ROOT / "scripts").glob("*.sh"))
+           + sorted((ROOT / "scripts" / "strategies").glob("*.py")))
 SKILL = (ROOT / "SKILL.md").read_text()
 
 ALLOWED_HOSTS = {

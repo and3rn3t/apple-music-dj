@@ -7,7 +7,7 @@ OpenClaw skill for Apple Music curation (bash + stdlib Python), published to Cla
 
 ## Claude-specific notes
 
-- Done gate: `make ci` (ruff + ShellCheck, tests at the 80% coverage floor, actionlint).
+- Done gate: `make ci` (ruff + ShellCheck + mypy, tests at the 90% coverage floor, actionlint).
 - Test against `scripts/demo.py serve` + `APPLE_MUSIC_API_BASE`, not the real API, unless
   the user asks for a live run. Never echo `APPLE_MUSIC_DEV_TOKEN` / `APPLE_MUSIC_USER_TOKEN`.
 - A new root file must be excluded in **both** `.clawhubignore` and `.clawignore` (or added

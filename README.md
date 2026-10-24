@@ -1,7 +1,7 @@
 # 🎧 Apple Music DJ
 
 [![Tests](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml/badge.svg)](https://github.com/and3rn3t/apple-music-dj/actions/workflows/test.yml)
-![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14%20%7C%203.15-blue)
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](LICENSE)
 [![ClawHub](https://img.shields.io/badge/ClawHub-apple--music--dj-orange)](https://clawhub.ai/and3rn3t/skills/apple-music-dj)
@@ -85,7 +85,7 @@ profile so the scripts can read them.
 python3 scripts/demo.py tour
 ```
 
-Runs the real scripts against a fictional listener and a small sample catalog served on `127.0.0.1`:
+Runs the real scripts against a fictional listener and a sample catalog of about 250 songs served on `127.0.0.1`:
 a Taste DNA card, a "songs like Radiohead" playlist, a 90s throwback, a daily pick and a
 compatibility score. Nothing is sent to Apple and nothing touches an account. Any script works the
 same way, with `DEMO_PROFILE` standing in for the profile:
@@ -185,6 +185,7 @@ Just talk naturally. Here's what the DJ understands:
 | "Refresh my focus playlist" | Evolves an existing playlist with fresh tracks |
 | "Songs like Phoebe Bridgers" | Seed strategy — similar artists, filtered through your taste |
 | "Make me a 90s throwback" | Decade playlist built from your own artists |
+| "Remix this Apple Music playlist for me" | Keeps what fits your taste, swaps the rest, and says what changed |
 | "Blend my taste with my sister's" | One playlist for two listeners (needs their taste code or profile JSON) |
 | "Give me my taste code" | A short `amdj1:…` line a friend can blend with |
 | "How has my taste changed since spring?" | Taste drift report from your saved snapshots |
@@ -229,7 +230,7 @@ apple-music-dj/
 │   ├── automation.md           # Scheduled jobs: schedules and exact commands
 │   ├── examples.md             # Worked request → feature examples
 │   ├── features.md             # Engagement features in detail
-│   ├── playlist-strategies.md  # Deep playbook for all 8 strategies
+│   ├── playlist-strategies.md  # Deep playbook for all 9 strategies
 │   ├── spotify-import.md       # Moving from Spotify: export, import, match quality
 │   └── troubleshooting.md      # Step-by-step fixes for common issues
 └── scripts/
@@ -237,7 +238,8 @@ apple-music-dj/
     ├── apple_music_api.sh      # Bash API wrapper (25+ commands, retry logic)
     ├── taste_profiler.py       # Taste DNA profiler with caching & Replay
     ├── build_playlist.sh       # Playlist creation & refresh with dedup
-    ├── strategy_engine.py      # 8 playlist strategies + energy-arc sequencing
+    ├── strategy_engine.py      # Strategy CLI: naming, previews, playlist creation
+    ├── strategies/             # One module per playlist strategy + shared scoring and sequencing
     ├── taste_card.py           # Shareable Taste DNA Card (SVG/text)
     ├── compatibility.py        # Taste compatibility scoring
     ├── share_code.py           # Taste codes for blending with a friend
@@ -353,11 +355,11 @@ All data stays on your machine. The skill reads your Apple Music listening data 
 
 ```bash
 make test              # Run all tests
-make coverage          # Tests with coverage summary (fails below 80%)
+make coverage          # Tests with coverage summary (fails below 90%)
 make coverage-html     # Generate HTML coverage report
 ```
 
-1,100+ tests across 27 modules — 92% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, all eight strategies and energy-arc sequencing, taste drift, playlist import, feedback, playlist health, history tracking, cron setup, token generation and guided setup, demo mode, end-to-end runs against a local mock API, and shared utilities.
+1,100+ tests across 27 modules — 92% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, all nine strategies and energy-arc sequencing, taste drift, playlist import, feedback, playlist health, history tracking, cron setup, token generation and guided setup, demo mode, end-to-end runs against a local mock API, and shared utilities.
 
 ## 📖 Full Documentation
 

@@ -247,6 +247,33 @@ contributes only what plausibly fits the other's taste.
 
 ---
 
+## Strategy 9: Remix
+
+### Philosophy
+
+Every editorial and shared playlist on Apple Music is a starting point. Keep what you'd have
+picked yourself, swap what you wouldn't, and say which is which.
+
+### Algorithm
+
+1. `--playlist-url` takes a music.apple.com playlist link or a bare `pl.…` ID (anything else is refused before
+   any request); fetch the playlist with its tracks (`apple_music_api.sh catalog-playlist`)
+2. Score each track by `taste_affinity` against your genres, plus a small boost for artists you play;
+   library songs are skipped (unless `--include-library`), disliked ones are always dropped
+3. Keep tracks that fit (`REMIX_KEEP_MIN` in `strategies/scoring.py`, `source: remix_keep`)
+4. For each dropped track (up to 12), the first match of: the same artist's other top song that fits you;
+   a similar artist's top song that fits you; more from an artist whose tracks you are keeping
+   (`source: remix_swap`, with a `reason` naming the track it replaced)
+5. Rank (kept tracks above swaps), apply your `config.json` filters, cap per artist and album, sequence with the wave arc
+
+### Naming and output
+
+- "Remix: Party Starters · Oct 2026"; the JSON has `remix: {playlist, original_tracks, kept, swapped}`,
+  and the run prints "You'd keep 14 of 50 tracks".
+- Works with `--size` and `--minutes` like every strategy.
+
+---
+
 ## Sequencing Guide (All Strategies)
 
 ### The Arc
@@ -330,6 +357,7 @@ Every strategy (and the daily pick) reads these optional keys:
 | `excluded_artists` | `[]` | Never pick these artists (case-insensitive) |
 | `preferred_genres` | `[]` | +0.1 to a candidate's score for a matching genre, +0.05 for the same family |
 | `avoid_repeat_days` | `30` | Skip tracks used in playlists the DJ created in the last N days (`0` turns it off; not used by the daily pick) |
+| `clean_only` | `false` | Keep explicit songs out of every strategy and the daily pick (`--clean` does it for one run). An explicit song is swapped for its clean version (same title and artist, `contentRating` not `explicit`) when a catalog search finds one — at most 15 searches per run — and dropped otherwise |
 | `playlist_size` | `30` | Default playlist length |
 
 ---
@@ -428,3 +456,12 @@ genre-adjacent new releases the user would never find on their own.
 ### Description Template
 
 "Fresh releases from your artists and genre discoveries. {N} tracks."
+
+## Exact running time (`--minutes`)
+
+`--minutes N` replaces `--size` for any strategy. The strategy is asked for about 30% more tracks than N minutes
+needs, then tracks are dropped until the total `durationInMillis` is within about 60 seconds of N. Dropping tracks
+from an already-ordered list leaves its order intact, so a workout still climbs, a sleep mix still winds down, a wave
+still peaks in the middle and constellation keeps its familiar-to-frontier gradient. Drops are spread out and the
+opener and closer are kept. The output reports `target_minutes` and the real `duration_minutes`; a strategy that
+can't find enough tracks returns what it has rather than padding.

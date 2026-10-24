@@ -8,6 +8,7 @@ import http.server
 import itertools
 import json
 import os
+import re
 import shutil
 import signal
 import socketserver
@@ -56,6 +57,96 @@ def api(tmp_path):
 
 def _json(r):
     return json.loads(r.stdout)
+
+
+class TestRemixAgainstTheMock:
+    def test_remixes_a_catalog_playlist_by_url(self, api, profile):
+        r = api("strategy_engine.py", "--strategy", "remix", "--profile", profile, "--storefront", "us", "--size", "8",
+                "--playlist-url", "https://music.apple.com/us/playlist/alt-essentials/pl.demo-alt-essentials")
+        out = _json(r)
+        assert out["remix"]["playlist"] == "Alt Essentials" and out["remix"]["original_tracks"] == 13
+        assert out["remix"]["kept"] + out["remix"]["swapped"] == out["track_count"] > 0
+        assert {t["source"] for t in out["tracks"]} <= {"remix_keep", "remix_swap"}
+        assert api.mock.writes() == []
+        assert any(q["path"] == "/v1/catalog/us/playlists/pl.demo-alt-essentials" for q in api.mock.requests)
+
+    def test_a_long_playlist_is_read_in_pages(self, api, profile, monkeypatch):
+        monkeypatch.setattr(api.mock.catalog, "playlist_page_size", 4)
+        r = api("strategy_engine.py", "--strategy", "remix", "--profile", profile, "--storefront", "us",
+                "--size", "8", "--playlist-url", "pl.demo-alt-essentials")
+        assert _json(r)["remix"]["original_tracks"] == 13  # all of it, from four pages
+        paths = [(q["path"], q["query"].get("offset")) for q in api.mock.requests if "/playlists/" in q["path"]]
+        assert ("/v1/catalog/us/playlists/pl.demo-alt-essentials/tracks", ["4"]) in paths
+        assert ("/v1/catalog/us/playlists/pl.demo-alt-essentials/tracks", ["12"]) in paths
+
+    def test_a_bad_playlist_link_is_refused_before_any_request(self, api, profile):
+        r = api("strategy_engine.py", "--strategy", "remix", "--profile", profile, "--storefront", "us",
+                "--playlist-url", "https://evil.example/us/playlist/x/pl.abc", check=False)
+        assert r.returncode == 1 and "Apple Music playlist link" in r.stderr
+        assert not any("/playlists/" in q["path"] for q in api.mock.requests)
+
+
+class TestStalledRequest:
+    def test_timeout_ends_script_with_sigterm_and_leaves_no_token_files(self, api, monkeypatch):
+        import socket
+
+        from _common import _run_with_term_grace
+
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(5)  # accepts connections in the kernel backlog, never answers
+        try:
+            for k, v in api.env.items():
+                monkeypatch.setenv(k, v)
+            monkeypatch.setenv("APPLE_MUSIC_API_BASE", f"http://127.0.0.1:{srv.getsockname()[1]}")
+            with pytest.raises(subprocess.TimeoutExpired):
+                _run_with_term_grace([str(SCRIPTS / "apple_music_api.sh"), "recently-added", "5"], timeout=2)
+        finally:
+            srv.close()
+        assert list(api.tmpdir.glob("am_*")) == []
+
+
+def _dispatcher_commands() -> set[str]:
+    """Every command in apple_music_api.sh's `case "$cmd"` dispatcher (minus help)."""
+    text = (SCRIPTS / "apple_music_api.sh").read_text()
+    block = text.split('case "$cmd" in', 1)[1].split("help|*)", 1)[0]
+    return set(re.findall(r"^\s+([a-z][a-z0-9-]*)\)", block, flags=re.M))
+
+
+# One representative invocation per command; ids/ipaths come from the mock catalog and `ids_file`.
+COMMAND_ARGS = {
+    "verify": [], "user-storefront": [], "recent-tracks": [], "recent-played": [], "heavy-rotation": [],
+    "ratings": ["songs"], "library-artists": ["5"], "library-songs": ["5"], "library-playlists": ["5"],
+    "recommendations": [], "replay-summary": ["2024"], "replay-milestones": ["2024"],
+    "playlist-tracks": ["p.1"], "recently-added": ["5"], "recent-stations": [],
+    "search": ["us", "radiohead"], "charts": ["us"], "artist-albums": ["us", "a1"],
+    "artist-top": ["us", "a1"], "artist-detail": ["us", "a1"], "album-tracks": ["us", "alb1"],
+    "song-detail": ["us", "s1"], "genres": ["us"], "similar-artists": ["us", "a1"],
+    "songs-by-isrc": ["us", "GBAYE9700001"], "catalog-playlist": ["us", "pl.demo-alt-essentials"],
+    "catalog-playlist-tracks": ["us", "pl.demo-alt-essentials", "0"],
+    "create-playlist": ["{ids}", "--yes"], "add-to-playlist": ["p.1", "{ids}", "--yes"],
+    "remove-from-playlist": ["p.1", "{ids}", "--yes"], "add-to-library": ["albums", "alb1", "--yes"],
+    "favorite": ["songs", "s1", "--yes"], "rate": ["s1", "1", "--yes"], "unrate": ["s1", "--yes"],
+}
+
+
+# The mock deliberately answers 404 for Replay (its real shape is unverified, see #66).
+MOCK_ANSWERS_404 = {"replay-summary", "replay-milestones"}
+
+
+class TestEveryCommand:
+    def test_table_matches_the_dispatcher(self):
+        assert set(COMMAND_ARGS) == _dispatcher_commands()
+
+    @pytest.mark.parametrize("command", sorted(COMMAND_ARGS))
+    def test_command_runs_against_the_mock(self, api, command):
+        ids = api.tmp / "ids.json"
+        ids.write_text(json.dumps({"data": [{"id": "s1", "type": "songs"}]}))
+        args = [str(ids) if a == "{ids}" else a for a in COMMAND_ARGS[command]]
+        before = len(api.mock.requests)
+        r = api("apple_music_api.sh", command, *args, check=False)
+        assert (r.returncode != 0) == (command in MOCK_ANSWERS_404), f"{command} exited {r.returncode}\n{r.stderr}"
+        assert len(api.mock.requests) > before, f"{command} never reached the API"
 
 
 # ── Shell wrapper ────────────────────────────────────────────────
@@ -376,8 +467,15 @@ class TestStrategies:
 
     def test_era(self, api, profile):
         plan = self._plan(api, profile, "--strategy", "era", "--decade", "90s")
-        assert plan["tracks"] and all(t["id"] in {"s2", "s3", "s6", "s7", "s8", "s11", "s12"} for t in plan["tracks"])
+        assert plan["tracks"] and all(t["id"] in {"s2", "s3", "s6", "s7", "s8", "s11", "s12", "s13"} for t in plan["tracks"])
         assert plan["name"].startswith("1990s Throwback")
+
+    def test_clean_mode_swaps_in_the_clean_twin_and_drops_what_has_none(self, api, profile):
+        plan = self._plan(api, profile, "--strategy", "era", "--decade", "90s", "--clean")
+        ids = {t["id"] for t in plan["tracks"]}
+        assert not {"s7", "s12"} & ids  # the explicit songs are gone
+        assert not any(t["explicit"] for t in plan["tracks"])
+        assert any(q["path"] == "/v1/catalog/us/search" for q in api.mock.requests)  # it looked for clean versions
 
     def test_blend_with_itself_is_all_shared(self, api, profile):
         plan = self._plan(api, profile, "--strategy", "blend", "--profile-b", profile)
@@ -623,6 +721,67 @@ class TestNothingIsWrittenByDefault:
         assert r.returncode == 2 and not (api.tmp / "logs").exists()
 
 
+class TestBuildPlaylistScript:
+    @pytest.fixture
+    def ids(self, api):
+        path = api.tmp / "ids.txt"
+        path.write_text("s1\n\n  s2  \n")  # blank lines and padding are ignored
+        return path
+
+    def test_create_sends_the_playlist_and_logs_history(self, api, ids):
+        api("build_playlist.sh", "create", "Night Drive", "late", ids, "--yes")
+        (write,) = api.mock.writes()
+        assert (write["method"], write["path"]) == ("POST", "/v1/me/library/playlists")
+        assert write["body"]["attributes"] == {"name": "Night Drive", "description": "late"}
+        assert write["body"]["relationships"]["tracks"]["data"] == [{"id": "s1", "type": "songs"},
+                                                                    {"id": "s2", "type": "songs"}]
+        assert list((api.home / ".apple-music-dj").glob("*history*")), "create should log to playlist history"
+        assert list(api.tmpdir.glob("playlist_*")) == []
+
+    def test_create_skips_a_name_that_already_exists(self, api, ids):
+        api("build_playlist.sh", "create", "Night Drive", "late", ids, "--yes")
+        again = api("build_playlist.sh", "create", "Night Drive", "late", ids, "--yes")
+        assert again.returncode == 0 and "already exists" in again.stderr
+        assert len(api.mock.writes()) == 1
+
+    def test_remove_sends_a_delete(self, api, ids):
+        api("build_playlist.sh", "remove", "p.1", ids, "--yes")
+        assert [r["method"] for r in api.mock.writes()] == ["DELETE"]
+
+    @pytest.mark.parametrize("mode", ["create", "refresh", "remove"])
+    def test_missing_ids_file(self, api, mode):
+        lead = ("Name", "desc") if mode == "create" else ("p.1",)
+        r = api("build_playlist.sh", mode, *lead, api.tmp / "nope.txt", "--yes", check=False)
+        assert r.returncode == 1 and "File not found" in r.stderr and api.mock.writes() == []
+
+    @pytest.mark.parametrize("mode", ["create", "refresh", "remove"])
+    def test_empty_ids_file(self, api, mode):
+        empty = api.tmp / "empty.txt"
+        empty.write_text("\n  \n")
+        lead = ("Name", "desc") if mode == "create" else ("p.1",)
+        r = api("build_playlist.sh", mode, *lead, empty, "--yes", check=False)
+        assert r.returncode == 1 and "No song IDs" in r.stderr and api.mock.writes() == []
+
+    def test_unknown_mode_prints_usage(self, api):
+        r = api("build_playlist.sh", "bogus", check=False)
+        assert r.returncode == 1 and "Usage: build_playlist.sh" in r.stderr
+
+
+class TestNewReleasesScript:
+    def test_reports_releases_as_json_and_writes_nothing(self, api, profile):
+        r = api("new_releases.sh", profile, "us")
+        assert isinstance(json.loads(r.stdout), (dict, list))
+        assert api.mock.writes() == []
+
+    def test_missing_profile(self, api):
+        r = api("new_releases.sh", api.tmp / "nope.json", "us", check=False)
+        assert r.returncode == 1 and "Profile not found" in r.stderr
+
+    def test_missing_arguments_print_usage(self, api):
+        r = api("new_releases.sh", check=False)
+        assert r.returncode != 0 and "Usage: new_releases.sh" in r.stderr
+
+
 # ── The scheduled jobs actually run ──────────────────────────────
 
 class TestScheduledJobsActuallyRun:
@@ -745,3 +904,70 @@ class TestVerifySetup:
             server.server_close()
         assert proc.returncode in (143, -signal.SIGTERM)
         assert list(api.tmpdir.glob("am_verify_*")) == []
+
+def _status_server(status: int):
+    """A local server that answers every GET with a fixed HTTP status."""
+
+    class Fixed(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(status)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Fixed)
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
+    return server
+
+
+def _jwt(exp: int) -> str:
+    import base64
+
+    payload = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
+    return f"e30.{payload}.sig"
+
+
+class TestVerifySetupFailures:
+    def _verify(self, api, **env_overrides):
+        env = {**api.env, **env_overrides}
+        for k in [k for k, v in env_overrides.items() if v is None]:
+            env.pop(k)
+        return subprocess.run(["bash", str(SCRIPTS / "verify_setup.sh")], capture_output=True, text=True,
+                              env=env, timeout=60)
+
+    def test_missing_tokens_are_errors(self, api):
+        r = self._verify(api, APPLE_MUSIC_DEV_TOKEN=None, APPLE_MUSIC_USER_TOKEN=None)
+        assert r.returncode == 2
+        assert "APPLE_MUSIC_DEV_TOKEN — NOT SET" in r.stdout and "APPLE_MUSIC_USER_TOKEN — NOT SET" in r.stdout
+
+    def test_expired_dev_token_is_an_error(self, api):
+        r = self._verify(api, APPLE_MUSIC_DEV_TOKEN=_jwt(int(time.time()) - 3600))
+        assert r.returncode >= 1 and "Dev token has EXPIRED" in r.stdout
+
+    def test_token_expiring_soon_is_only_a_warning(self, api):
+        r = self._verify(api, APPLE_MUSIC_DEV_TOKEN=_jwt(int(time.time()) + 5 * 86400))
+        assert r.returncode == 0 and "Dev token expires in" in r.stdout
+
+    @pytest.mark.parametrize("status,message", [(401, "Dev token — invalid or expired (HTTP 401)"),
+                                                (403, "User token expired (HTTP 403)")])
+    def test_api_rejections_are_reported(self, api, status, message):
+        server = _status_server(status)
+        try:
+            r = self._verify(api, APPLE_MUSIC_API_BASE=f"http://127.0.0.1:{server.server_address[1]}")
+        finally:
+            server.shutdown()
+            server.server_close()
+        assert message in r.stdout
+        assert r.returncode != 0
+
+    def test_unreachable_api_is_a_network_error(self, api):
+        import socket
+
+        with socket.socket() as s:  # grab a free port, then close it so nothing listens there
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        r = self._verify(api, APPLE_MUSIC_API_BASE=f"http://127.0.0.1:{port}")
+        assert r.returncode != 0 and "Network error" in r.stdout
+

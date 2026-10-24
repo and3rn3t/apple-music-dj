@@ -1,0 +1,118 @@
+"""strategies/duration.py: trimming an ordered playlist to a running time."""
+
+import pytest
+
+from strategies.duration import (
+    AVERAGE_TRACK_MS,
+    TOLERANCE_MS,
+    fit_to_duration,
+    pool_size_for,
+    total_ms,
+)
+
+MIN = 60_000
+
+
+def tracks(*minutes: float) -> list[dict]:
+    return [{"id": f"t{i}", "duration_ms": round(m * MIN)} for i, m in enumerate(minutes)]
+
+
+def ids(items: list[dict]) -> list[str]:
+    return [t["id"] for t in items]
+
+
+def test_a_playlist_already_on_target_is_untouched():
+    items = tracks(3, 4, 3, 4)
+    assert fit_to_duration(items, 14 * MIN) == items
+
+
+def test_a_short_playlist_is_returned_as_is():
+    items = tracks(3, 3)
+    assert fit_to_duration(items, 60 * MIN) == items
+
+
+def test_trims_down_to_within_the_tolerance():
+    items = tracks(*[3 + (i % 5) * 0.4 for i in range(14)])  # varied lengths, about 48 min
+    out = fit_to_duration(items, 30 * MIN)
+    assert abs(total_ms(out) - 30 * MIN) <= TOLERANCE_MS
+
+
+def test_lands_when_one_removal_at_a_time_gets_stuck():
+    items = tracks(3.2, 3.0, 3.0, 3.0, 4.4, 3.0, 3.0, 3.2)  # 25.8 min -> 22: needs 3.8 off
+    out = fit_to_duration(items, 22 * MIN)
+    assert abs(total_ms(out) - 22 * MIN) <= TOLERANCE_MS
+    assert ids(out) == [i for i in ids(items) if i in set(ids(out))]
+
+
+def test_never_reorders():
+    items = tracks(*[3 + (i % 4) * 0.5 for i in range(20)])
+    out = fit_to_duration(items, 45 * MIN)
+    assert ids(out) == [i for i in ids(items) if i in set(ids(out))]
+
+
+def test_keeps_the_opener_and_closer():
+    items = tracks(*[3.5] * 12)
+    out = fit_to_duration(items, 21 * MIN)
+    assert out[0] is items[0] and out[-1] is items[-1]
+
+
+def test_drops_are_spread_out_not_clumped():
+    items = tracks(*[3] * 20)  # 60 min, drop 4 tracks to reach 48
+    out = fit_to_duration(items, 48 * MIN)
+    dropped = sorted(int(i[1:]) for i in set(ids(items)) - set(ids(out)))
+    assert len(dropped) == 4 and all(b - a >= 3 for a, b in zip(dropped, dropped[1:], strict=False))
+
+
+def test_picks_the_track_that_lands_closest():
+    # drop exactly the 5-minute track to reach 12 min, not a 3
+    items = tracks(3, 5, 3, 3, 3)
+    assert ids(fit_to_duration(items, 12 * MIN, tolerance_ms=0)) == ["t0", "t2", "t3", "t4"]
+
+
+def test_stops_rather_than_overshoot_further():
+    items = tracks(10, 10, 10)
+    out = fit_to_duration(items, 5 * MIN)  # nothing fits; keep what is closest rather than empty
+    assert out and len(out) >= 1
+
+
+def test_a_missing_duration_counts_as_an_average_track():
+    items = [{"id": "a"}, {"id": "b", "duration_ms": None}, {"id": "c", "duration_ms": 0}]
+    assert total_ms(items) == 3 * AVERAGE_TRACK_MS
+
+
+@pytest.mark.parametrize("minutes", [10, 45, 120])
+def test_the_pool_has_room_to_trim(minutes):
+    assert pool_size_for(minutes) * AVERAGE_TRACK_MS >= minutes * MIN * 1.25
+
+
+class TestAllowedConstraint:
+    def test_blend_shares_survive_the_trim(self):
+        items = [{"id": f"t{i}", "source": s, "duration_ms": 3 * MIN} for i, s in enumerate("ababa")]
+
+        def balanced(playlist):
+            counts = {s: sum(1 for t in playlist if t["source"] == s) for s in "ab"}
+            return max(counts.values()) / len(playlist) <= 0.6
+
+        out = fit_to_duration(items, 12 * MIN, allowed=balanced)
+        assert total_ms(out) == 12 * MIN and balanced(out)
+        assert [t["source"] for t in fit_to_duration(items, 12 * MIN)] != [t["source"] for t in out] or balanced(out)
+
+    def test_without_the_constraint_it_would_have_been_lopsided(self):
+        items = [{"id": f"t{i}", "source": s, "duration_ms": 3 * MIN} for i, s in enumerate("ababa")]
+        out = fit_to_duration(items, 12 * MIN)
+        assert sum(1 for t in out if t["source"] == "a") / len(out) > 0.6  # the bug the constraint prevents
+
+    def test_stops_when_every_removal_would_break_the_constraint(self):
+        items = tracks(3, 3, 3, 3)
+        out = fit_to_duration(items, 3 * MIN, allowed=lambda playlist: len(playlist) >= 3)
+        assert len(out) == 3
+
+
+class TestSettleMoves:
+    def test_dropping_a_single_end_track_can_land_the_target(self):
+        items = tracks(2, 10, 2)
+        out = fit_to_duration(items, 12 * MIN)
+        assert total_ms(out) == 12 * MIN and len(out) == 2
+
+    def test_always_keeps_at_least_one_track(self):
+        assert len(fit_to_duration(tracks(30), MIN)) == 1

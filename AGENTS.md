@@ -28,6 +28,7 @@ scripts/
   build_playlist.sh, new_releases.sh, concert_prep.sh, verify_setup.sh
   _common.py          # shared helpers + Python-version guard
   taste_profiler.py, strategy_engine.py, …  # one Python script per feature
+  strategies/         # one module per playlist strategy + shared scoring/sequencing; strategy_engine.py is the CLI
   demo.py             # local stand-in for the Apple Music API (ships with the skill)
   generate_dev_token.py, setup_auth.py      # MusicKit token setup (PyJWT + cryptography)
 references/           # auth setup, API reference, playlist strategies, Spotify import, troubleshooting
@@ -41,16 +42,17 @@ tests/                # pytest; mock_api.py re-exports scripts/demo.py
 ```bash
 make test           # pytest tests/ -v
 make test-fast      # same, in parallel on every core (pytest-xdist)
-make coverage       # pytest with --cov-fail-under=80 (CI's floor)
+make coverage       # pytest with --cov-fail-under=90 (CI's floor)
 make ruff           # ruff check scripts tests .github/scripts + shellcheck scripts/*.sh
 make lint           # syntax-check every scripts/*.py and scripts/*.sh
 make actionlint     # lint workflows
-make ci             # ruff + coverage + actionlint — everything CI checks
+make typecheck      # mypy on scripts/ (non-strict)
+make ci             # ruff + mypy + coverage + actionlint — everything CI checks
 make audit          # pre-publish self-audit (trust claims, listing, packaging, diff since last tag)
 make demo-svg       # regenerate assets/demo-tour.svg after the demo tour changes
 ```
 
-Dev deps: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, pyyaml); token generation
+Dev deps: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, mypy, pyyaml); token generation
 needs `requirements.txt` (`PyJWT`, `cryptography`). ShellCheck and actionlint come from the
 system (e.g. Homebrew).
 

@@ -104,8 +104,16 @@ def cmd_log(args):
     """Log a playlist creation."""
     track_ids = []
     if args.track_ids_file:
-        with open(args.track_ids_file) as f:
-            track_ids = [line.strip() for line in f if line.strip()]
+        try:
+            with open(args.track_ids_file) as f:
+                track_ids = [line.strip() for line in f if line.strip()]
+        except FileNotFoundError:
+            print(f"ERROR: Track IDs file not found: {args.track_ids_file}", file=sys.stderr)
+            sys.exit(1)
+        except (OSError, UnicodeDecodeError) as e:
+            print(f"ERROR: Cannot read track IDs file: {args.track_ids_file} ({getattr(e, 'strerror', None) or e})",
+                  file=sys.stderr)
+            sys.exit(1)
     elif args.track_ids:
         track_ids = args.track_ids
 

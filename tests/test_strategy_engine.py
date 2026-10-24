@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 
 import strategy_engine as se
+from _common import best_genre_match
+from tests.strategy_helpers import patch_everywhere
 
 
 # ── Genre Proximity ──────────────────────────────────────────────
@@ -32,19 +34,19 @@ class TestGenreProximity:
 
 class TestBestGenreMatch:
     def test_exact_in_list(self):
-        assert se.best_genre_match(["Rock", "Pop"], ["Rock"]) == 1.0
+        assert best_genre_match(["Rock", "Pop"], ["Rock"]) == 1.0
 
     def test_partial_in_list(self):
-        assert se.best_genre_match(["Alternative"], ["Rock"]) == 0.5
+        assert best_genre_match(["Alternative"], ["Rock"]) == 0.5
 
     def test_no_match(self):
-        assert se.best_genre_match(["Classical"], ["Hip-Hop/Rap"]) == 0.0
+        assert best_genre_match(["Classical"], ["Hip-Hop/Rap"]) == 0.0
 
     def test_empty_track_genres(self):
-        assert se.best_genre_match([], ["Rock"]) == 0.0
+        assert best_genre_match([], ["Rock"]) == 0.0
 
     def test_empty_target_genres(self):
-        assert se.best_genre_match(["Rock"], []) == 0.0
+        assert best_genre_match(["Rock"], []) == 0.0
 
 
 # ── Sequencing ───────────────────────────────────────────────────
@@ -180,8 +182,8 @@ class TestStrategyDeepCuts:
                 return albums_response
             return None
 
-        monkeypatch.setattr(se, "call_api", mock_call_api)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: album_tracks)
+        patch_everywhere(monkeypatch, "call_api", mock_call_api)
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: album_tracks)
 
         result = se.strategy_deep_cuts(sample_profile, "us", target_size=5)
         assert len(result) > 0
@@ -207,11 +209,11 @@ class TestStrategyDeepCuts:
                                           "genreNames": [], "trackNumber": 3}},
         ]
 
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             albums_response if cmd == "artist-albums"
             else {"data": [{"views": {"top-songs": {"data": []}}}]} if cmd == "artist-top"
             else None)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: album_tracks)
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: album_tracks)
 
         result = se.strategy_deep_cuts(sample_profile, "us", target_size=5)
         ids = {t["id"] for t in result}
@@ -225,17 +227,17 @@ class TestStrategyDeepCuts:
             "attributes": {"name": "A Single", "isSingle": True},
         }]}
 
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             albums_response if cmd == "artist-albums"
             else {"data": [{"views": {"top-songs": {"data": []}}}]}
             if cmd == "artist-top" else None)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [])
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [])
 
         result = se.strategy_deep_cuts(sample_profile, "us", target_size=5)
         assert result == []
 
     def test_empty_profile(self, empty_profile, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda *a, **k: None)
+        patch_everywhere(monkeypatch, "call_api", lambda *a, **k: None)
         result = se.strategy_deep_cuts(empty_profile, "us", target_size=5)
         assert result == []
 
@@ -256,10 +258,10 @@ class TestStrategyMood:
         }]}}
 
     def test_workout_returns_high_energy(self, sample_profile, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             self._mock_charts() if cmd == "charts"
             else {"data": []} if cmd == "artist-albums" else None)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [])
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [])
 
         result = se.strategy_mood(sample_profile, "us", "workout", target_size=5)
         # Should include Electronic/Dance track
@@ -277,10 +279,10 @@ class TestStrategyMood:
             assert "description" in config
 
     def test_chill_mood(self, sample_profile, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             self._mock_charts() if cmd == "charts"
             else {"data": []} if cmd == "artist-albums" else None)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [])
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [])
 
         result = se.strategy_mood(sample_profile, "us", "chill", target_size=5)
         # Jazz track should match chill mood
@@ -304,14 +306,14 @@ class TestStrategyTrend:
         }]}}
 
     def test_taste_filtering(self, sample_profile, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             self._mock_charts() if cmd == "charts" else None)
 
         result = se.strategy_trend(sample_profile, "us", target_size=5)
         assert len(result) > 0
 
     def test_known_artist_boosted(self, sample_profile, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             self._mock_charts() if cmd == "charts" else None)
 
         result = se.strategy_trend(sample_profile, "us", target_size=5)
@@ -322,7 +324,7 @@ class TestStrategyTrend:
 
     def test_excludes_library_tracks(self, sample_profile, monkeypatch):
         sample_profile["library_song_ids"] = ["t1", "t2"]
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             self._mock_charts() if cmd == "charts" else None)
 
         result = se.strategy_trend(sample_profile, "us", target_size=5)
@@ -343,7 +345,7 @@ class TestStrategyTrend:
                 for i in range(5)
             ],
         }]}}
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             charts if cmd == "charts" else None)
 
         result = se.strategy_trend(sample_profile, "us", target_size=20)
@@ -374,8 +376,8 @@ class TestStrategyConstellation:
                 return top_songs
             return None
 
-        monkeypatch.setattr(se, "call_api", mock_call_api)
-        monkeypatch.setattr(se, "search_artist", lambda sf, name:
+        patch_everywhere(monkeypatch, "call_api", mock_call_api)
+        patch_everywhere(monkeypatch, "search_artist", lambda sf, name:
             {"id": "seed1", "attributes": {"genreNames": ["Alternative"], "name": name}})
 
         result = se.strategy_constellation(sample_profile, "us", target_size=10)
@@ -390,9 +392,9 @@ class TestStrategyConstellation:
             {"id": "a1", "attributes": {"name": "Radiohead", "genreNames": ["Alternative"]}},
         ]}}}
 
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             search_results if cmd == "search" else None)
-        monkeypatch.setattr(se, "search_artist", lambda sf, name:
+        patch_everywhere(monkeypatch, "search_artist", lambda sf, name:
             {"id": "seed1", "attributes": {"genreNames": ["Alternative"], "name": name}})
 
         result = se.strategy_constellation(sample_profile, "us", target_size=10)
@@ -401,8 +403,8 @@ class TestStrategyConstellation:
         assert "radiohead" not in artists
 
     def test_empty_profile(self, empty_profile, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda *a, **k: None)
-        monkeypatch.setattr(se, "search_artist", lambda *a, **k: None)
+        patch_everywhere(monkeypatch, "call_api", lambda *a, **k: None)
+        patch_everywhere(monkeypatch, "search_artist", lambda *a, **k: None)
         result = se.strategy_constellation(empty_profile, "us", target_size=10)
         assert result == []
 
@@ -434,10 +436,10 @@ class TestStrategyRefresh:
                 return {"data": []}
             return None
 
-        monkeypatch.setattr(se, "call_api", mock_call_api)
-        monkeypatch.setattr(se, "search_artist", lambda sf, name:
+        patch_everywhere(monkeypatch, "call_api", mock_call_api)
+        patch_everywhere(monkeypatch, "search_artist", lambda sf, name:
             {"id": "ra1", "attributes": {"name": name}})
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [])
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [])
 
         result = se.strategy_refresh(sample_profile, "us", "p123", target_add=5)
         assert len(result) > 0
@@ -460,13 +462,13 @@ class TestStrategyRefresh:
             ],
         }]}}
 
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             playlist_tracks if cmd == "playlist-tracks"
             else charts if cmd == "charts"
             else {"data": []} if cmd == "artist-albums" else None)
-        monkeypatch.setattr(se, "search_artist", lambda sf, name:
+        patch_everywhere(monkeypatch, "search_artist", lambda sf, name:
             {"id": "x", "attributes": {"name": name}})
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [])
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [])
 
         result = se.strategy_refresh(sample_profile, "us", "p1", target_add=5)
         ids = {t["id"] for t in result}
@@ -482,12 +484,12 @@ class TestStrategyRefresh:
             {"id": "owned1", "attributes": {"name": "Owned", "artistName": "B", "genreNames": ["Rock"]}},
             {"id": "new1", "attributes": {"name": "New", "artistName": "C", "genreNames": ["Rock"]}},
         ]}]}}
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             playlist_tracks if cmd == "playlist-tracks"
             else charts if cmd == "charts"
             else {"data": []} if cmd == "artist-albums" else None)
-        monkeypatch.setattr(se, "search_artist", lambda sf, name: {"id": "x", "attributes": {"name": name}})
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [])
+        patch_everywhere(monkeypatch, "search_artist", lambda sf, name: {"id": "x", "attributes": {"name": name}})
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [])
 
     def test_excludes_library_songs(self, sample_profile, monkeypatch):
         self._refresh_mocks(monkeypatch)
@@ -504,7 +506,7 @@ class TestStrategyRefresh:
         assert "owned1" in ids
 
     def test_empty_playlist(self, sample_profile, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
             None if cmd == "playlist-tracks" else None)
         result = se.strategy_refresh(sample_profile, "us", "p1", target_add=5)
         assert result == []
@@ -544,7 +546,7 @@ class TestStrategySeed:
             "r1": [_song("s1", "Creep", "Radiohead"), _song("s2", "Karma Police", "Radiohead")],
             "b1": [_song("s3", "Wonderwall", "Oasis"), _song("s4", "Live Forever", "Oasis")],
         }
-        monkeypatch.setattr(se, "call_api", self._api(search, tops, [_artist("b1", "Oasis")]))
+        patch_everywhere(monkeypatch, "call_api", self._api(search, tops, [_artist("b1", "Oasis")]))
         result = se.strategy_seed(sample_profile, "us", "Radiohead")
         assert {t["id"] for t in result} == {"s1", "s2", "s3", "s4"}
         assert {t["source"] for t in result} == {"seed", "similar"}
@@ -554,7 +556,7 @@ class TestStrategySeed:
             "artists": {"data": [_artist("r1", "Radiohead")]},
             "songs": {"data": [_song("x", "Radiohead Tribute", "Cover Band")]},
         }}
-        monkeypatch.setattr(se, "call_api", self._api(search, {"r1": [_song("s1", "Creep", "Radiohead")]}))
+        patch_everywhere(monkeypatch, "call_api", self._api(search, {"r1": [_song("s1", "Creep", "Radiohead")]}))
         artist, song = se._resolve_seed("us", "radiohead", "auto")
         assert artist["id"] == "r1" and song is None
 
@@ -562,8 +564,8 @@ class TestStrategySeed:
         search = {"results": {"songs": {"data": [_song("seed1", "Creep", "Radiohead")]},
                               "artists": {"data": [_artist("r1", "Radiohead")]}}}
         tops = {"r1": [_song("seed1", "Creep", "Radiohead"), _song("s2", "Karma Police", "Radiohead")]}
-        monkeypatch.setattr(se, "call_api", self._api(search, tops))
-        monkeypatch.setattr(se, "search_artist", lambda sf, name: _artist("r1", name))
+        patch_everywhere(monkeypatch, "call_api", self._api(search, tops))
+        patch_everywhere(monkeypatch, "search_artist", lambda sf, name: _artist("r1", name))
         result = se.strategy_seed(sample_profile, "us", "Creep", seed_type="song")
         ids = {t["id"] for t in result}
         assert "seed1" not in ids and "s2" in ids
@@ -573,7 +575,7 @@ class TestStrategySeed:
         tops = {"r1": [_song("owned", "A", "Radiohead"), _song("bad", "B", "Radiohead"), _song("ok", "C", "Radiohead")]}
         sample_profile["library_song_ids"] = ["owned"]
         sample_profile["disliked_song_ids"] = ["bad"]
-        monkeypatch.setattr(se, "call_api", self._api(search, tops))
+        patch_everywhere(monkeypatch, "call_api", self._api(search, tops))
         assert {t["id"] for t in se.strategy_seed(sample_profile, "us", "Radiohead", "artist")} == {"ok"}
         out = se.strategy_seed(sample_profile, "us", "Radiohead", "artist", include_library=True)
         assert {t["id"] for t in out} == {"owned", "ok"}
@@ -581,7 +583,7 @@ class TestStrategySeed:
     def test_caps_tracks_per_artist(self, sample_profile, monkeypatch):
         search = {"results": {"artists": {"data": [_artist("r1", "Radiohead")]}}}
         tops = {"r1": [_song(f"s{i}", f"Song{i}", "Radiohead", album=f"Al{i}") for i in range(8)]}
-        monkeypatch.setattr(se, "call_api", self._api(search, tops))
+        patch_everywhere(monkeypatch, "call_api", self._api(search, tops))
         assert len(se.strategy_seed(sample_profile, "us", "Radiohead", "artist")) == 3
 
     def test_genre_fallback_when_no_similar_artists(self, sample_profile, monkeypatch):
@@ -597,12 +599,12 @@ class TestStrategySeed:
                 return _top([_song("m1", "Starlight", "Muse")] if args[1] == "g1" else [])
             return {"data": []}
 
-        monkeypatch.setattr(se, "call_api", mock)
+        patch_everywhere(monkeypatch, "call_api", mock)
         result = se.strategy_seed(sample_profile, "us", "Radiohead")
         assert [t["id"] for t in result] == ["m1"]
 
     def test_unknown_seed_returns_empty(self, sample_profile, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda *a, **k: {"results": {}})
+        patch_everywhere(monkeypatch, "call_api", lambda *a, **k: {"results": {}})
         assert se.strategy_seed(sample_profile, "us", "zzzz") == []
 
     def test_bad_seed_type(self, sample_profile):
@@ -636,8 +638,8 @@ class TestStrategyEra:
             if cmd == "search":
                 return search
             return None
-        monkeypatch.setattr(se, "call_api", mock)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: tracks.get(aid, []))
+        patch_everywhere(monkeypatch, "call_api", mock)
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: tracks.get(aid, []))
 
     def _album(self, aid, name, date, single=False):
         return {"id": aid, "attributes": {"name": name, "releaseDate": date, "isSingle": single}}
@@ -724,7 +726,7 @@ class TestStrategyBlend:
             if cmd == "song-detail":
                 return {"data": [_song(args[1], "Loved", "Someone", ["Pop"])]}
             return None
-        monkeypatch.setattr(se, "call_api", mock)
+        patch_everywhere(monkeypatch, "call_api", mock)
 
     def test_tags_shared_and_sides(self, sample_profile, monkeypatch):
         a, b = self._profiles(sample_profile)
@@ -882,7 +884,7 @@ class TestCheckPlaylistExists:
     def test_lookup_failure_warns_instead_of_failing_silently(self, monkeypatch, capsys):
         def boom(*a, **kw):
             raise OSError("api script missing")
-        monkeypatch.setattr("subprocess.run", boom)
+        monkeypatch.setattr("strategy_engine.run_script", boom)
         assert se.check_playlist_exists("My Mix") is None
         err = capsys.readouterr().err
         assert "Couldn't check for an existing playlist named 'My Mix'" in err and "api script missing" in err
@@ -892,7 +894,7 @@ class TestCheckPlaylistExists:
             {"id": "pl1", "attributes": {"name": "My Mix"}},
             {"id": "pl2", "attributes": {"name": "Other"}},
         ]})
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+        monkeypatch.setattr("strategy_engine.run_script", lambda *a, **kw: MagicMock(
             returncode=0, stdout=data
         ))
         assert se.check_playlist_exists("My Mix") == "pl1"
@@ -901,37 +903,37 @@ class TestCheckPlaylistExists:
         data = json.dumps({"data": [
             {"id": "pl1", "attributes": {"name": "Other"}},
         ]})
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+        monkeypatch.setattr("strategy_engine.run_script", lambda *a, **kw: MagicMock(
             returncode=0, stdout=data
         ))
         assert se.check_playlist_exists("Missing") is None
 
     def test_returns_none_on_api_failure(self, monkeypatch):
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+        monkeypatch.setattr("strategy_engine.run_script", lambda *a, **kw: MagicMock(
             returncode=1, stdout=""
         ))
         assert se.check_playlist_exists("Any") is None
 
     def test_nonzero_exit_is_warned_about_with_its_status_and_stderr(self, monkeypatch, capsys):
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+        monkeypatch.setattr("strategy_engine.run_script", lambda *a, **kw: MagicMock(
             returncode=1, stdout="", stderr="WARN: Rate limited\nERROR: curl failed (exit 6)"))
         assert se.check_playlist_exists("My Mix") is None
         err = capsys.readouterr().err
         assert "named 'My Mix'" in err and "exited 1" in err and "curl failed (exit 6)" in err
 
     def test_nonzero_exit_without_stderr_still_warns(self, monkeypatch, capsys):
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(returncode=2, stdout="", stderr=""))
+        monkeypatch.setattr("strategy_engine.run_script", lambda *a, **kw: MagicMock(returncode=2, stdout="", stderr=""))
         se.check_playlist_exists("X")
         assert "exited 2." in capsys.readouterr().err
 
     def test_success_with_no_match_stays_quiet(self, monkeypatch, capsys):
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+        monkeypatch.setattr("strategy_engine.run_script", lambda *a, **kw: MagicMock(
             returncode=0, stdout=json.dumps({"data": [{"id": "p1", "attributes": {"name": "Other"}}]}), stderr=""))
         assert se.check_playlist_exists("My Mix") is None
         assert capsys.readouterr().err == ""
 
     def test_returns_none_on_exception(self, monkeypatch):
-        monkeypatch.setattr("subprocess.run", MagicMock(side_effect=Exception("fail")))
+        monkeypatch.setattr("strategy_engine.run_script", MagicMock(side_effect=Exception("fail")))
         assert se.check_playlist_exists("Any") is None
 
 
@@ -948,13 +950,13 @@ class TestCreatePlaylistFromTracks:
 
     def test_creates_playlist_successfully(self, monkeypatch):
         monkeypatch.setattr(se, "check_playlist_exists", lambda name: None)
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(returncode=0))
+        monkeypatch.setattr("strategy_engine.run_script", lambda *a, **kw: MagicMock(returncode=0))
         tracks = [{"id": "t1"}, {"id": "t2"}]
         assert se.create_playlist_from_tracks(tracks, "New", "Desc") is True
 
     def test_returns_false_on_subprocess_failure(self, monkeypatch):
         monkeypatch.setattr(se, "check_playlist_exists", lambda name: None)
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(
+        monkeypatch.setattr("strategy_engine.run_script", lambda *a, **kw: MagicMock(
             returncode=1, stderr="error"
         ))
         tracks = [{"id": "t1"}]
@@ -963,7 +965,7 @@ class TestCreatePlaylistFromTracks:
     def test_returns_false_on_timeout(self, monkeypatch):
         import subprocess as sp
         monkeypatch.setattr(se, "check_playlist_exists", lambda name: None)
-        monkeypatch.setattr("subprocess.run", MagicMock(
+        monkeypatch.setattr("strategy_engine.run_script", MagicMock(
             side_effect=sp.TimeoutExpired("cmd", 60)
         ))
         tracks = [{"id": "t1"}]
@@ -975,14 +977,14 @@ class TestCreatePlaylistFromTracks:
 class TestFavoriteTracks:
     def test_batches_and_uses_raw(self, monkeypatch):
         calls = []
-        monkeypatch.setattr(se, "call_api", lambda *a, **k: calls.append((a, k)) or "")
+        patch_everywhere(monkeypatch, "call_api", lambda *a, **k: calls.append((a, k)) or "")
         out = se.favorite_tracks([{"id": str(i)} for i in range(30)] + [{"name": "no id"}])
         assert out == {"favorited": 30, "failed": 0}
         assert [len(c[0][2].split(",")) for c in calls] == [25, 5]
         assert calls[0][0][:2] == ("favorite", "songs") and calls[0][0][-1] == "--yes" and calls[0][1] == {"raw": True}
 
     def test_counts_failures(self, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda *a, **k: None)
+        patch_everywhere(monkeypatch, "call_api", lambda *a, **k: None)
         assert se.favorite_tracks([{"id": "1"}, {"id": "2"}]) == {"favorited": 0, "failed": 2}
 
 
@@ -1012,6 +1014,52 @@ class TestMainCli:
             se.main()
         state.update(run=run, profile=profile, other=other)
         return state
+
+    def test_minutes_sizes_the_pool_and_trims_to_the_running_time(self, cli, monkeypatch, capsys):
+        from strategies.duration import pool_size_for
+        pool = [{"id": f"t{i}", "name": "N", "artist": "A", "album": "B", "genre": [],
+                 "duration_ms": 180_000 + i % 3 * 30_000} for i in range(40)]
+        seen = {}
+        monkeypatch.setattr(se, "strategy_trend", lambda p, sf, n: seen.update(size=n) or list(pool))
+        cli["run"]("--strategy", "trend", "--minutes", "45", "--size", "5")
+        out = json.loads(capsys.readouterr().out)
+        assert seen["size"] == pool_size_for(45)  # --minutes overrides --size
+        assert out["target_minutes"] == 45 and abs(out["duration_minutes"] - 45) <= 1
+        assert out["track_count"] == len(out["tracks"]) < len(pool)
+
+    @pytest.mark.parametrize("minutes", ["0", "-5", "601"])
+    def test_minutes_out_of_range_is_refused(self, cli, minutes):
+        with pytest.raises(SystemExit) as exc:
+            cli["run"]("--strategy", "trend", "--minutes", minutes)
+        assert exc.value.code == 2
+
+    def test_without_minutes_the_output_has_no_duration_fields(self, cli, monkeypatch, capsys):
+        monkeypatch.setattr(se, "strategy_trend", lambda p, sf, n: cli["tracks"])
+        cli["run"]("--strategy", "trend")
+        out = json.loads(capsys.readouterr().out)
+        assert "duration_minutes" not in out and "target_minutes" not in out
+
+    def test_remix_requires_a_playlist_link(self, cli):
+        with pytest.raises(SystemExit):
+            cli["run"]("--strategy", "remix")
+
+    def test_remix_reports_how_much_was_kept(self, cli, monkeypatch, capsys):
+        seen = {}
+
+        def fake(profile, sf, playlist, n, include_library):
+            seen.update(playlist=playlist, include=include_library)
+            se.LAST_REMIX.update(name="Chill Vibes", original=50)
+            return [{**cli["tracks"][0], "id": f"t{i}", "source": "remix_keep" if i < 14 else "remix_swap"}
+                    for i in range(20)]
+
+        monkeypatch.setattr(se, "strategy_remix", fake)
+        cli["run"]("--strategy", "remix", "--playlist-url", "pl.abc", "--include-library")
+        captured = capsys.readouterr()
+        out = json.loads(captured.out)
+        assert seen == {"playlist": "pl.abc", "include": True}
+        assert out["remix"] == {"playlist": "Chill Vibes", "original_tracks": 50, "kept": 14, "swapped": 6}
+        assert out["name"].startswith("Remix: Chill Vibes")
+        assert "keep 14 of 50" in captured.err
 
     def test_seed_requires_seed(self, cli):
         with pytest.raises(SystemExit):
@@ -1147,8 +1195,8 @@ class TestDeepCutsScoring:
             if cmd == "artist-top":
                 return _top([{"attributes": {"name": n}} for n in top_songs])
             return None
-        monkeypatch.setattr(se, "call_api", api)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: tracks(aid))
+        patch_everywhere(monkeypatch, "call_api", api)
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: tracks(aid))
 
     def test_one_prolific_artist_cannot_fill_the_playlist(self, monkeypatch):
         """Regression: the first artist's discography used to fill the whole list."""
@@ -1183,7 +1231,7 @@ class TestDeepCutsScoring:
     def test_position_bonus_is_bounded(self, monkeypatch):
         """A track numbered 40 used to score +1.3; now nothing beats the artist weight by more than 0.15."""
         captured = {}
-        monkeypatch.setattr(se, "_finish", lambda cands, *a, **k: captured.setdefault("c", cands) and [])
+        patch_everywhere(monkeypatch, "_finish", lambda cands, *a, **k: captured.setdefault("c", cands) and [])
         self._mock(monkeypatch, lambda a: [{"id": "a", "attributes": {"name": "Long"}}] if a == "small" else [],
                    lambda aid: [_track(f"t{n}", f"Song {n}", "Small", number=n) for n in (1, 20, 40)])
         se.strategy_deep_cuts(self.PROFILE, "us", target_size=5)
@@ -1200,7 +1248,7 @@ class TestMoodEnergy:
 
     def test_quiet_track_beats_a_loud_genre_match(self, monkeypatch):
         charts = self._charts(("loud", ["Electronic"]), ("quiet", ["Ambient"]))
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
         result = se.strategy_mood({"genre_distribution": [{"genre": "Electronic", "weight": 1}]},
                                   "us", "sleep", target_size=1)
         assert [t["id"] for t in result] == ["quiet"]
@@ -1208,7 +1256,7 @@ class TestMoodEnergy:
     def test_off_energy_tracks_are_dropped_not_used_as_filler(self, monkeypatch):
         """A short sleep mix beats one padded with loud tracks (the curation-quality test caught this)."""
         charts = self._charts(("loud", ["Electronic"]), ("quiet", ["Ambient"]))
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
         assert [t["id"] for t in se.strategy_mood({}, "us", "sleep", target_size=3)] == ["quiet"]
 
     def test_every_mood_energy_has_a_target(self):
@@ -1230,8 +1278,8 @@ class TestConstellationDiscovery:
             if cmd == "artist-top":
                 return _top([_song("x1", "Song", "Neighbour")])
             return None
-        monkeypatch.setattr(se, "call_api", api)
-        monkeypatch.setattr(se, "search_artist", lambda *a: pytest.fail("searched despite similar artists"))
+        patch_everywhere(monkeypatch, "call_api", api)
+        patch_everywhere(monkeypatch, "search_artist", lambda *a: pytest.fail("searched despite similar artists"))
         result = se.strategy_constellation(self.PROFILE, "us", target_size=5)
         assert [t["artist"] for t in result] == ["Neighbour"]
         assert "search" not in calls
@@ -1239,7 +1287,7 @@ class TestConstellationDiscovery:
     def test_short_zones_are_backfilled(self, monkeypatch):
         """Only familiar-zone artists exist: the playlist still reaches its length."""
         neighbours = [_artist(f"n{i}", f"Band {i}") for i in range(4)]
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
                             {"data": neighbours} if cmd == "similar-artists"
                             else _top([_song(f"{a[1]}-{j}", f"S{j}", a[1]) for j in range(3)])
                             if cmd == "artist-top" else None)
@@ -1254,7 +1302,7 @@ class TestTrendCaps:
             {"id": f"t{i}", "attributes": {"name": f"T{i}", "artistName": "Hog" if i < 30 else f"A{i}",
                                             "genreNames": ["Alternative"]}}
             for i in range(60)]}]}}
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
         result = se.strategy_trend(sample_profile, "us", target_size=12)
         assert len(result) == 12
         assert Counter(t["artist"] for t in result)["Hog"] <= 3
@@ -1267,10 +1315,10 @@ class TestRefreshNewest:
         albums = {"data": [{"id": "old", "attributes": {"name": "Old", "releaseDate": "1999-01-01"}},
                            {"id": "new", "attributes": {"name": "New", "releaseDate": "2024-01-01"}},
                            {"id": "mid", "attributes": {"name": "Mid", "releaseDate": "2010-01-01"}}]}
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
                             playlist if cmd == "playlist-tracks" else albums if cmd == "artist-albums" else None)
-        monkeypatch.setattr(se, "search_artist", lambda sf, name: {"id": "b", "attributes": {"name": name}})
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [_track(f"{aid}1", aid, "Band")])
+        patch_everywhere(monkeypatch, "search_artist", lambda sf, name: {"id": "b", "attributes": {"name": name}})
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [_track(f"{aid}1", aid, "Band")])
         ids = {t["id"] for t in se.strategy_refresh(sample_profile, "us", "pl", target_add=5)}
         assert ids == {"new1", "mid1"}
 
@@ -1324,10 +1372,10 @@ class TestReviewFollowUps:
 
     def test_non_latin_deep_cuts_are_not_collapsed(self, monkeypatch):
         profile = {"top_artists": [{"name": "Band", "id": "b", "play_weight": 0.1}]}
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
                             {"data": [{"id": "alb", "attributes": {"name": "Album"}}]} if cmd == "artist-albums"
                             else _top([{"attributes": {"name": "冬"}}]) if cmd == "artist-top" else None)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [
             _track("1", "春", "Band"), _track("2", "夏", "Band"), _track("3", "冬", "Band")])
         names = {t["name"] for t in se.strategy_deep_cuts(profile, "us", target_size=5)}
         assert names == {"春", "夏"}  # 冬 is the hit
@@ -1338,10 +1386,10 @@ class TestReviewFollowUps:
         # one album each for A and B; two for C and D
         albums = {"A": ["A1"], "B": ["B1"], "C": ["C1", "C2"], "D": ["D1", "D2"]}
         sizes = {"A1": 20, "B1": 1, "C1": 2, "C2": 2, "D1": 2, "D2": 2}
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
                             {"data": [{"id": x, "attributes": {"name": x}} for x in albums[a[1]]]}
                             if cmd == "artist-albums" else _top([]) if cmd == "artist-top" else None)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [
             _track(f"{aid}-{i}", f"{aid} song {i}", aid[0]) for i in range(sizes[aid])])
         result = se.strategy_deep_cuts(profile, "us", target_size=6)
         assert len(result) == 6
@@ -1350,10 +1398,10 @@ class TestReviewFollowUps:
     def test_deep_cuts_stop_condition_ignores_excluded_artists(self, monkeypatch):
         profile = {"top_artists": [{"name": n, "id": n, "play_weight": 0.1} for n in ("Nope", "B", "C")]}
         se.USER_FILTERS.update(se.user_filters({"excluded_artists": ["Nope"]}))
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
                             {"data": [{"id": f"{a[1]}-{j}", "attributes": {"name": f"{a[1]} {j}"}} for j in (1, 2)]}
                             if cmd == "artist-albums" else _top([]) if cmd == "artist-top" else None)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [
             _track(f"{aid}{i}", f"{aid} song {i}", aid.split("-")[0]) for i in range(20 if "Nope" in aid else 2)])
         result = se.strategy_deep_cuts(profile, "us", target_size=6)
         assert len(result) == 6 and "Nope" not in {t["artist"] for t in result}
@@ -1363,7 +1411,7 @@ class TestReviewFollowUps:
             {"id": "m1", "attributes": {"name": "M", "artistName": "Radiohead", "genreNames": ["Alternative"]}},
         ] + [{"id": f"w{i}", "attributes": {"name": f"W{i}", "artistName": f"B{i}", "genreNames": ["Polka"]}}
              for i in range(3)]}]}}
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
         for size in (1, 2, 3):
             assert len(se.strategy_trend(sample_profile, "us", target_size=size)) == size
 
@@ -1376,7 +1424,7 @@ class TestReviewFollowUps:
         # all frontier artists (no genre overlap); only the Jazz one matches a preferred genre
         neighbours = [_artist(f"n{i}", f"Band {i}", genres=("Polka",)) for i in range(6)]
         neighbours.append(_artist("jz", "Jazz Band", genres=("Jazz",)))
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
                             {"data": neighbours} if cmd == "similar-artists"
                             else _top([_song(f"{a[1]}-s", "S", "x", genres=("Jazz",) if a[1] == "jz" else ("Polka",))])
                             if cmd == "artist-top" else None)
@@ -1395,7 +1443,7 @@ class TestReviewFollowUps:
         profile = {"top_artists": [{"name": "Seed", "id": "seed"}],
                    "genre_distribution": [{"genre": "Alternative", "weight": 1.0}]}
         neighbours = [_artist(f"n{i}", f"Band {i}", genres=("Polka",)) for i in range(6)]
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
                             {"data": neighbours} if cmd == "similar-artists"
                             else _top([_song(f"{a[1]}-s", "S", "x", genres=("Polka",))]) if cmd == "artist-top" else None)
         assert len(se.strategy_constellation(profile, "us", target_size=size)) == size
@@ -1405,10 +1453,10 @@ class TestReviewFollowUps:
 
 class TestDeterministicRng:
     def _deep_cut_mocks(self, monkeypatch):
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
                             {"data": [{"id": f"{a[1]}-{j}", "attributes": {"name": f"{a[1]} {j}"}} for j in range(6)]}
                             if cmd == "artist-albums" else _top([]) if cmd == "artist-top" else None)
-        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [
+        patch_everywhere(monkeypatch, "get_album_tracks", lambda sf, aid: [
             _track(f"{aid}-{i}", f"{aid} song {i}", aid.split("-")[0], number=i + 1) for i in range(8)])
 
     def test_same_seed_same_playlist(self, monkeypatch):
@@ -1431,14 +1479,14 @@ class TestWeightedTasteInStrategies:
             {"id": "jazz", "attributes": {"name": "J", "artistName": "J", "genreNames": ["Jazz"]}},
             {"id": "alt", "attributes": {"name": "A", "artistName": "A", "genreNames": ["Alternative"]}},
         ]}]}}
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
         # jazz is chart #1 but barely in your taste; it used to tie at a perfect match and win on rank
         assert [t["id"] for t in se.strategy_trend(profile, "us", target_size=1)] == ["alt"]
 
     def test_constellation_counts_subgenres_as_familiar(self, monkeypatch):
         profile = {"top_artists": [{"name": "Seed", "id": "seed"}],
                    "genre_distribution": [{"genre": "Rock", "weight": 1.0}]}
-        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+        patch_everywhere(monkeypatch, "call_api", lambda cmd, *a, **k:
                             {"data": [_artist("g", "Garage Band", genres=("Garage Rock",))]}
                             if cmd == "similar-artists" else _top([_song("g1", "S", "Garage Band")])
                             if cmd == "artist-top" else None)
@@ -1492,3 +1540,80 @@ def _signals(pairs):
     """rating_signals_from with a distinct song ID per (value, attrs) pair."""
     from _common import rating_signals_from
     return rating_signals_from([(f"song{i}", value, attrs) for i, (value, attrs) in enumerate(pairs)])
+
+
+class TestCleanFlag:
+    @pytest.fixture
+    def run(self, monkeypatch, tmp_path, sample_profile):
+        import sys
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "gb")
+        seen = {}
+
+        def trend(p, sf, n):
+            seen.update(se.USER_FILTERS)
+            return [{"id": "t1", "name": "N", "artist": "A", "album": "B", "genre": []}]
+
+        monkeypatch.setattr(se, "strategy_trend", trend)
+
+        def go(config, *argv):
+            monkeypatch.setattr(se, "load_config", lambda: config)
+            monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--strategy", "trend", "--profile", str(profile),
+                                              *argv])
+            seen.clear()
+            se.main()
+            return dict(seen)
+
+        return go
+
+    def test_off_by_default(self, run):
+        assert run({})["clean_only"] is False
+
+    def test_the_flag_turns_it_on_with_the_storefront_for_lookups(self, run):
+        filters = run({}, "--clean")
+        assert filters["clean_only"] is True and filters["storefront"] == "gb"
+
+    def test_config_turns_it_on(self, run):
+        assert run({"clean_only": True})["clean_only"] is True
+
+
+class TestRemixCountsAfterMinutes:
+    def test_kept_and_swapped_add_up_to_the_trimmed_playlist(self, monkeypatch, tmp_path, sample_profile, capsys):
+        import sys
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        pool = [{"id": f"t{i}", "name": "N", "artist": f"A{i}", "album": "B", "genre": [], "duration_ms": 180_000,
+                 "source": "remix_keep" if i % 3 else "remix_swap"} for i in range(30)]
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {})
+        monkeypatch.setattr(se, "strategy_remix", lambda *a: se.LAST_REMIX.update(name="P", original=40, kept=20,
+                                                                                swapped=10) or list(pool))
+        monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--strategy", "remix", "--profile", str(profile),
+                                          "--playlist-url", "pl.x", "--minutes", "30"])
+        se.main()
+        out = json.loads(capsys.readouterr().out)
+        assert out["track_count"] < 30
+        assert out["remix"]["kept"] + out["remix"]["swapped"] == out["track_count"]
+        assert out["remix"]["original_tracks"] == 40
+
+
+class TestBlendMinutes:
+    def test_a_trimmed_blend_stays_balanced(self, monkeypatch, tmp_path, sample_profile, capsys):
+        import sys
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        pool = [{"id": f"t{i}", "name": "N", "artist": f"A{i}", "album": "B", "genre": [], "duration_ms": 180_000,
+                 "source": "ab"[i % 2]} for i in range(24)]
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {})
+        monkeypatch.setattr(se, "strategy_blend", lambda *a: list(pool))
+        monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--strategy", "blend", "--profile", str(profile),
+                                          "--profile-b", str(profile), "--minutes", "40"])
+        se.main()
+        tracks = json.loads(capsys.readouterr().out)["tracks"]
+        a = sum(1 for t in tracks if t["source"] == "a")
+        assert max(a, len(tracks) - a) / len(tracks) <= se.BLEND_MAX_SHARE + 1e-9

@@ -42,11 +42,13 @@ from _common import (
     user_filters,
 )
 
+from strategies.scoring import TASTE_WEIGHT
+
 SCRIPT_DIR = Path(__file__).parent
 
 # Scoring weights for one pick: taste and context outweigh chance
 BASE_SCORE = 0.5
-TASTE_WEIGHT = 0.3        # x taste_affinity
+# TASTE_WEIGHT (x taste_affinity) is shared with the strategies: strategies/scoring.py
 DEEP_CUT_BONUS = 0.2      # the interesting picks
 TIME_OF_DAY_BONUS = 0.3   # a genre that suits the hour
 JITTER = 0.15
@@ -123,6 +125,7 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
                             "artist": attrs.get("artistName", artist["name"]),
                             "album": album.get("attributes", {}).get("name", ""),
                             "genre": filter_generic_genres(attrs.get("genreNames", [])),
+                            "explicit": attrs.get("contentRating") == "explicit",
                             "source": "deep_cut",
                             "reason": f"A deep cut from {artist['name']} you haven't heard yet.",
                         })
@@ -145,6 +148,7 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
                                     "name": attrs.get("name", ""),
                                     "artist": attrs.get("artistName", ""),
                                     "genre": item_genres,
+                                    "explicit": attrs.get("contentRating") == "explicit",
                                     "source": "trending",
                                     "reason": f"Trending right now and matches your {item_genres[0] if item_genres else 'music'} taste.",
                                 })
@@ -198,7 +202,7 @@ def cmd_daily(profile: dict, sf: str) -> dict:
     candidates = get_candidates(profile, sf)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, rng=rng)
-    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile))
+    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile, storefront=sf))
     if not candidates:
         return {"error": "No candidates found. Try refreshing your taste profile."}
 
@@ -234,7 +238,7 @@ def cmd_now(profile: dict, sf: str) -> dict:
     candidates = get_candidates(profile, sf, context)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, context, rng=rng)
-    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile))
+    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile, storefront=sf))
     if not candidates:
         return {"error": "No candidates found.", "context": context}
 

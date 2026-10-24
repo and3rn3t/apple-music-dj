@@ -225,8 +225,18 @@ def write_private(path, text: str) -> None:
     ensure_private_dir(path.parent, tighten=path.parent == APP_DIR or APP_DIR in path.parent.parents)
     stream = _stream_target(path)
     if stream is not None:
-        with open(stream, "w") as f:
-            f.write(text)
+        # No O_TRUNC and O_NOFOLLOW, then check what we really opened: if the device was swapped for
+        # a regular file or symlink after _stream_target looked, refuse instead of truncating it.
+        fd = os.open(str(stream), os.O_WRONLY | os.O_NOFOLLOW)
+        try:
+            if stat.S_ISREG(os.fstat(fd).st_mode) or stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError(errno.ELOOP, f"{path} changed while opening it; refusing to write to it.")
+            with os.fdopen(fd, "w") as f:
+                fd = -1
+                f.write(text)
+        finally:
+            if fd != -1:
+                os.close(fd)
         return
     with contextlib.suppress(FileNotFoundError):
         if os.lstat(path).st_uid != os.getuid():

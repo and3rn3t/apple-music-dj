@@ -283,7 +283,7 @@ cmd_library_artists() {
     [[ "$count" -lt "$limit" ]] && break
     offset=$((offset + limit))
     if [[ $offset -ge 500 ]]; then  # safety cap
-      echo "NOTE: stopped at ${offset} items; the library has more, so results cover only the first ${offset}." >&2
+      echo "NOTE: stopped at ${offset} items; the library may have more, so results cover only the first ${offset}." >&2
       break
     fi
   done
@@ -307,7 +307,7 @@ cmd_library_songs() {
     [[ "$count" -lt "$limit" ]] && break
     offset=$((offset + limit))
     if [[ $offset -ge 500 ]]; then  # safety cap
-      echo "NOTE: stopped at ${offset} items; the library has more, so results cover only the first ${offset}." >&2
+      echo "NOTE: stopped at ${offset} items; the library may have more, so results cover only the first ${offset}." >&2
       break
     fi
   done

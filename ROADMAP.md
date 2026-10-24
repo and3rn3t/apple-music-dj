@@ -53,8 +53,9 @@ The ones that make people say "wait, it can do *that*?" and share the result.
       road-trip and party playlists from everyone's taste codes, with a fairness rule and who each
       track is "for". *M*
 - [ ] **Taste drift timeline card** ([#108](https://github.com/and3rn3t/apple-music-dj/issues/108)):
-      an animated picture of how your genres and artists rose and faded across snapshots. Drift is
-      the project's most distinctive idea, but today it's only a text report. *M*
+      an animated picture of how your genres and artists rose and faded across every snapshot. The
+      drift card we have (`taste_card.py --mode drift`) is a static SVG comparing two points in
+      time; a whole year in motion is what people share. *M*
 - [ ] **Taste card as a PNG, Instagram Story size** ([#48](https://github.com/and3rn3t/apple-music-dj/issues/48)):
       SVG doesn't post anywhere. Optional `cairosvg`, with SVG as the fallback. *S*
 - [ ] **Year in review ready for December** ([#85](https://github.com/and3rn3t/apple-music-dj/issues/85)):

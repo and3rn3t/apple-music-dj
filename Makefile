@@ -1,8 +1,12 @@
 PYTHON ?= python3
 
-.PHONY: setup test test-fast coverage coverage-html lint ruff typecheck actionlint ci audit demo-svg social-preview
+.PHONY: help setup test test-fast coverage coverage-html lint ruff typecheck actionlint ci audit demo-svg social-preview
 
-## Create .venv, install the dev tools, and check the system tools the scripts and CI need
+## List the make targets
+help:
+	@awk '/^## /{desc=substr($$0,4); next} /^[a-z][a-z-]*:/{if(desc){split($$1,t,":"); printf "  %-14s %s\n", t[1], desc} desc=""}' $(MAKEFILE_LIST)
+
+## Create .venv, install the dev tools and git hooks, and check the system tools the scripts and CI need
 setup:
 	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else "ERROR: Python 3.11+ is required (this is $(PYTHON))")'
 	@# A venv copied or moved from another folder keeps scripts whose #! line names the old one (and still
@@ -16,7 +20,10 @@ setup:
 	done; \
 	command -v actionlint >/dev/null || echo "NOTE: actionlint is not installed; 'make ci' needs it (brew install actionlint)"; \
 	[ $$missing -eq 0 ] || exit 1
-	@echo "Ready. Run:  . .venv/bin/activate && make ci"
+	@# Git hooks (ruff, ShellCheck, Conventional Commits): only inside a git checkout (a plain one, or a linked
+	@# worktree or submodule, where .git is a file), never fatal
+	@if [ -e .git ]; then .venv/bin/pre-commit install --hook-type pre-commit --hook-type commit-msg >/dev/null && echo "Git hooks installed (ruff, ShellCheck, commit-message check)." || echo "NOTE: could not install the git hooks; run: .venv/bin/pre-commit install --hook-type pre-commit --hook-type commit-msg"; fi
+	@echo "Ready. Run:  . .venv/bin/activate && make ci   (make help lists everything else)"
 
 ## Run all tests
 test:

@@ -53,7 +53,7 @@ make demo-svg       # regenerate assets/demo-tour.svg after the demo tour change
 ```
 
 Dev deps: `make setup` creates `.venv` and runs `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist,
-ruff, mypy, ShellCheck via `shellcheck-py`, pyyaml); token generation needs `requirements.txt` (`PyJWT`,
+ruff, mypy, pre-commit, ShellCheck via `shellcheck-py`, pyyaml); token generation needs `requirements.txt` (`PyJWT`,
 `cryptography`). `bash`, `curl`, `jq` and actionlint come from the system (e.g. Homebrew).
 
 Without an Apple Developer account, test against the mock:

@@ -170,7 +170,7 @@ It reads ratings, heavy rotation, recent plays, Replay, library songs and artist
 **Output:** Taste DNA profile cached at `~/.apple-music-dj/taste_profile.json` (7-day TTL by default).
 
 The profile includes: top artists (weighted), genre distribution, era profile, energy
-classification, variety score, loved/disliked IDs, library song IDs, and Replay highlights.
+classification, variety score, ratings (song IDs, artist/genre counts), library song IDs, Replay.
 
 ### Sparse Data Handling
 

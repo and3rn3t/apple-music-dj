@@ -268,3 +268,34 @@ def test_distant_tastes_blend_shorter_but_never_lopsided():
     sources = Counter(t["source"] for t in tracks)
     assert SIZE // 2 <= len(tracks) <= SIZE
     assert max(sources["a"], sources["b"]) <= se.BLEND_MAX_SHARE * len(tracks)
+
+
+# ── Likes and dislikes steer (#64) ───────────────────────────────
+
+@pytest.mark.parametrize("name,disliked", [("deep-cuts", "Neon Choir"), ("trend", "Neon Choir"), ("era", "Neon Choir"),
+                                           ("similar", "Night Shift"), ("mood-workout", "Sugar Kites")])
+def test_an_artist_you_disliked_twice_drops_out(name, disliked):
+    """The issue's acceptance test. These artists are lightly played or not in the top list at all;
+    for an artist you play a lot the penalty is halved on purpose (see TestRatingSignals)."""
+    assert disliked in {t["artist"] for t in run(name)}  # there to begin with
+    signals = _signals([(-1, {"artistName": disliked, "genreNames": []})] * 2)
+    se.USER_FILTERS.update(user_filters({"excluded_artists": [EXCLUDED_ARTIST]}, HEARD_LAST_WEEK,
+                                        {**ROCK_FAN, "rating_signals": signals}))
+    assert disliked not in {t["artist"] for t in run(name)}
+
+
+def test_a_liked_artist_gets_more_room():
+    liked = "Corner Talk"  # 2 tracks in the workout mix before
+    before = Counter(t["artist"] for t in run("mood-workout"))[liked]
+    signals = _signals([(1, {"artistName": liked, "genreNames": []})] * 3)
+    se.USER_FILTERS.update(user_filters({"excluded_artists": [EXCLUDED_ARTIST]}, HEARD_LAST_WEEK,
+                                        {**ROCK_FAN, "rating_signals": signals}))
+    tracks = [t for t in run("mood-workout") if t["artist"] == liked]
+    assert len(tracks) > before
+    assert all("boosted: you liked 3 songs by Corner Talk" in t["reason"] for t in tracks)
+
+
+def _signals(pairs):
+    """rating_signals_from with a distinct song ID per (value, attrs) pair."""
+    from _common import rating_signals_from
+    return rating_signals_from([(f"song{i}", value, attrs) for i, (value, attrs) in enumerate(pairs)])

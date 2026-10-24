@@ -68,6 +68,7 @@ from _common import (
     get_storefront,
     load_config,
     load_profile,
+    rating_summary,
     require_env_tokens,
     SUBGENRE_PROXIMITY,
     search_artist,
@@ -1331,7 +1332,8 @@ def main():
         from playlist_history import get_recent_track_ids
         recent_ids = get_recent_track_ids(repeat_days)
     USER_FILTERS.clear()
-    USER_FILTERS.update(user_filters(config, recent_ids))
+    USER_FILTERS.update(user_filters(config, recent_ids, profile))
+    profile_b: dict | None = None  # the second listener, for a blend
 
     print(f"🎧 Strategy: {args.strategy} | Target: {target_size} tracks", file=sys.stderr)
 
@@ -1366,6 +1368,7 @@ def main():
             found = resolve_artist_ids(profile_b, sf)
             print(f"  Found {found} of their top artists in the catalog "
                   "(a taste code has no song IDs, so their loved tracks and dislikes aren't used).", file=sys.stderr)
+        USER_FILTERS.update(user_filters(config, recent_ids, profile, profile_b))  # both listeners' ratings
         tracks = strategy_blend(profile, profile_b, sf, target_size)
     elif args.strategy == "era":
         try:
@@ -1394,6 +1397,9 @@ def main():
         "track_count": len(tracks),
         "tracks": tracks,
     }
+    steered = rating_summary(*(p.get("rating_signals") or {} for p in (profile, profile_b) if p))
+    if steered["boosted_artists"] or steered["demoted_artists"]:
+        result["steered_by_ratings"] = steered
     if args.strategy == "blend":
         compat = profile_compatibility(profile, profile_b)
         result["compatibility"] = {k: compat[k] for k in ("compatibility_pct", "verdict", "shared_artists")}

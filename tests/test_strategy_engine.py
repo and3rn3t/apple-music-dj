@@ -1443,3 +1443,52 @@ class TestWeightedTasteInStrategies:
                             if cmd == "similar-artists" else _top([_song("g1", "S", "Garage Band")])
                             if cmd == "artist-top" else None)
         assert [t["zone"] for t in se.strategy_constellation(profile, "us", target_size=3)] == ["familiar"]
+
+
+class TestSteeredByRatings:
+    def test_output_lists_boosted_and_demoted_artists(self, monkeypatch, tmp_path, sample_profile, capsys):
+        import sys
+        sample_profile["rating_signals"] = _signals(
+            [(1, {"artistName": "Liked"}), (-1, {"artistName": "Nope"}), (-1, {"artistName": "Nope"})])
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {"avoid_repeat_days": 0})
+        monkeypatch.setattr(se, "strategy_trend", lambda *a, **k: [{"id": "t", "name": "N", "artist": "A",
+                                                                     "album": "", "genre": []}])
+        monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--profile", str(profile), "--strategy", "trend"])
+        se.main()
+        out = json.loads(capsys.readouterr().out)
+        assert out["steered_by_ratings"] == {"boosted_artists": ["Liked"], "demoted_artists": ["Nope"]}
+        assert "nope" in se.USER_FILTERS["excluded_artists"]
+
+
+class TestBlendUsesBothListenersRatings:
+    def test_artist_disliked_only_by_the_second_listener_drops_out(self, monkeypatch, tmp_path, sample_profile, capsys):
+        import sys
+        b = json.loads(json.dumps(sample_profile))
+        b["rating_signals"] = _signals([(-1, {"artistName": "Nope"}), (-1, {"artistName": "Nope"})])
+        pa, pb = tmp_path / "a.json", tmp_path / "b.json"
+        pa.write_text(json.dumps(sample_profile))
+        pb.write_text(json.dumps(b))
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {"avoid_repeat_days": 0})
+        seen = {}
+
+        def blend(*a, **k):
+            seen["excluded"] = set(se.USER_FILTERS["excluded_artists"])
+            return [{"id": "t", "name": "N", "artist": "A", "album": "", "genre": [], "source": "shared"}]
+        monkeypatch.setattr(se, "strategy_blend", blend)
+        monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--profile", str(pa), "--strategy", "blend",
+                                          "--profile-b", str(pb)])
+        se.main()
+        assert "nope" in seen["excluded"]
+        assert json.loads(capsys.readouterr().out)["steered_by_ratings"]["demoted_artists"] == ["Nope"]
+
+
+def _signals(pairs):
+    """rating_signals_from with a distinct song ID per (value, attrs) pair."""
+    from _common import rating_signals_from
+    return rating_signals_from([(f"song{i}", value, attrs) for i, (value, attrs) in enumerate(pairs)])

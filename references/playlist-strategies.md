@@ -301,7 +301,7 @@ xychart-beta
 - Max 2 songs from same album
 - Alternate familiar and unfamiliar artists
 - No explicit content unless user's library contains explicit
-- Exclude disliked artists (from ratings data)
+- Exclude disliked artists (from ratings data): 2+ dislikes and no likes, unless you play them a lot
 - End on a strong note, never a filler track
 
 ### Genre matching

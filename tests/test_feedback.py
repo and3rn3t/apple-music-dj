@@ -70,7 +70,9 @@ class TestRunRating:
         calls = []
         monkeypatch.setattr(fb, "call_api", lambda *a, **k: calls.append((a, k)) or "")
         out = fb.run_rating("dislike", ["s1", "s2"], str(profile_file))
-        assert calls == [(("rate", "s1", "-1", "--yes"), {"raw": True}), (("rate", "s2", "-1", "--yes"), {"raw": True})]
+        rate_calls = [c for c in calls if c[0][0] == "rate"]
+        assert rate_calls == [(("rate", "s1", "-1", "--yes"), {"raw": True}),
+                              (("rate", "s2", "-1", "--yes"), {"raw": True})]
         assert out["profile_updated"] is True
         saved = json.loads(profile_file.read_text())
         assert saved["disliked_song_ids"] == ["s1", "s2"] and saved["loved_track_ids"] == []
@@ -174,3 +176,46 @@ class TestMain:
         with pytest.raises(SystemExit):
             self._run(monkeypatch, "dislike", "s1", "--profile", str(tmp_path / "nope.json"), "--yes")
         assert "Profile not found" in capsys.readouterr().err
+
+
+class TestRatingSignals:
+    """#64: each rating also updates the artist/genre counts that steer playlists."""
+
+    SONGS = {"s1": {"artistName": "Nope", "genreNames": ["Rock", "Music"]},
+             "s2": {"artistName": "Nope", "genreNames": ["Rock"]}}
+
+    def test_dislikes_count_toward_the_artist(self):
+        p = fb.apply_to_profile({}, "dislike", ["s1", "s2"], self.SONGS)
+        assert p["rating_signals"]["artists"]["nope"] == {"name": "Nope", "likes": 0, "dislikes": 2}
+        assert p["rating_signals"]["genres"]["Rock"]["dislikes"] == 2
+
+    def test_rerating_moves_the_count_instead_of_adding(self):
+        p = fb.apply_to_profile({}, "dislike", ["s1"], self.SONGS)
+        p = fb.apply_to_profile(p, "dislike", ["s1"], self.SONGS)  # same rating again
+        p = fb.apply_to_profile(p, "like", ["s1"], self.SONGS)
+        assert p["rating_signals"]["artists"]["nope"] == {"name": "Nope", "likes": 1, "dislikes": 0}
+        p = fb.apply_to_profile(p, "clear", ["s1"], self.SONGS)
+        assert p["rating_signals"] == {"songs": {}, "artists": {}, "genres": {}}
+
+    def test_run_rating_looks_songs_up_and_saves_signals(self, monkeypatch, tmp_path):
+        path = tmp_path / "profile.json"
+        path.write_text(json.dumps({"storefront": "gb"}))
+        lookups = []
+
+        def api(cmd, *args, **kw):
+            if cmd == "song-detail":
+                lookups.append(args)
+                return {"data": [{"attributes": self.SONGS[args[1]]}]}
+            return ""
+        monkeypatch.setattr(fb, "call_api", api)
+        fb.run_rating("dislike", ["s1", "s2"], str(path))
+        assert lookups == [("gb", "s1"), ("gb", "s2")]  # the profile's storefront
+        assert json.loads(path.read_text())["rating_signals"]["artists"]["nope"]["dislikes"] == 2
+
+    def test_a_failed_lookup_still_records_the_rating(self, monkeypatch, tmp_path):
+        path = tmp_path / "profile.json"
+        path.write_text("{}")
+        monkeypatch.setattr(fb, "call_api", lambda cmd, *a, **k: None if cmd == "song-detail" else "")
+        fb.run_rating("dislike", ["s1"], str(path))
+        saved = json.loads(path.read_text())
+        assert saved["disliked_song_ids"] == ["s1"] and "rating_signals" not in saved

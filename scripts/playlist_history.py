@@ -26,6 +26,7 @@ if sys.version_info < (3, 11):
 
 import argparse
 import json
+import os
 from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
@@ -43,9 +44,23 @@ def load_history() -> list[dict]:
             data = json.load(f)
         if isinstance(data, list):
             return data
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError:
+        pass
+    except OSError:
         return []
-    return []  # valid JSON, but not a list
+    return _set_aside_unreadable_history()
+
+
+def _set_aside_unreadable_history() -> list[dict]:
+    """Keep an unreadable history file as *.corrupt (the next save would overwrite it) and start fresh."""
+    backup = HISTORY_FILE.with_suffix(".json.corrupt")
+    try:
+        os.replace(HISTORY_FILE, backup)
+        print(f"WARN: {HISTORY_FILE} is not a valid history file; kept as {backup} and starting fresh.",
+              file=sys.stderr)
+    except OSError:
+        print(f"WARN: {HISTORY_FILE} is not a valid history file and could not be set aside.", file=sys.stderr)
+    return []
 
 
 def save_history(history: list[dict]) -> None:

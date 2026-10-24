@@ -971,3 +971,11 @@ class TestVerifySetupFailures:
         r = self._verify(api, APPLE_MUSIC_API_BASE=f"http://127.0.0.1:{port}")
         assert r.returncode != 0 and "Network error" in r.stdout
 
+
+
+class TestFailedListingsAreNotSilent:
+    @pytest.mark.parametrize("command", ["library-artists", "library-songs"])
+    def test_a_failing_first_page_is_an_error_not_an_empty_library(self, api, command):
+        api.env["APPLE_MUSIC_API_BASE"] = "http://127.0.0.1:9"  # nothing listens: every request fails
+        r = api("apple_music_api.sh", command, 25, check=False)
+        assert r.returncode != 0 and r.stderr.strip()

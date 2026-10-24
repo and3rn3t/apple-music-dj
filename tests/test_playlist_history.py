@@ -33,6 +33,15 @@ class TestLoadHistory:
         monkeypatch.setattr(ph, "HISTORY_FILE", f)
         assert ph.load_history() == []
 
+    def test_unreadable_history_is_kept_aside_not_overwritten(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / "history.json"
+        f.write_text("{bad json")
+        monkeypatch.setattr(ph, "HISTORY_FILE", f)
+        ph.log_playlist("Mix", "trend", ["t1"])
+        assert (tmp_path / "history.json.corrupt").read_text() == "{bad json"
+        assert [e["name"] for e in ph.load_history()] == ["Mix"]
+        assert "kept as" in capsys.readouterr().err
+
     def test_returns_empty_on_non_list_json(self, tmp_path, monkeypatch):
         f = tmp_path / "history.json"
         f.write_text('{"not": "a list"}')

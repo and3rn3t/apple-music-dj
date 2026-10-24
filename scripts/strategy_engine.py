@@ -62,6 +62,7 @@ from _common import (
     passes_user_filters,
     best_genre_match,
     call_api,
+    run_script,
     filter_generic_genres,
     genre_proximity,  # noqa: F401  (kept importable from here)
     get_album_tracks,
@@ -78,7 +79,6 @@ from _common import (
     write_private,
 )
 
-SCRIPT_DIR = Path(__file__).parent
 
 
 # ── Mood/Activity Mapping ────────────────────────────────────────
@@ -1202,10 +1202,7 @@ def generate_description(strategy: str, mood: str | None = None,
 def check_playlist_exists(name: str) -> str | None:
     """Check if a playlist with this name already exists. Returns playlist ID or None."""
     try:
-        result = subprocess.run(
-            [str(SCRIPT_DIR / "apple_music_api.sh"), "library-playlists", "100"],
-            capture_output=True, text=True, timeout=30,
-        )
+        result = run_script("apple_music_api.sh", "library-playlists", "100")
         if result.returncode != 0:
             detail = (result.stderr or "").strip().splitlines()
             print(f"WARN: Couldn't check for an existing playlist named '{name}': the API call exited "
@@ -1240,10 +1237,7 @@ def create_playlist_from_tracks(tracks: list[dict], name: str,
         ids_file = f.name
 
     try:
-        result = subprocess.run(
-            [str(SCRIPT_DIR / "build_playlist.sh"), "create", name, description, ids_file, "--yes"],
-            capture_output=True, text=True, timeout=60,
-        )
+        result = run_script("build_playlist.sh", "create", name, description, ids_file, "--yes", timeout=60)
         if result.returncode != 0:
             print(f"ERROR: Playlist creation failed: {result.stderr}", file=sys.stderr)
             return False

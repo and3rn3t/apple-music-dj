@@ -271,7 +271,7 @@ class TestCmdFix:
             "playlist_id": pid, "total_tracks": 5, "removed": [], "removed_count": 0,
             "duplicates": [{"id": "cat1", "count": 2}], "duplicate_count": 1, "healthy": False,
         })
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(returncode=0))
+        monkeypatch.setattr("playlist_health.run_script", lambda *a, **kw: MagicMock(returncode=0))
 
         args = MagicMock()
         args.playlist_id = "pl1"
@@ -328,7 +328,7 @@ class TestCmdFix:
         monkeypatch.setattr("playlist_health.find_replacement", lambda sf, n, a: {
             "id": "new1", "name": "Gone (Remaster)", "artist": "Artist",
         })
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(returncode=0))
+        monkeypatch.setattr("playlist_health.run_script", lambda *a, **kw: MagicMock(returncode=0))
 
         args = MagicMock()
         args.playlist_id = "pl1"
@@ -411,13 +411,12 @@ class TestFixFlag:
         assert "--apply" in text and "--auto" not in text and "only previews" in text
 
     def _fix(self, monkeypatch, apply):
-        import subprocess
         runs = []
         monkeypatch.setattr(phealth, "require_env_tokens", lambda: None)
         monkeypatch.setattr(phealth, "load_config", lambda: {})
         monkeypatch.setattr(phealth, "check_playlist", lambda pid, sf: {
             "duplicates": [{"id": "t1", "count": 3}], "removed": [], "removed_count": 0, "duplicate_count": 1})
-        monkeypatch.setattr(subprocess, "run", lambda cmd, **k: runs.append(cmd) or MagicMock(returncode=0))
+        monkeypatch.setattr(phealth, "run_script", lambda *cmd, **k: runs.append(list(cmd)) or MagicMock(returncode=0))
         args = MagicMock(playlist_id="p.1", storefront="us", profile=None, apply=apply)
         return phealth.cmd_fix(args), runs
 
@@ -429,5 +428,19 @@ class TestFixFlag:
 
     def test_apply_removes_the_extra_copies(self, monkeypatch):
         result, runs = self._fix(monkeypatch, apply=True)
-        assert len(runs) == 1 and runs[0][1:3] == ["remove", "p.1"]
+        assert len(runs) == 1 and runs[0][:3] == ["build_playlist.sh", "remove", "p.1"] and runs[0][-1] == "--yes"
         assert result["applied"] is True and result["actions_taken"] == ["Removed 2 duplicate(s) of t1"]
+
+    @pytest.mark.parametrize("outcome", [MagicMock(returncode=1, stderr="boom\n"), OSError("gone")])
+    def test_a_failed_removal_is_not_reported_as_done(self, monkeypatch, capsys, outcome):
+        def fake(*a, **k):
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+        self._fix(monkeypatch, apply=False)  # installs the check_playlist stubs
+        monkeypatch.setattr(phealth, "run_script", fake)
+        args = MagicMock(playlist_id="p.1", storefront="us", profile=None, apply=True)
+        result = phealth.cmd_fix(args)
+        assert result["actions_taken"] == ["Couldn't remove 2 duplicate(s) of t1"]
+        assert "WARN: build_playlist.sh remove" in capsys.readouterr().err
+

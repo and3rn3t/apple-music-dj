@@ -273,6 +273,19 @@ def _run_with_term_grace(cmd: list[str], timeout: float, grace: float = 5) -> su
         return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
+def run_script(script: str, *args: str, timeout: float = 30) -> subprocess.CompletedProcess:
+    """Run a sibling shell script from scripts/ and capture its output.
+
+    The one place the Python scripts shell out: SIGTERM-first timeouts (see _run_with_term_grace),
+    stdout/stderr captured as text, tokens never on the command line (the shell scripts read them
+    from the environment). Writes still need the caller's explicit `--yes` argument. Raises
+    subprocess.TimeoutExpired on timeout and OSError if the script can't be run.
+    """
+    if Path(script).name != script:
+        raise ValueError(f"run_script takes a bare script name from scripts/, not {script!r}")
+    return _run_with_term_grace([str(SCRIPT_DIR / script), *args], timeout=timeout)
+
+
 @overload
 def call_api(command: str, *args: str, raw: Literal[True]) -> str | None: ...
 @overload
@@ -282,9 +295,8 @@ def call_api(command: str, *args: str, raw: bool = False) -> Any:
 
     If raw=True, return stdout as a stripped string instead of parsing JSON.
     """
-    cmd = [str(API_SCRIPT), command] + list(args)
     try:
-        result = _run_with_term_grace(cmd, timeout=30)
+        result = run_script(API_SCRIPT.name, command, *args)
         if result.returncode != 0:
             stderr_msg = result.stderr.strip()
             if stderr_msg:

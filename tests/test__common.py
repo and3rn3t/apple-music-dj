@@ -9,6 +9,7 @@ import time
 import pytest
 
 from _common import (
+    run_script,
     call_api,
     check_token_expiry,
     filter_generic_genres,
@@ -719,3 +720,18 @@ def _signals(pairs):
     """rating_signals_from with a distinct song ID per (value, attrs) pair."""
     from _common import rating_signals_from
     return rating_signals_from([(f"song{i}", value, attrs) for i, (value, attrs) in enumerate(pairs)])
+
+
+class TestRunScript:
+    def test_runs_a_sibling_script_by_bare_name(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr("_common._run_with_term_grace",
+                            lambda cmd, timeout: seen.append((cmd, timeout)) or "done")
+        assert run_script("build_playlist.sh", "create", "N", timeout=60) == "done"
+        (cmd, timeout), = seen
+        assert cmd[0].endswith("/scripts/build_playlist.sh") and cmd[1:] == ["create", "N"] and timeout == 60
+
+    @pytest.mark.parametrize("script", ["../evil.sh", "/bin/sh", "sub/x.sh"])
+    def test_refuses_anything_but_a_bare_script_name(self, script):
+        with pytest.raises(ValueError):
+            run_script(script)

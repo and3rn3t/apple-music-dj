@@ -85,7 +85,7 @@ profile so the scripts can read them.
 python3 scripts/demo.py tour
 ```
 
-Runs the real scripts against a fictional listener and a small sample catalog served on `127.0.0.1`:
+Runs the real scripts against a fictional listener and a sample catalog of about 250 songs served on `127.0.0.1`:
 a Taste DNA card, a "songs like Radiohead" playlist, a 90s throwback, a daily pick and a
 compatibility score. Nothing is sent to Apple and nothing touches an account. Any script works the
 same way, with `DEMO_PROFILE` standing in for the profile:

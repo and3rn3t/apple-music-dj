@@ -1,5 +1,6 @@
 """Tests for demo.py: the no-tokens tour and the `run` sandbox around the real scripts."""
 
+import json
 import shutil
 import subprocess
 import sys
@@ -233,3 +234,85 @@ class TestEndToEnd:
         (home / ".apple-music-dj").mkdir()
         assert "Removed" in run_demo(home, "reset").stdout
         assert not (home / ".apple-music-dj-demo").exists() and (home / ".apple-music-dj").exists()
+
+
+class TestDemoCatalog:
+    """The catalog behind demo mode (the small one in SMALL_CATALOG is pinned by the integration tests)."""
+
+    cat = demo.DEMO_CATALOG
+
+    def test_is_big_enough_for_full_playlists(self):
+        assert len(self.cat.songs) >= 150 and len(self.cat.artists) >= 20 and len(self.cat.albums) >= 25
+
+    def test_the_small_catalog_the_integration_tests_use_is_unchanged(self):
+        assert len(demo.SMALL_CATALOG.songs) == 13 and set(demo.SMALL_CATALOG.artists) == {"a1", "a2", "a3", "a4"}
+        assert demo.MockAppleMusic().catalog is demo.SMALL_CATALOG
+
+    def test_ids_are_unique_and_everything_it_points_to_exists(self):
+        ids = [r[0] for r in self.cat.songs]
+        assert len(ids) == len(set(ids))
+        assert all(r[2] in self.cat.artists and r[5] in self.cat.albums for r in self.cat.songs)
+        assert all(a in self.cat.artists for _, a, _ in self.cat.albums.values())
+        for listed in (self.cat.library_songs, self.cat.recent_tracks, self.cat.charts, self.cat.playlist_songs,
+                       self.cat.ratings):
+            assert set(listed) <= set(ids)
+        assert all(a in self.cat.artists for others in self.cat.similar.values() for a in others)
+
+    def test_isrcs_are_unique_and_the_right_length(self):
+        isrcs = [r[6] for r in self.cat.songs]
+        assert len(isrcs) == len(set(isrcs)) and all(len(i) == 12 for i in isrcs)
+
+    def test_covers_the_genres_the_moods_ask_for(self):
+        genres = {g for r in self.cat.songs for g in r[3]}
+        assert {"Alternative", "Rock", "Electronic", "Dance", "Jazz", "Ambient", "Pop", "Hip-Hop/Rap", "Folk",
+                "Country", "Metal", "R&B/Soul"} <= genres
+
+    def test_top_songs_span_albums(self):
+        top = self.cat.top_songs_for("dradiohead")
+        assert len(top) == self.cat.top_songs
+        assert len({s["attributes"]["albumName"] for s in top}) >= 3
+
+    def test_track_numbers_follow_the_album_order(self):
+        by_album = {}
+        for r in self.cat.songs:
+            by_album.setdefault(r[5], []).append(self.cat.song(r[0])["attributes"]["trackNumber"])
+        assert all(nums == list(range(1, len(nums) + 1)) for nums in by_album.values())
+
+
+class TestStaleDemoProfile:
+    def test_a_profile_from_an_older_catalog_is_rebuilt(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(demo, "DEMO_HOME", tmp_path / "demo")
+        profile = demo.demo_profile_path()
+        profile.parent.mkdir(parents=True)
+        profile.write_text("{}")
+        built = []
+
+        def fake_run(cmd, env, capture=False):
+            built.append(cmd)
+            profile.write_text("{}")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(demo, "_run", fake_run)
+        demo.ensure_profile({})
+        assert len(built) == 1  # no version marker: rebuilt
+        demo.ensure_profile({})
+        assert len(built) == 1  # marker now matches: reused
+        profile.with_name("demo_catalog_version").write_text("0\n")
+        demo.ensure_profile({})
+        assert len(built) == 2
+
+
+@needs_tools
+class TestDemoPlaylistsAreFullLength:
+    @pytest.mark.parametrize("args, floor", [
+        (["--strategy", "mood", "--mood", "workout"], 25),
+        (["--strategy", "trend"], 25),
+        (["--strategy", "deep-cuts"], 20),
+        (["--strategy", "similar", "--similar-to", "Radiohead"], 20),
+        (["--strategy", "era", "--decade", "90s"], 20),
+        (["--strategy", "remix", "--playlist-url", "pl.demo-alt-essentials"], 20),
+    ])
+    def test_reaches_close_to_the_default_length(self, home, args, floor):
+        r = run_demo(home, "run", "strategy_engine.py", *args, "--profile", "DEMO_PROFILE")
+        assert r.returncode == 0, r.stderr
+        assert floor <= json.loads(r.stdout)["track_count"] <= 30

@@ -622,11 +622,17 @@ def _rater(profile: dict, who: str) -> dict:
     }
 
 
+CLEAN_LOOKUP_LIMIT = 15  # catalog searches per run spent looking for clean versions of explicit songs
+
+
 def user_filters(config: dict, recent_track_ids: set[str] | None = None, profile: dict | None = None,
-                 profile_b: dict | None = None) -> dict:
+                 profile_b: dict | None = None, *, clean_only: bool | None = None,
+                 storefront: str | None = None) -> dict:
     """The parts of config.json, recent playlist history and ratings that every strategy honours.
 
     `profile_b` is the second listener of a blend: both listeners' ratings count.
+    `clean_only` (default: config.json's `clean_only`) keeps explicit songs out; it needs
+    `storefront` to look up clean versions.
     """
     raters = [_rater(p, who) for p, who in ((profile, "you"), (profile_b, "they")) if p]
     excluded = {a.lower() for a in config.get("excluded_artists") or [] if isinstance(a, str)}
@@ -644,15 +650,52 @@ def user_filters(config: dict, recent_track_ids: set[str] | None = None, profile
         "preferred_genres": [g for g in config.get("preferred_genres") or [] if isinstance(g, str)],
         "recent_track_ids": set(recent_track_ids or ()),
         "raters": raters,
+        "clean_only": config.get("clean_only") is True if clean_only is None else clean_only,
+        "storefront": storefront,
+        "clean_lookups_left": CLEAN_LOOKUP_LIMIT,
+        "clean_cache": {},
     }
 
 
 def passes_user_filters(candidate: dict, filters: dict | None) -> bool:
-    """False for an excluded artist or a track used in a recent DJ playlist."""
+    """False for an excluded artist, a track used in a recent DJ playlist, or (clean mode) an explicit song."""
     if not filters:
         return True
+    if filters.get("clean_only") and candidate.get("explicit"):
+        return False
     return (candidate.get("artist", "").lower() not in (filters.get("excluded_artists") or set())
             and candidate.get("id") not in (filters.get("recent_track_ids") or set()))
+
+
+def swap_explicit_for_clean(candidate: dict, filters: dict | None) -> dict:
+    """In clean mode, replace an explicit song with its clean version when the catalog has one.
+
+    The clean version is the same title by the same artist whose `contentRating` isn't explicit.
+    One catalog search per distinct song, at most CLEAN_LOOKUP_LIMIT per run; anything not
+    swapped stays explicit and is dropped by passes_user_filters.
+    """
+    if not filters or not filters.get("clean_only") or not candidate.get("explicit") or not filters.get("storefront"):
+        return candidate
+    name, artist = candidate.get("name", ""), candidate.get("artist", "")
+    key = (name.lower(), artist.lower())
+    cache: dict = filters.setdefault("clean_cache", {})
+    if key not in cache:
+        if filters.get("clean_lookups_left", 0) <= 0 or not name or not artist:
+            return candidate
+        filters["clean_lookups_left"] -= 1
+        found = call_api("search", filters["storefront"], f"{name} {artist}", "songs")
+        cache[key] = next((s for s in ((found or {}).get("results", {}).get("songs", {}) or {}).get("data", [])
+                           if s.get("attributes", {}).get("name", "").lower() == key[0]
+                           and s.get("attributes", {}).get("artistName", "").lower() == key[1]
+                           and s.get("attributes", {}).get("contentRating") != "explicit"), None)
+    clean = cache[key]
+    if not clean:
+        return candidate
+    attrs = clean.get("attributes", {})
+    return {**candidate, "id": clean.get("id", candidate.get("id")), "explicit": False,
+            "album": attrs.get("albumName", candidate.get("album", "")),
+            "duration_ms": attrs.get("durationInMillis", candidate.get("duration_ms")),
+            "reason": f"{candidate.get('reason', '')} (clean version)".strip()}
 
 
 def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dict]:
@@ -669,6 +712,7 @@ def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dic
     raters = filters.get("raters") or []
     kept = []
     for c in candidates:
+        c = swap_explicit_for_clean(c, filters)
         if not passes_user_filters(c, filters):
             continue
         if "_score" in c:

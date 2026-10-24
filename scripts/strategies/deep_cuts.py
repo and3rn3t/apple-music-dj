@@ -4,7 +4,7 @@ import random
 import re
 import sys
 
-from _common import call_api, filter_generic_genres, get_album_tracks, passes_user_filters
+from _common import call_api, filter_generic_genres, get_album_tracks, passes_user_filters, swap_explicit_for_clean
 from collections import Counter
 from strategies.candidates import USER_FILTERS, _artist_top_songs, _finish
 from strategies.scoring import ARTIST_CAP, DEEP_CUT_BASE, DEEP_CUT_POSITION_BONUS, _artist_boost
@@ -101,12 +101,14 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30,
                     "album": album_attrs.get("name", ""),
                     "genre": filter_generic_genres(attrs.get("genreNames", [])),
                     "duration_ms": attrs.get("durationInMillis"),
+                    "explicit": attrs.get("contentRating") == "explicit",
                     "source": "deep_cut",
                     "reason": f"A deep cut from {artist_name} — album track you haven't heard.",
                     # later tracks score slightly higher
                     "_score": DEEP_CUT_BASE + artist_weight
                               + DEEP_CUT_POSITION_BONUS * min(max(track_num - 1, 0) / last_position, 1.0),
                 }
+                candidate = swap_explicit_for_clean(candidate, USER_FILTERS)
                 if not passes_user_filters(candidate, USER_FILTERS):
                     continue
                 candidates.append(candidate)

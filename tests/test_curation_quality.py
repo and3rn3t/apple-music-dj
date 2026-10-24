@@ -48,7 +48,8 @@ def _song(artist_i: int, album_j: int, track_k: int) -> dict:
     return {"id": f"s{artist_i}-{album_j}-{track_k}", "type": "songs", "attributes": {
         "name": title, "artistName": name, "genreNames": [*genres, "Music"], "trackNumber": track_k,
         "releaseDate": f"{year + 4 * album_j}-06-01", "albumName": f"{name} LP{album_j}",
-        "durationInMillis": 150_000 + (artist_i * 7 + album_j * 5 + track_k * 3) % 9 * 20_000}}  # 2:30 to 5:10
+        "durationInMillis": 150_000 + (artist_i * 7 + album_j * 5 + track_k * 3) % 9 * 20_000,  # 2:30 to 5:10
+        **({"contentRating": "explicit"} if (artist_i + album_j + track_k) % 5 == 0 else {})}}  # about one in five
 
 
 def _album(artist_i: int, album_j: int) -> dict:
@@ -181,6 +182,18 @@ def run(name: str, seed: int = 1, size: int = SIZE) -> list[dict]:
 
 @pytest.mark.parametrize("name", STRATEGIES)
 class TestEveryStrategy:
+    def test_clean_mode_leaves_out_explicit_songs_and_still_fills_the_list(self, name):
+        se.USER_FILTERS.update(user_filters({"clean_only": True}, HEARD_LAST_WEEK, storefront="us"))
+        se.USER_FILTERS["excluded_artists"] |= {EXCLUDED_ARTIST.lower()}
+        tracks = run(name)
+        assert tracks and not [t["name"] for t in tracks if t["explicit"]]
+        assert len(tracks) >= SIZE * 0.85  # the explicit ones are gone, so a thin pool can fall a little short
+
+    def test_without_clean_mode_explicit_songs_stay(self, name):
+        if name in ("remix", "mood-sleep"):  # their catalogs here barely contain any
+            pytest.skip("not enough explicit songs in this scenario")
+        assert any(t["explicit"] for t in run(name))
+
     def test_every_track_carries_its_duration(self, name):
         """--minutes is only as good as the durations; one candidate builder forgetting it skews the total."""
         assert all(isinstance(t.get("duration_ms"), int) for t in run(name))

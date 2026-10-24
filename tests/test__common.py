@@ -486,7 +486,8 @@ class TestUserFilters:
         from _common import user_filters
         f = user_filters({"excluded_artists": ["Nickelback", 3], "preferred_genres": ["Jazz"]}, {"t1"})
         assert f == {"excluded_artists": {"nickelback"}, "preferred_genres": ["Jazz"], "recent_track_ids": {"t1"},
-                     "raters": []}
+                     "raters": [], "clean_only": False, "storefront": None, "clean_lookups_left": 15,
+                     "clean_cache": {}}
 
     def test_defaults_filter_nothing(self):
         from _common import DEFAULT_CONFIG, apply_user_filters, user_filters

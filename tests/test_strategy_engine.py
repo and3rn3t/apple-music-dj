@@ -1539,3 +1539,40 @@ def _signals(pairs):
     """rating_signals_from with a distinct song ID per (value, attrs) pair."""
     from _common import rating_signals_from
     return rating_signals_from([(f"song{i}", value, attrs) for i, (value, attrs) in enumerate(pairs)])
+
+
+class TestCleanFlag:
+    @pytest.fixture
+    def run(self, monkeypatch, tmp_path, sample_profile):
+        import sys
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "gb")
+        seen = {}
+
+        def trend(p, sf, n):
+            seen.update(se.USER_FILTERS)
+            return [{"id": "t1", "name": "N", "artist": "A", "album": "B", "genre": []}]
+
+        monkeypatch.setattr(se, "strategy_trend", trend)
+
+        def go(config, *argv):
+            monkeypatch.setattr(se, "load_config", lambda: config)
+            monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--strategy", "trend", "--profile", str(profile),
+                                              *argv])
+            seen.clear()
+            se.main()
+            return dict(seen)
+
+        return go
+
+    def test_off_by_default(self, run):
+        assert run({})["clean_only"] is False
+
+    def test_the_flag_turns_it_on_with_the_storefront_for_lookups(self, run):
+        filters = run({}, "--clean")
+        assert filters["clean_only"] is True and filters["storefront"] == "gb"
+
+    def test_config_turns_it_on(self, run):
+        assert run({"clean_only": True})["clean_only"] is True

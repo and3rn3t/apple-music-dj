@@ -64,7 +64,7 @@ class TestRemixAgainstTheMock:
         r = api("strategy_engine.py", "--strategy", "remix", "--profile", profile, "--storefront", "us", "--size", "8",
                 "--playlist-url", "https://music.apple.com/us/playlist/alt-essentials/pl.demo-alt-essentials")
         out = _json(r)
-        assert out["remix"]["playlist"] == "Alt Essentials" and out["remix"]["original_tracks"] == 12
+        assert out["remix"]["playlist"] == "Alt Essentials" and out["remix"]["original_tracks"] == 13
         assert out["remix"]["kept"] + out["remix"]["swapped"] == out["track_count"] > 0
         assert {t["source"] for t in out["tracks"]} <= {"remix_keep", "remix_swap"}
         assert api.mock.writes() == []
@@ -457,8 +457,15 @@ class TestStrategies:
 
     def test_era(self, api, profile):
         plan = self._plan(api, profile, "--strategy", "era", "--decade", "90s")
-        assert plan["tracks"] and all(t["id"] in {"s2", "s3", "s6", "s7", "s8", "s11", "s12"} for t in plan["tracks"])
+        assert plan["tracks"] and all(t["id"] in {"s2", "s3", "s6", "s7", "s8", "s11", "s12", "s13"} for t in plan["tracks"])
         assert plan["name"].startswith("1990s Throwback")
+
+    def test_clean_mode_swaps_in_the_clean_twin_and_drops_what_has_none(self, api, profile):
+        plan = self._plan(api, profile, "--strategy", "era", "--decade", "90s", "--clean")
+        ids = {t["id"] for t in plan["tracks"]}
+        assert not {"s7", "s12"} & ids  # the explicit songs are gone
+        assert not any(t["explicit"] for t in plan["tracks"])
+        assert any(q["path"] == "/v1/catalog/us/search" for q in api.mock.requests)  # it looked for clean versions
 
     def test_blend_with_itself_is_all_shared(self, api, profile):
         plan = self._plan(api, profile, "--strategy", "blend", "--profile-b", profile)

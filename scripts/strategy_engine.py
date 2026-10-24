@@ -31,6 +31,7 @@ Common options:
   --name NAME         Custom playlist name (auto-generated if omitted)
   --size N            Target track count (default: from config or 30)
   --minutes N         Target running time instead (overrides --size; lands within about a minute)
+  --clean             Keep explicit songs out (prefers a clean version of the same song)
   --include-library   Allow songs already in your library (refresh, seed, era)
   --create            Actually create the playlist in Apple Music
   --favorite          With --create: also favorite every track (writes to your account)
@@ -260,6 +261,8 @@ def main():
                              "within about a minute of it, keeping the strategy's order")
     parser.add_argument("--include-library", action="store_true",
                         help="Refresh: allow songs already in your library")
+    parser.add_argument("--clean", action="store_true",
+                        help="Keep explicit songs out (uses the clean version when one exists); same as clean_only in config.json")
     parser.add_argument("--create", action="store_true",
                         help="Create the playlist in Apple Music")
     parser.add_argument("--favorite", action="store_true",
@@ -291,7 +294,8 @@ def main():
         from playlist_history import get_recent_track_ids
         recent_ids = get_recent_track_ids(repeat_days)
     USER_FILTERS.clear()
-    USER_FILTERS.update(user_filters(config, recent_ids, profile))
+    clean_only = True if args.clean else None  # None: follow config.json
+    USER_FILTERS.update(user_filters(config, recent_ids, profile, clean_only=clean_only, storefront=sf))
     profile_b: dict | None = None  # the second listener, for a blend
 
     target_label = f"{args.minutes:g} min" if args.minutes else f"{target_size} tracks"
@@ -328,7 +332,8 @@ def main():
             found = resolve_artist_ids(profile_b, sf)
             print(f"  Found {found} of their top artists in the catalog "
                   "(a taste code has no song IDs, so their loved tracks and dislikes aren't used).", file=sys.stderr)
-        USER_FILTERS.update(user_filters(config, recent_ids, profile, profile_b))  # both listeners' ratings
+        USER_FILTERS.update(user_filters(config, recent_ids, profile, profile_b, clean_only=clean_only,
+                                         storefront=sf))  # both listeners' ratings
         tracks = strategy_blend(profile, profile_b, sf, target_size)
     elif args.strategy == "remix":
         if not args.playlist_url:

@@ -125,6 +125,7 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
                             "artist": attrs.get("artistName", artist["name"]),
                             "album": album.get("attributes", {}).get("name", ""),
                             "genre": filter_generic_genres(attrs.get("genreNames", [])),
+                            "explicit": attrs.get("contentRating") == "explicit",
                             "source": "deep_cut",
                             "reason": f"A deep cut from {artist['name']} you haven't heard yet.",
                         })
@@ -147,6 +148,7 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
                                     "name": attrs.get("name", ""),
                                     "artist": attrs.get("artistName", ""),
                                     "genre": item_genres,
+                                    "explicit": attrs.get("contentRating") == "explicit",
                                     "source": "trending",
                                     "reason": f"Trending right now and matches your {item_genres[0] if item_genres else 'music'} taste.",
                                 })
@@ -200,7 +202,7 @@ def cmd_daily(profile: dict, sf: str) -> dict:
     candidates = get_candidates(profile, sf)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, rng=rng)
-    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile))
+    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile, storefront=sf))
     if not candidates:
         return {"error": "No candidates found. Try refreshing your taste profile."}
 
@@ -236,7 +238,7 @@ def cmd_now(profile: dict, sf: str) -> dict:
     candidates = get_candidates(profile, sf, context)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, context, rng=rng)
-    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile))
+    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile, storefront=sf))
     if not candidates:
         return {"error": "No candidates found.", "context": context}
 

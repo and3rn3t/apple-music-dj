@@ -1,0 +1,129 @@
+"""Clean mode: keep explicit songs out, using the clean version of the same song when there is one."""
+
+import pytest
+
+import _common
+from _common import apply_user_filters, passes_user_filters, swap_explicit_for_clean, user_filters
+
+
+def song(sid: str, name: str, artist: str, rating: str | None) -> dict:
+    attrs = {"name": name, "artistName": artist, "albumName": f"{artist} LP", "durationInMillis": 200_000}
+    if rating:
+        attrs["contentRating"] = rating
+    return {"id": sid, "type": "songs", "attributes": attrs}
+
+
+def candidate(sid: str, name: str, artist: str = "A", explicit: bool = False) -> dict:
+    return {"id": sid, "name": name, "artist": artist, "album": "x", "genre": ["Rock"], "explicit": explicit,
+            "reason": "r", "_score": 0.5, "duration_ms": 1}
+
+
+@pytest.fixture
+def searches(monkeypatch):
+    """Record catalog searches; the catalog holds a clean twin of 'Loud' and nothing for 'Filthy'."""
+    calls: list[tuple] = []
+
+    def fake(cmd, *args, **kwargs):
+        calls.append((cmd, *args))
+        term = args[1].lower()
+        songs = [song("loud-x", "Loud", "A", "explicit"), song("loud-c", "Loud", "A", "clean"),
+                 song("other", "Loud (Live)", "A", None), song("filthy-x", "Filthy", "A", "explicit")]
+        return {"results": {"songs": {"data": [s for s in songs if s["attributes"]["name"].lower() in term]}}}
+
+    monkeypatch.setattr(_common, "call_api", fake)
+    return calls
+
+
+def filters(**kw):
+    return user_filters({"clean_only": True}, storefront="us", **kw)
+
+
+class TestSwitch:
+    def test_off_by_default(self):
+        assert user_filters({})["clean_only"] is False
+
+    def test_config_turns_it_on(self):
+        assert user_filters({"clean_only": True})["clean_only"] is True
+
+    @pytest.mark.parametrize("value", ["yes", 1, None])
+    def test_only_a_real_true_counts(self, value):
+        assert user_filters({"clean_only": value})["clean_only"] is False
+
+    def test_the_flag_overrides_the_config(self):
+        assert user_filters({}, clean_only=True)["clean_only"] is True
+        assert user_filters({"clean_only": True}, clean_only=False)["clean_only"] is False
+
+
+class TestPasses:
+    def test_explicit_is_refused_in_clean_mode_only(self):
+        assert not passes_user_filters(candidate("1", "x", explicit=True), filters())
+        assert passes_user_filters(candidate("1", "x", explicit=True), user_filters({}))
+        assert passes_user_filters(candidate("1", "x"), filters())
+
+    def test_a_candidate_without_the_field_is_not_explicit(self):
+        assert passes_user_filters({"id": "1", "artist": "A"}, filters())
+
+
+class TestSwap:
+    def test_uses_the_clean_version(self, searches):
+        out = swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), filters())
+        assert out["id"] == "loud-c" and out["explicit"] is False and out["reason"] == "r (clean version)"
+        assert out["_score"] == 0.5 and out["genre"] == ["Rock"]  # the rest is unchanged
+
+    def test_a_live_take_is_not_the_clean_version(self, searches):
+        out = swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), filters())
+        assert out["id"] != "other"
+
+    def test_no_clean_version_leaves_it_to_be_dropped(self, searches):
+        c = candidate("filthy-x", "Filthy", explicit=True)
+        assert swap_explicit_for_clean(c, filters()) is c
+
+    def test_clean_songs_cost_no_lookup(self, searches):
+        swap_explicit_for_clean(candidate("1", "Loud"), filters())
+        assert searches == []
+
+    def test_each_song_is_looked_up_once(self, searches):
+        f = filters()
+        for _ in range(3):
+            swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), f)
+        assert len(searches) == 1
+
+    def test_lookups_are_capped_per_run(self, searches):
+        f = filters()
+        for i in range(_common.CLEAN_LOOKUP_LIMIT + 5):
+            swap_explicit_for_clean(candidate(f"x{i}", f"Song {i}", explicit=True), f)
+        assert len(searches) == _common.CLEAN_LOOKUP_LIMIT
+
+    def test_needs_a_storefront(self, searches):
+        c = candidate("loud-x", "Loud", explicit=True)
+        assert swap_explicit_for_clean(c, user_filters({"clean_only": True})) is c and searches == []
+
+    def test_does_nothing_outside_clean_mode(self, searches):
+        c = candidate("loud-x", "Loud", explicit=True)
+        assert swap_explicit_for_clean(c, user_filters({}, storefront="us")) is c and searches == []
+
+    def test_a_failed_search_keeps_the_song_explicit(self, monkeypatch):
+        monkeypatch.setattr(_common, "call_api", lambda *a, **k: None)
+        c = candidate("loud-x", "Loud", explicit=True)
+        assert swap_explicit_for_clean(c, filters()) is c
+
+
+class TestApply:
+    def test_swaps_what_it_can_and_drops_the_rest(self, searches):
+        cands = [candidate("a", "Fine"), candidate("loud-x", "Loud", explicit=True),
+                 candidate("filthy-x", "Filthy", explicit=True)]
+        out = apply_user_filters(cands, filters())
+        assert [c["id"] for c in out] == ["a", "loud-c"]
+
+
+class TestDailyPick:
+    def test_the_daily_pick_honours_clean_only(self, monkeypatch, searches):
+        import daily_pick
+
+        pool = [candidate("filthy-x", "Filthy", explicit=True), candidate("ok", "Fine")]
+        monkeypatch.setattr(daily_pick, "get_candidates", lambda profile, sf, context=None: [dict(c) for c in pool])
+        monkeypatch.setattr(daily_pick, "score_candidate", lambda *a, **k: 0.5)
+        monkeypatch.setattr(daily_pick, "load_config", lambda: {"clean_only": True})
+        monkeypatch.setattr(daily_pick, "get_token_renewal_reminder", lambda: "")
+        for _ in range(5):  # the pick is random among the top tier
+            assert daily_pick.cmd_daily({}, "us")["track"]["id"] == "ok"

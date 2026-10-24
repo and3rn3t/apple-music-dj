@@ -357,6 +357,7 @@ Every strategy (and the daily pick) reads these optional keys:
 | `excluded_artists` | `[]` | Never pick these artists (case-insensitive) |
 | `preferred_genres` | `[]` | +0.1 to a candidate's score for a matching genre, +0.05 for the same family |
 | `avoid_repeat_days` | `30` | Skip tracks used in playlists the DJ created in the last N days (`0` turns it off; not used by the daily pick) |
+| `clean_only` | `false` | Keep explicit songs out of every strategy and the daily pick (`--clean` does it for one run). An explicit song is swapped for its clean version (same title and artist, `contentRating` not `explicit`) when a catalog search finds one — at most 15 searches per run — and dropped otherwise |
 | `playlist_size` | `30` | Default playlist length |
 
 ---

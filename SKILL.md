@@ -248,14 +248,14 @@ Run: `python3 {baseDir}/scripts/strategy_engine.py --strategy remix --playlist-u
 
 ### Options shared by all strategies
 - `--minutes N` — build for a running time ("45 minutes for my run") instead of `--size`; lands within about a minute
+- `--clean` — keep explicit songs out (uses the clean version of a song when one exists); `clean_only` in `config.json` does the same
 - `--include-library` — allow songs already in the library (refresh, similar and era skip them by default)
 - `--create` — create the playlist in Apple Music (without it, only JSON is printed)
 - `--favorite` — with `--create`, also add every track to the user's Apple Music favorites.
   **This writes to the user's account — confirm with them first.**
 
-Energy arcs: playlists are sequenced by an energy arc — a wave (medium opener → peak in the middle →
-wind-down) by default, rising for workout/anger moods, falling for sleep/focus/sad. Tempo-ordered
-playlists also transition more smoothly with Apple Music's AutoMix, which is worth mentioning.
+Energy arcs: a wave (medium opener → peak in the middle → wind-down) by default, rising for workout/anger
+moods, falling for sleep/focus/sad. Tempo-ordered playlists also suit Apple Music's AutoMix, worth mentioning.
 
 ## Engagement Features
 

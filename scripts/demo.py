@@ -78,6 +78,7 @@ _SONGS = [
     ("s10", "Supermassive Black Hole", "a4", ["Alternative", "Rock"], "2006-06-19", "alb4", "GBAYE0600010"),
     ("s11", "Jóga", "a3", ["Electronic"], "1997-09-22", "alb5", "GBAYE9700011"),
     ("s12", "Bachelorette", "a3", ["Electronic"], "1997-09-22", "alb5", "GBAYE9700012"),
+    ("s13", "Champagne Supernova", "a2", ["Rock"], "1995-10-02", "alb3", "GBAYE9500013"),  # the clean twin of s7
 ]
 ALBUMS = {
     "alb1": ("OK Computer", "a1", "1997-05-21"),
@@ -87,6 +88,7 @@ ALBUMS = {
     "alb5": ("Homogenic", "a3", "1997-09-22"),
 }
 SIMILAR = {"a1": ["a2", "a4"], "a2": ["a1"], "a3": ["a1"], "a4": ["a1", "a2"]}
+CONTENT_RATINGS = {"s7": "explicit", "s12": "explicit", "s13": "clean"}  # s7 has a clean twin (s13); s12 has none
 CATALOG_PLAYLIST_ID = "pl.demo-alt-essentials"
 LIBRARY_SONGS = ["s1", "s4"]
 RATINGS = {"s5": 1, "s11": -1}
@@ -96,9 +98,11 @@ RECENT_TRACKS = ["s1", "s2", "s6"]
 def song(sid: str) -> dict:
     row = next(r for r in _SONGS if r[0] == sid)
     _, name, aid, genres, date, alb, isrc = row
+    rating = {"contentRating": CONTENT_RATINGS[sid]} if sid in CONTENT_RATINGS else {}
     return {
         "id": sid, "type": "songs",
         "attributes": {
+            **rating,
             "name": name, "artistName": ARTISTS[aid]["name"], "genreNames": genres + ["Music"],
             "releaseDate": date, "albumName": ALBUMS[alb][0], "isrc": isrc, "trackNumber": 1,
             "durationInMillis": 170_000 + int(sid[1:]) % 6 * 25_000,  # 2:50 to 4:55, varied but fixed

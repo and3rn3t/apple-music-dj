@@ -24,7 +24,9 @@ An [Agent Skill](https://github.com/anthropics/skills) for [OpenClaw](https://op
 - **🧪 Demo mode** — Try every feature against a fictional listener, no tokens needed
 - **🔑 One-step setup** — `setup_auth.py` signs your developer token and gets your user token from a browser sign-in
 - **🔗 Taste codes** — Send a friend one short line and blend your tastes, no files to swap
-- **🎵 8 Playlist Strategies** — Deep cuts, mood/activity, trend radar, constellation discovery, playlist refresh, **songs-like-X seed**, **decade throwbacks**, and **two-person blends**
+- **🎵 9 Playlist Strategies** — Deep cuts, mood/activity, trend radar, constellation discovery, playlist refresh, **songs-like-X**, **decade throwbacks**, **two-person blends**, and **remix any Apple Music playlist** to your taste
+- **⏱️ Exact length** — `--minutes 45` builds for a running time (a commute, a run) instead of a track count, keeping the energy arc
+- **🧼 Clean mode** — `--clean` (or `clean_only` in `config.json`) keeps explicit songs out, using the clean version when there is one
 - **🌊 Energy-arc sequencing** — Playlists build, peak and wind down (or rise/fall for workouts and sleep) instead of just spacing artists out
 - **📈 Taste Drift** — Dated snapshots show how your genres, artists and listener archetype change over time
 - **📥 Playlist Import** — Rebuild a Spotify (CSV) or plain-text playlist in Apple Music, matched by ISRC when the export has it, otherwise by title + artist
@@ -359,7 +361,7 @@ make coverage          # Tests with coverage summary (fails below 90%)
 make coverage-html     # Generate HTML coverage report
 ```
 
-1,100+ tests across 27 modules — 92% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, all nine strategies and energy-arc sequencing, taste drift, playlist import, feedback, playlist health, history tracking, cron setup, token generation and guided setup, demo mode, end-to-end runs against a local mock API, and shared utilities.
+1,700+ tests across 33 test modules — 95% coverage. Covers taste profiling, archetype detection, compatibility scoring, card generation, all nine strategies and energy-arc sequencing, taste drift, playlist import, feedback, playlist health, history tracking, cron setup, token generation and guided setup, demo mode, end-to-end runs against a local mock API, and shared utilities.
 
 ## 📖 Full Documentation
 

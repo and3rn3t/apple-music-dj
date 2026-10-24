@@ -52,7 +52,7 @@ An [Agent Skill](https://github.com/anthropics/skills) for [OpenClaw](https://op
 | **Apple Music subscription** | Active subscription on your Apple ID (not for the demo) |
 | **Python** | 3.11+ (no pip packages needed for core features; `PyJWT` + `cryptography` only to sign a developer token) |
 | **Skill host** | [OpenClaw](https://openclaw.ai) ([docs](https://docs.openclaw.ai)) or [Claude Code](#use-with-claude-code) |
-| **OS** | macOS or Linux (CI runs the scripts on both) |
+| **OS** | macOS or Linux, including arm64 such as a Raspberry Pi (CI runs the scripts on macOS, Linux x86-64 and Linux arm64). **Windows:** use [WSL2](https://learn.microsoft.com/windows/wsl/); the scripts need `bash`, `curl` and `jq`, so native Windows is not supported |
 | **CLI tools** | `curl`, `jq` (usually pre-installed on macOS) |
 
 ## 🚀 Quick Install

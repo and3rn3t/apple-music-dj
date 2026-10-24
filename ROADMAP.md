@@ -6,8 +6,8 @@ playlist on their phone*, and more of them share what it made.
 Each item has a one-line reason and a rough size: **XS** under an hour, **S** a few hours, **M** a
 day or two, **L** several days. Shipped work lives in [CHANGELOG.md](CHANGELOG.md), not here.
 
-Issues are scheduled in milestones: [3.5 — Launch](https://github.com/and3rn3t/apple-music-dj/milestone/2) (due mid-November),
-[3.6 — Year in review](https://github.com/and3rn3t/apple-music-dj/milestone/3) (early December), [3.7 — Remix](https://github.com/and3rn3t/apple-music-dj/milestone/4) (end of January) and
+Issues are scheduled in milestones: [Launch](https://github.com/and3rn3t/apple-music-dj/milestone/2) (due mid-November),
+[3.6 — Year in review](https://github.com/and3rn3t/apple-music-dj/milestone/3) (early December), [3.7 — New strategies](https://github.com/and3rn3t/apple-music-dj/milestone/4) (end of January) and
 [Later](https://github.com/and3rn3t/apple-music-dj/milestone/1). Tech debt and trust items sit in whichever release needs them first.
 
 **Recently shipped:** demo mode and one-step token setup (3.3.0); taste codes, the animated README

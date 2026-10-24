@@ -45,7 +45,7 @@ def load_history() -> list[dict]:
         if isinstance(data, list):
             return data
     except json.JSONDecodeError:
-        pass
+        return _set_aside_unreadable_history()
     except OSError:
         return []
     return _set_aside_unreadable_history()

@@ -251,6 +251,18 @@ class TestComputeMainstreamScore:
         score = compute_mainstream_score(artists, sample_chart_data)
         assert score == 0.5
 
+    def test_counts_artists_past_top_30(self):
+        """Regression: play_weight is cut to the top 30, so 40 charting artists scored 0.75."""
+        names = [f"Artist{i}" for i in range(40)]
+        tracks = [{"attributes": {"artistName": n}} for n in names]
+        charts = {"results": {"songs": [{"data": [{"attributes": {"artistName": n}} for n in names]}]}}
+        assert compute_mainstream_score(extract_artists(tracks), charts, tracks) == 1.0
+
+    def test_tracks_use_source_weights(self, sample_chart_data):
+        tracks = (tag_source([{"attributes": {"artistName": "The Weeknd"}}], "heavy_rotation")
+                  + tag_source([{"attributes": {"artistName": "Radiohead"}}], "library"))
+        assert compute_mainstream_score(extract_artists(tracks), sample_chart_data, tracks) == 0.75
+
     def test_weighted_by_play_weight(self, sample_chart_data):
         artists = [{"name": "Radiohead", "play_weight": 0.8}, {"name": "The Weeknd", "play_weight": 0.2}]
         assert compute_mainstream_score(artists, sample_chart_data) == 0.2

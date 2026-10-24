@@ -228,6 +228,14 @@ def infer_energy_profile(genres: list[dict]) -> str:
     return "balanced"
 
 
+def artist_weights(tracks: list[dict]) -> defaultdict[str, float]:
+    """Source-weighted listening per artist over all tracks (no top-N cutoff)."""
+    weights: defaultdict[str, float] = defaultdict(float)
+    for t in tracks:
+        weights[t.get("attributes", {}).get("artistName", "")] += track_weight(t)
+    return weights
+
+
 def compute_variety_score(artists: list[dict], tracks: list[dict]) -> float:
     """How diverse is the listening? 0=one artist, 1=an even spread.
 
@@ -236,9 +244,7 @@ def compute_variety_score(artists: list[dict], tracks: list[dict]) -> float:
     """
     if not tracks:
         return 0.5
-    weights: defaultdict[str, float] = defaultdict(float)
-    for t in tracks:
-        weights[t.get("attributes", {}).get("artistName", "")] += track_weight(t)
+    weights = artist_weights(tracks)
     total = sum(weights.values())
     if len(weights) < 2 or total <= 0:
         return 0.0
@@ -246,8 +252,13 @@ def compute_variety_score(artists: list[dict], tracks: list[dict]) -> float:
     return round(min(entropy / math.log(len(weights)), 1.0), 2)
 
 
-def compute_mainstream_score(top_artists: list[dict], chart_data: dict | None) -> float:
-    """How mainstream is the taste? The share of listening (play_weight) on charting artists."""
+def compute_mainstream_score(top_artists: list[dict], chart_data: dict | None,
+                             tracks: list[dict] | None = None) -> float:
+    """How mainstream is the taste? The share of weighted listening that goes to charting artists.
+
+    With `tracks`, the share is taken over every artist's weight, so listening to artists
+    past the top-30 cutoff still counts. Without, it sums the top artists' `play_weight`.
+    """
     if not chart_data or not top_artists:
         return 0.5  # unknown
     chart_artist_names = set()
@@ -260,7 +271,14 @@ def compute_mainstream_score(top_artists: list[dict], chart_data: dict | None) -
                         chart_artist_names.add(name.lower())
     if not chart_artist_names:
         return 0.5
-    on_charts = sum(a.get("play_weight", 0) for a in top_artists if a["name"].lower() in chart_artist_names)
+    if tracks:
+        weights = artist_weights(tracks)
+        total = sum(weights.values())
+        if total <= 0:
+            return 0.5
+        on_charts = sum(w for name, w in weights.items() if name.lower() in chart_artist_names) / total
+    else:
+        on_charts = sum(a.get("play_weight", 0) for a in top_artists if a["name"].lower() in chart_artist_names)
     return round(min(on_charts, 1.0), 2)
 
 
@@ -451,7 +469,7 @@ def build_profile(args) -> dict:
     eras = extract_eras(all_tracks)
     energy = infer_energy_profile(genres)
     variety = compute_variety_score(artists, all_tracks)
-    mainstream = compute_mainstream_score(artists, chart_data)
+    mainstream = compute_mainstream_score(artists, chart_data, all_tracks)
     replay = extract_replay_highlights(replay_summary, replay_milestones)
 
     # Listening velocity — compare library size to recent diversity

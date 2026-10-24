@@ -252,6 +252,26 @@ def require_env_tokens():
         sys.exit(1)
 
 
+def _run_with_term_grace(cmd: list[str], timeout: float, grace: float = 5) -> subprocess.CompletedProcess:
+    """Like subprocess.run(timeout=...), but ends a stuck child with SIGTERM before SIGKILL.
+
+    subprocess.run kills with SIGKILL, which bash can't trap, so apple_music_api.sh would
+    leave its token-bearing temp files behind. SIGTERM lets its cleanup trap run first.
+    """
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.communicate(timeout=grace)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+            raise
+        return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
+
 def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None:
     """Call apple_music_api.sh and parse JSON output.
 
@@ -259,7 +279,7 @@ def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None
     """
     cmd = [str(API_SCRIPT), command] + list(args)
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = _run_with_term_grace(cmd, timeout=30)
         if result.returncode != 0:
             stderr_msg = result.stderr.strip()
             if stderr_msg:

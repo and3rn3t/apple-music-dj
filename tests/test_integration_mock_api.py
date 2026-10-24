@@ -58,6 +58,26 @@ def _json(r):
     return json.loads(r.stdout)
 
 
+class TestStalledRequest:
+    def test_timeout_ends_script_with_sigterm_and_leaves_no_token_files(self, api, monkeypatch):
+        import socket
+
+        from _common import _run_with_term_grace
+
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(5)  # accepts connections in the kernel backlog, never answers
+        try:
+            for k, v in api.env.items():
+                monkeypatch.setenv(k, v)
+            monkeypatch.setenv("APPLE_MUSIC_API_BASE", f"http://127.0.0.1:{srv.getsockname()[1]}")
+            with pytest.raises(subprocess.TimeoutExpired):
+                _run_with_term_grace([str(SCRIPTS / "apple_music_api.sh"), "recently-added", "5"], timeout=2)
+        finally:
+            srv.close()
+        assert list(api.tmpdir.glob("am_*")) == []
+
+
 # ── Shell wrapper ────────────────────────────────────────────────
 
 class TestWrapper:

@@ -152,7 +152,7 @@ class TestCallApi:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout='{"data": []}', stderr=""
         )
-        monkeypatch.setattr("_common.subprocess.run", lambda *a, **kw: mock_result)
+        monkeypatch.setattr("_common._run_with_term_grace", lambda *a, **kw: mock_result)
         result = call_api("recent-tracks")
         assert result == {"data": []}
 
@@ -160,7 +160,7 @@ class TestCallApi:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="us\n", stderr=""
         )
-        monkeypatch.setattr("_common.subprocess.run", lambda *a, **kw: mock_result)
+        monkeypatch.setattr("_common._run_with_term_grace", lambda *a, **kw: mock_result)
         result = call_api("user-storefront", raw=True)
         assert result == "us"
 
@@ -168,26 +168,26 @@ class TestCallApi:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=1, stdout="", stderr="Error"
         )
-        monkeypatch.setattr("_common.subprocess.run", lambda *a, **kw: mock_result)
+        monkeypatch.setattr("_common._run_with_term_grace", lambda *a, **kw: mock_result)
         assert call_api("verify") is None
 
     def test_returns_none_on_timeout(self, monkeypatch):
         def mock_run(*a, **kw):
             raise subprocess.TimeoutExpired(cmd="test", timeout=30)
-        monkeypatch.setattr("_common.subprocess.run", mock_run)
+        monkeypatch.setattr("_common._run_with_term_grace", mock_run)
         assert call_api("slow-command") is None
 
     def test_returns_none_on_malformed_json(self, monkeypatch):
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="not json{", stderr=""
         )
-        monkeypatch.setattr("_common.subprocess.run", lambda *a, **kw: mock_result)
+        monkeypatch.setattr("_common._run_with_term_grace", lambda *a, **kw: mock_result)
         assert call_api("broken") is None
 
     def test_returns_none_on_missing_script(self, monkeypatch):
         def mock_run(*a, **kw):
             raise FileNotFoundError("No such file")
-        monkeypatch.setattr("_common.subprocess.run", mock_run)
+        monkeypatch.setattr("_common._run_with_term_grace", mock_run)
         assert call_api("any") is None
 
 

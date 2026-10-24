@@ -73,13 +73,15 @@ _retry() {
   local attempt=0
   local rc=0
   local tmpfile codefile
+  # Stay inside call_api's 30 s budget: curl is bounded below, and no retry starts past this.
+  local deadline=$(( SECONDS + 25 ))
   tmpfile=$(mktemp "${TMPDIR:-/tmp}/am_api_$$_XXXXXX")
   codefile=$(mktemp "${TMPDIR:-/tmp}/am_code_$$_XXXXXX")
 
   while (( attempt <= max_retries )); do
     local http_code
     local curl_exit=0
-    curl -sS -g -o "$tmpfile" -w '%{http_code}' "$@" > "$codefile" &
+    curl -sS -g --connect-timeout 10 --max-time 20 -o "$tmpfile" -w '%{http_code}' "$@" > "$codefile" &
     _CURL_PID=$!
     wait "$_CURL_PID" || curl_exit=$?
     _CURL_PID=""
@@ -96,7 +98,7 @@ _retry() {
       rc=1
       break
     fi
-    if [[ "$http_code" == "429" && attempt -lt max_retries ]]; then
+    if [[ "$http_code" == "429" && attempt -lt max_retries && $(( SECONDS + delay )) -lt deadline ]]; then
       (( attempt++ ))
       echo "WARN: Rate limited (429). Retrying in ${delay}s (attempt ${attempt}/${max_retries})..." >&2
       sleep "$delay"

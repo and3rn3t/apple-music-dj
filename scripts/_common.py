@@ -34,30 +34,76 @@ GENERIC_GENRES = {"music"}
 
 # Rough 0-1 energy per genre. >=0.7 counts as high-energy, <=0.3 as low-energy
 # (see taste_profiler.infer_energy_profile); everything else is mid-range.
+# Names follow Apple Music's genre list. A name not listed here falls back to the
+# listed genre it ends with (see base_genre): "Garage Rock" → Rock.
 GENRE_ENERGY = {
-    "Metal": 0.95, "Punk": 0.9, "Dance": 0.85, "Electronic": 0.8, "House": 0.8,
-    "Techno": 0.85, "Grunge": 0.8, "Hip-Hop/Rap": 0.75, "Rock": 0.7, "Pop": 0.7,
-    "K-Pop": 0.75, "J-Pop": 0.7, "Synth Pop": 0.65, "Funk": 0.65, "Alternative": 0.6,
-    "IDM": 0.55, "Indie": 0.5, "R&B/Soul": 0.5, "Soul": 0.5, "Blues": 0.45,
-    "Country": 0.45, "Indie Pop": 0.45, "Americana": 0.4, "Bluegrass": 0.45,
-    "Soundtrack": 0.4, "Bossa Nova": 0.35, "Acoustic": 0.35,
-    "Jazz": 0.3, "Folk": 0.3, "Singer/Songwriter": 0.3, "Classical": 0.2,
-    "Ambient": 0.1, "New Age": 0.1,
+    # rock / metal / punk
+    "Metal": 0.95, "Hardcore": 0.95, "Punk": 0.9, "Grunge": 0.8, "Hard Rock": 0.85, "Emo": 0.75,
+    "Rock": 0.7, "Alternative": 0.6, "Indie Rock": 0.6, "Prog-Rock/Art Rock": 0.6, "Psychedelic": 0.55,
+    "Indie": 0.5, "Soft Rock": 0.4, "Pop/Rock": 0.65, "Adult Alternative": 0.5, "College Rock": 0.6,
+    # electronic
+    "Dance": 0.85, "Electronic": 0.8, "House": 0.8, "Techno": 0.85, "Trance": 0.85, "Dubstep": 0.9,
+    "Drum & Bass": 0.9, "Hardstyle": 0.95, "Electronica": 0.65, "IDM": 0.55, "Downtempo": 0.3,
+    "Lo-Fi": 0.2, "Ambient": 0.1, "Chill": 0.25,
+    # hip-hop / r&b
+    "Hip-Hop/Rap": 0.75, "Trap": 0.8, "Drill": 0.8, "Alternative Rap": 0.65, "Grime": 0.8,
+    "R&B/Soul": 0.5, "Contemporary R&B": 0.5, "Neo-Soul": 0.4, "Soul": 0.5, "Funk": 0.65,
+    "Disco": 0.75, "Motown": 0.6,
+    # pop
+    "Pop": 0.7, "K-Pop": 0.75, "J-Pop": 0.7, "Synth Pop": 0.65, "Indie Pop": 0.45, "Teen Pop": 0.7,
+    "Dance Pop": 0.8, "Anime": 0.65,
+    # country / folk
+    "Country": 0.45, "Contemporary Country": 0.55, "Americana": 0.4, "Bluegrass": 0.45, "Folk": 0.3,
+    "Singer/Songwriter": 0.3, "Acoustic": 0.35,
+    # jazz / blues
+    "Jazz": 0.3, "Smooth Jazz": 0.25, "Big Band": 0.55, "Bebop": 0.45, "Blues": 0.45, "Bossa Nova": 0.35,
+    "Lounge": 0.25,
+    # latin / world / reggae
+    "Latin": 0.7, "Reggaeton": 0.8, "Urbano latino": 0.8, "Salsa y Tropical": 0.75, "Afrobeats": 0.75,
+    "Afro-Beat": 0.75, "Reggae": 0.5, "Dancehall": 0.75, "World": 0.5,
+    # classical / quiet
+    "Classical": 0.2, "Opera": 0.35, "Baroque": 0.3, "Chamber Music": 0.2, "Soundtrack": 0.4,
+    "Easy Listening": 0.25, "Vocal": 0.3, "New Age": 0.1, "Meditation": 0.05,
+    # other
+    "Christian & Gospel": 0.55, "Gospel": 0.6, "Fitness & Workout": 0.9, "Holiday": 0.5,
+    "Christmas": 0.5, "Children's Music": 0.55,
 }
+# Short names inside compound genres that stand for a listed genre ("Underground Rap" → Hip-Hop/Rap)
+GENRE_ALIASES = {"rap": "Hip-Hop/Rap", "hip-hop": "Hip-Hop/Rap", "hip hop": "Hip-Hop/Rap",
+                 "r&b": "R&B/Soul", "edm": "Dance", "lofi": "Lo-Fi", "christian": "Christian & Gospel"}
 HIGH_ENERGY = 0.7
 LOW_ENERGY = 0.3
 
-# Genres in the same family get half credit when tastes and tracks are compared
+# Genres in the same family get half credit when tastes and tracks are compared.
+# A genre not listed here is placed by its base_genre.
 GENRE_ADJACENCY = {
-    "rock_family": {"Rock", "Alternative", "Indie", "Punk", "Metal", "Grunge"},
-    "electronic_family": {"Electronic", "Dance", "House", "Techno", "Ambient", "IDM"},
-    "hiphop_family": {"Hip-Hop/Rap", "R&B/Soul", "Funk"},
-    "folk_family": {"Folk", "Singer/Songwriter", "Country", "Americana", "Bluegrass"},
-    "jazz_family": {"Jazz", "Blues", "Bossa Nova", "Soul"},
-    "classical_family": {"Classical", "Soundtrack", "New Age"},
-    "pop_family": {"Pop", "Synth Pop", "Indie Pop", "K-Pop", "J-Pop"},
+    "rock_family": {"Rock", "Alternative", "Indie", "Punk", "Metal", "Grunge", "Hard Rock", "Indie Rock",
+                    "Emo", "Hardcore", "Soft Rock", "Pop/Rock", "Prog-Rock/Art Rock", "Psychedelic",
+                    "Adult Alternative", "College Rock"},
+    "electronic_family": {"Electronic", "Dance", "House", "Techno", "Ambient", "IDM", "Trance", "Dubstep",
+                          "Drum & Bass", "Hardstyle", "Electronica", "Downtempo", "Lo-Fi", "Chill"},
+    "hiphop_family": {"Hip-Hop/Rap", "R&B/Soul", "Funk", "Trap", "Drill", "Alternative Rap", "Grime",
+                      "Contemporary R&B", "Neo-Soul"},
+    "folk_family": {"Folk", "Singer/Songwriter", "Country", "Americana", "Bluegrass", "Acoustic",
+                    "Contemporary Country"},
+    "jazz_family": {"Jazz", "Blues", "Bossa Nova", "Soul", "Smooth Jazz", "Big Band", "Bebop", "Lounge",
+                    "Motown"},
+    "classical_family": {"Classical", "Soundtrack", "New Age", "Opera", "Baroque", "Chamber Music",
+                         "Easy Listening", "Meditation"},
+    "pop_family": {"Pop", "Synth Pop", "Indie Pop", "K-Pop", "J-Pop", "Teen Pop", "Dance Pop", "Disco",
+                   "Anime"},
+    "latin_family": {"Latin", "Reggaeton", "Urbano latino", "Salsa y Tropical", "Bossa Nova"},
+    "caribbean_african_family": {"Reggae", "Dancehall", "Afrobeats", "Afro-Beat", "World"},
 }
 _GENRE_FAMILIES = [{g.lower() for g in family} for family in GENRE_ADJACENCY.values()]
+_KNOWN_GENRES = {g.lower(): g for g in GENRE_ENERGY} | GENRE_ALIASES
+_KNOWN_GENRE_PATTERNS = [
+    (re.compile(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])"), canonical)
+    for name, canonical in sorted(_KNOWN_GENRES.items(), key=lambda kv: -len(kv[0]))
+]
+SUBGENRE_PROXIMITY = 0.75  # "Garage Rock" vs "Rock": closer than a family match, short of exact
+# Listed genres that are scenes of their own, not a sub-genre of the word they end with
+SELF_ROOTED_GENRES = {"K-Pop", "J-Pop", "Afro-Beat"}
 
 SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
@@ -430,18 +476,73 @@ def get_album_tracks(sf: str, album_id: str) -> list:
     return tracks
 
 
+def _rightmost_genre(name: str, skip_whole: bool) -> str | None:
+    """The listed genre whose whole-word match ends furthest right in `name` (longest on a tie)."""
+    best: tuple[int, int, str] | None = None
+    for pattern, canonical in _KNOWN_GENRE_PATTERNS:
+        for m in pattern.finditer(name):
+            if skip_whole and m.start() == 0 and m.end() == len(name):
+                continue
+            key = (m.end(), m.end() - m.start(), canonical)
+            if best is None or key[:2] > best[:2]:
+                best = key
+    return best[2] if best else None
+
+
+def base_genre(genre: str) -> str | None:
+    """The listed genre a name is or ends with: "Rock" → Rock, "Garage Rock" → Rock,
+    "Underground Rap" → Hip-Hop/Rap. In English compounds the last word names the kind,
+    so the match ending furthest right wins. None if nothing matches."""
+    name = genre.strip().lower()
+    return _KNOWN_GENRES.get(name) or _rightmost_genre(name, skip_whole=False)
+
+
+def root_genre(genre: str) -> str | None:
+    """Like base_genre, but reduced until it stops changing: "Hard Rock" → Rock,
+    "Modern Hard Rock" → Hard Rock → Rock, "Contemporary R&B" → R&B/Soul → Soul.
+    A plain listed genre and SELF_ROOTED_GENRES are their own roots."""
+    root = base_genre(genre)
+    seen: set[str] = set()
+    while root and root not in SELF_ROOTED_GENRES and root not in seen:
+        seen.add(root)
+        parent = _rightmost_genre(root.lower(), skip_whole=True)
+        if not parent:
+            break
+        root = parent
+    return root
+
+
+def genre_energy(genre: str) -> float | None:
+    """0-1 energy for one genre, via base_genre for names GENRE_ENERGY doesn't list."""
+    base = base_genre(genre)
+    return GENRE_ENERGY.get(base) if base else None
+
+
 def track_energy(genres: list[str]) -> float:
     """Average 0-1 energy of a track's genres (0.5 when none are recognised)."""
-    known = [GENRE_ENERGY[g] for g in genres if g in GENRE_ENERGY]
+    known = [e for e in (genre_energy(g) for g in genres) if e is not None]
     return sum(known) / len(known) if known else 0.5
 
 
+def _families(genre: str) -> list[int]:
+    """Indexes of the families a genre belongs to (directly, else through its base genre)."""
+    name = genre.lower()
+    found = [i for i, family in enumerate(_GENRE_FAMILIES) if name in family]
+    if not found and (base := base_genre(genre)):
+        found = [i for i, family in enumerate(_GENRE_FAMILIES) if base.lower() in family]
+    return found
+
+
 def genre_proximity(genre_a: str, genre_b: str) -> float:
-    """Score genre proximity: 1.0 exact, 0.5 same family, 0.0 different."""
+    """Score genre proximity: 1.0 exact, 0.75 same root genre ("Hard Rock" / "Rock" /
+    "Garage Rock"), 0.5 same family, 0.0 different."""
     a, b = genre_a.lower(), genre_b.lower()
     if a == b:
         return 1.0
-    if any(a in family and b in family for family in _GENRE_FAMILIES):
+    root_a, root_b = root_genre(genre_a), root_genre(genre_b)
+    if root_a and root_a == root_b:
+        return SUBGENRE_PROXIMITY
+    if set(_families(genre_a)) & set(_families(genre_b)):
         return 0.5
     return 0.0
 
@@ -449,6 +550,24 @@ def genre_proximity(genre_a: str, genre_b: str) -> float:
 def best_genre_match(track_genres: list[str], target_genres: list[str]) -> float:
     """Best proximity score between any track genre and any target genre."""
     return max((genre_proximity(tg, target) for tg in track_genres for target in target_genres), default=0.0)
+
+
+def taste_affinity(track_genres: list[str], genre_distribution: list[dict]) -> float:
+    """How much a listener likes a track's sound, 0-1.
+
+    The best proximity between any of the track's genres and any of the listener's,
+    scaled by that genre's weight relative to their top genre. So an exact match on
+    the top genre is 1.0, while an exact match on a genre at 2% of the listening (top
+    genre 40%) is only 0.05. `best_genre_match` treats both the same. A profile without
+    weights counts every genre equally.
+    """
+    weights = [(g["genre"], max(g.get("weight") or 0, 0)) for g in genre_distribution if g.get("genre")]
+    if not any(w for _, w in weights):
+        weights = [(name, 1.0) for name, _ in weights]
+    top = max((w for _, w in weights), default=0)
+    if top <= 0:
+        return 0.0
+    return max((genre_proximity(t, name) * w / top for t in track_genres for name, w in weights), default=0.0)
 
 
 # ── User preferences applied to every playlist ───────────────────

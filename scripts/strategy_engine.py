@@ -69,7 +69,9 @@ from _common import (
     load_config,
     load_profile,
     require_env_tokens,
+    SUBGENRE_PROXIMITY,
     search_artist,
+    taste_affinity,
     track_energy,
     user_filters,
     write_private,
@@ -134,8 +136,45 @@ MOOD_ENERGY = {
     "very-low": 0.1, "low": 0.25, "low-med": 0.35, "medium": 0.5,
     "med-high": 0.65, "high": 0.8, "very-high": 0.95,
 }
-MIN_ENERGY_FIT = 0.5  # mood candidates below this fit only fill the list when nothing closer is left
-OFF_ENERGY_PENALTY = 1.0  # larger than any fitting score, so off-energy tracks always rank last
+
+# ── Scoring weights (every strategy's tunable numbers, in one place) ──
+# Scores are compared within one strategy only; what matters is each term's size
+# relative to the others and to JITTER.
+
+JITTER = 0.1            # random 0-JITTER added to every score, so equal tracks vary between runs
+ARTIST_CAP = 3          # max tracks per artist
+TASTE_WEIGHT = 0.3      # x taste_affinity: how much your own genres lift a candidate (seed, era)
+OWN_ARTIST_BOOST = 0.1  # artists you already play (mood, seed)
+PLAY_WEIGHT_SCALE, PLAY_WEIGHT_MAX = 2, 0.3  # head start for artists you play more (deep cuts, era)
+
+DEEP_CUT_BASE = 0.5
+DEEP_CUT_POSITION_BONUS = 0.15  # the last track of an album gets this much over the first
+
+MOOD_GENRE_WEIGHT, MOOD_ENERGY_WEIGHT, MOOD_TASTE_WEIGHT = 0.5, 0.35, 0.15
+MIN_ENERGY_FIT = 0.5  # mood candidates further than this from the target energy are dropped
+
+TREND_KNOWN_ARTIST_MATCH = 0.8  # floor on taste match for an artist already in your top list
+TREND_RANK_SPREAD = 0.3         # chart #1 scores x1.0, the last chart entry x(1 - this)
+TREND_WILDCARDS = 3
+
+CONSTELLATION_SPLIT = (0.3, 0.45)  # familiar, expansion shares; frontier gets the rest
+
+REFRESH_ARTIST_SCORE = 0.7  # "new from" an artist already in the playlist; chart picks score their genre match
+
+SEED_MATCH_WEIGHT = 0.6  # x genre match to the seed artist/song
+SEED_BASE = {"top": 0.5, "album": 0.55, "similar": 0.3, "genre_fallback": 0.2}
+
+ERA_BASE = {"artist": 0.5, "chart": 0.4, "search": 0.3}
+
+BLEND_MAX_SHARE = 0.6  # neither listener may supply more than this share of the tracks
+BLEND_SHARED_SCORE, BLEND_LOVED_SCORE = 1.0, 0.6
+BLEND_SIDE_BASE, BLEND_SIDE_MATCH = 0.4, 0.5  # a listener's own artist: base + this x fit to the other's taste
+
+
+def _artist_boost(artist: dict) -> float:
+    """Head start for an artist by how much you play them."""
+    return min(artist.get("play_weight", 0) * PLAY_WEIGHT_SCALE, PLAY_WEIGHT_MAX)
+
 
 # config.json preferences and recent-playlist exclusions; main() fills this in
 USER_FILTERS: dict = {}
@@ -240,7 +279,6 @@ _ALT_VERSION = re.compile(
 _REPEAT_ALBUM = re.compile(r"\blive (?:at|from|in|on)\b|[(\[]live\b|\bgreatest hits\b|\bbest of\b",
                            re.IGNORECASE)
 DEEP_CUT_ALBUMS_PER_ARTIST = 4
-DEEP_CUT_POSITION_BONUS = 0.15  # the last track of an album gets this much over the first
 
 
 def _is_alt_version(name: str) -> bool:
@@ -253,13 +291,14 @@ def _title_key(name: str) -> str:
     return re.sub(r"[\W_]", "", base.casefold())  # \W is Unicode-aware: 春 and 夏 stay distinct
 
 
-def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[dict]:
+def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30,
+                       rng: random.Random | None = None) -> list[dict]:
     """Hidden gems from artists the user already loves."""
     top_artists = profile.get("top_artists", [])[:15]
     library_ids = set(profile.get("library_song_ids", []))
     disliked = set(profile.get("disliked_song_ids", []))
-    rng = random.Random()
-    cap = 3
+    rng = rng or random.Random()
+    cap = ARTIST_CAP
     candidates = []
     seen_titles: set[tuple[str, str]] = set()
     per_album: Counter = Counter()  # eligible candidates per (artist, album)
@@ -287,7 +326,7 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
         rng.shuffle(albums)
 
         # Artists you play more get a head start, as in the era strategy
-        artist_weight = min(artist.get("play_weight", 0) * 2, 0.3)
+        artist_weight = _artist_boost(artist)
         for album in albums[:DEEP_CUT_ALBUMS_PER_ARTIST]:
             album_attrs = album.get("attributes", {})
             album_tracks = get_album_tracks(sf, album["id"])
@@ -315,7 +354,7 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
                     "source": "deep_cut",
                     "reason": f"A deep cut from {artist_name} — album track you haven't heard.",
                     # later tracks score slightly higher
-                    "_score": 0.5 + artist_weight
+                    "_score": DEEP_CUT_BASE + artist_weight
                               + DEEP_CUT_POSITION_BONUS * min(max(track_num - 1, 0) / last_position, 1.0),
                 }
                 if not passes_user_filters(candidate, USER_FILTERS):
@@ -331,18 +370,20 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30) -> list[di
         if len(candidates) >= target_size * 3 and capacity >= target_size:
             break
 
-    return _finish(candidates, target_size, cap=cap)
+    return _finish(candidates, target_size, cap=cap, rng=rng)
 
 
 # ── Strategy: Mood/Activity ──────────────────────────────────────
 
-def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> list[dict]:
+def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30,
+                  rng: random.Random | None = None) -> list[dict]:
     """Mood/Activity-matched playlist filtered through user taste.
 
     Score = 0.5 x mood-genre match + 0.35 x energy fit + 0.15 x taste match (+0.1 for your
     own artists). Energy fit is 1 - |track energy - the mood's target|; tracks below
-    MIN_ENERGY_FIT rank behind every track that fits, so a "sleep" mix only reaches for a
-    loud track when the catalog has nothing quieter.
+    MIN_ENERGY_FIT are dropped: a short sleep mix beats one padded with loud tracks.
+    A track qualifies through a mood genre *or* one of your own genres, so a jazz fan's
+    sleep mix can be quiet jazz and a rock fan's workout loud rock.
     """
     mood_config = MOOD_MAP.get(mood)
     if not mood_config:
@@ -351,15 +392,19 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
 
     target_genres = mood_config["genres"]
     target_energy = MOOD_ENERGY[mood_config["energy"]]
-    user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:10]]
+    user_genres = profile.get("genre_distribution", [])
     library_ids = set(profile.get("library_song_ids", []))
     disliked = set(profile.get("disliked_song_ids", []))
 
-    def score(genres: list[str]) -> float:
+    def score(genres: list[str]) -> float | None:
+        """None when the track's energy is too far from the mood's, or it fits neither the
+        mood's genres nor yours."""
         energy_fit = 1 - abs(track_energy(genres) - target_energy)
-        total = (0.5 * best_genre_match(genres, target_genres) + 0.35 * energy_fit
-                 + 0.15 * best_genre_match(genres, user_genres))
-        return total - OFF_ENERGY_PENALTY if energy_fit < MIN_ENERGY_FIT else total
+        genre_match = best_genre_match(genres, target_genres)
+        taste = taste_affinity(genres, user_genres)
+        if energy_fit < MIN_ENERGY_FIT or (genre_match == 0 and taste == 0):
+            return None
+        return MOOD_GENRE_WEIGHT * genre_match + MOOD_ENERGY_WEIGHT * energy_fit + MOOD_TASTE_WEIGHT * taste
 
     candidates = []
 
@@ -376,7 +421,8 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                         tid = item.get("id", "")
                         if tid in library_ids or tid in disliked:
                             continue
-                        if best_genre_match(item_genres, target_genres) > 0:
+                        item_score = score(item_genres)
+                        if item_score is not None:
                             candidates.append({
                                 "id": tid,
                                 "name": attrs.get("name", ""),
@@ -385,7 +431,7 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                                 "genre": item_genres,
                                 "source": "trending",
                                 "reason": f"Matches your {mood} vibe.",
-                                "_score": score(item_genres),
+                                "_score": item_score,
                             })
 
     # Source 2: Deep cuts from user's artists in mood-relevant genres
@@ -406,7 +452,8 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                 if tid in library_ids or tid in disliked:
                     continue
                 item_genres = filter_generic_genres(attrs.get("genreNames", []))
-                if best_genre_match(item_genres, target_genres) > 0:
+                item_score = score(item_genres)
+                if item_score is not None:
                     candidates.append({
                         "id": tid,
                         "name": attrs.get("name", ""),
@@ -415,17 +462,18 @@ def strategy_mood(profile: dict, sf: str, mood: str, target_size: int = 30) -> l
                         "genre": item_genres,
                         "source": "deep_cut",
                         "reason": f"From {artist['name']} — fits your {mood} mood.",
-                        "_score": score(item_genres) + 0.1,  # slight boost for familiar artists
+                        "_score": item_score + OWN_ARTIST_BOOST,
                     })
 
-    return _finish(candidates, target_size, arc=mood_config.get("arc", "wave"))
+    return _finish(candidates, target_size, arc=mood_config.get("arc", "wave"), rng=rng)
 
 
 # ── Strategy: Trend Radar ────────────────────────────────────────
 
-def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
+def strategy_trend(profile: dict, sf: str, target_size: int = 20,
+                   rng: random.Random | None = None) -> list[dict]:
     """Trending tracks filtered through user's taste, with wildcards."""
-    user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:5]]
+    user_genres = profile.get("genre_distribution", [])
     user_artist_names = {a["name"].lower() for a in profile.get("top_artists", [])[:15]}
     library_ids = set(profile.get("library_song_ids", []))
     disliked = set(profile.get("disliked_song_ids", []))
@@ -450,11 +498,11 @@ def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
                         item_genres = filter_generic_genres(attrs.get("genreNames", []))
                         artist_name = attrs.get("artistName", "")
 
-                        taste_match = best_genre_match(item_genres, user_genres)
+                        taste_match = taste_affinity(item_genres, user_genres)
                         if artist_name.lower() in user_artist_names:
-                            taste_match = max(taste_match, 0.8)
+                            taste_match = max(taste_match, TREND_KNOWN_ARTIST_MATCH)
 
-                        rank_weight = 1.0 - (rank / len(chart_items)) * 0.3  # top-ranked gets slight bonus
+                        rank_weight = 1.0 - (rank / len(chart_items)) * TREND_RANK_SPREAD
                         score = taste_match * rank_weight
 
                         candidates.append({
@@ -478,13 +526,12 @@ def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
     matched.sort(key=lambda c: c["_score"], reverse=True)
 
     # Pick main tracks (max 3 per artist) + 2-3 wildcards
-    wildcard_count = min(3, len(wildcards), max(target_size, 0))
+    wildcard_count = min(TREND_WILDCARDS, len(wildcards), max(target_size, 0))
     main_count = target_size - wildcard_count
-    selected = _cap_per_artist(matched, main_count)
+    selected = _cap_per_artist(matched, main_count, ARTIST_CAP)
 
     if wildcards:
-        rng = random.Random()
-        rng.shuffle(wildcards)
+        (rng or random.Random()).shuffle(wildcards)
         selected.extend(wildcards[:wildcard_count])
 
     for c in selected:
@@ -498,7 +545,8 @@ def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
 
 # ── Strategy: Constellation Discovery ────────────────────────────
 
-def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> list[dict]:
+def strategy_constellation(profile: dict, sf: str, target_size: int = 25,
+                           rng: random.Random | None = None) -> list[dict]:
     """Gradual discovery: familiar → expansion → frontier."""
     top_artists = profile.get("top_artists", [])[:5]
     user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:10]]
@@ -536,8 +584,8 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
                         if g.lower() != "music"]
             proximity = best_genre_match(c_genres, user_genres)
 
-            # Classify zone
-            if proximity >= 0.9:
+            # Classify zone: your genres or their sub-genres are familiar, the same family expands
+            if proximity >= SUBGENRE_PROXIMITY:
                 zone = "familiar"
             elif proximity >= 0.4:
                 zone = "expansion"
@@ -588,11 +636,11 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
     # Allocate proportionally to target:  ~30% familiar, ~45% expansion, ~25% frontier
     # (no max(1, ...): for tiny sizes that made the frontier quota negative, and a negative
     # slice returns almost the whole zone)
-    fam_count = int(target_size * 0.3)
-    exp_count = int(target_size * 0.45)
+    fam_count = int(target_size * CONSTELLATION_SPLIT[0])
+    exp_count = int(target_size * CONSTELLATION_SPLIT[1])
     fro_count = max(target_size - fam_count - exp_count, 0)
 
-    rng = random.Random()
+    rng = rng or random.Random()
     zones = {"familiar": familiar, "expansion": expansion, "frontier": frontier}
     for tracks in zones.values():
         rng.shuffle(tracks)  # random order among equally preferred tracks
@@ -624,7 +672,7 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
 # ── Strategy: Refresh ────────────────────────────────────────────
 
 def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int = 10,
-                     include_library: bool = False) -> list[dict]:
+                     include_library: bool = False, rng: random.Random | None = None) -> list[dict]:
     """Refresh an existing playlist with fresh matching tracks."""
     # Analyze the existing playlist's sonic signature
     tracks_data = call_api("playlist-tracks", playlist_id)
@@ -713,11 +761,11 @@ def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int =
                     "genre": filter_generic_genres(attrs.get("genreNames", [])),
                     "source": "refresh",
                     "reason": f"New from {artist_name}, matching your playlist.",
-                    "_score": 0.7,
+                    "_score": REFRESH_ARTIST_SCORE,
                 })
 
     # Additions keep their score order (no arc): they're appended to a playlist that already has one
-    return _finish(candidates, target_add, arc="none")
+    return _finish(candidates, target_add, arc="none", rng=rng)
 
 
 # ── Shared helpers for seed / era / blend ────────────────────────
@@ -770,7 +818,7 @@ def _similar_artists(sf: str, artist_id: str) -> list[dict]:
     return found
 
 
-def _cap_per_artist(candidates: list[dict], target_size: int, cap: int = 3,
+def _cap_per_artist(candidates: list[dict], target_size: int, cap: int = ARTIST_CAP,
                     side_cap: int | None = None) -> list[dict]:
     """Pick the best-scoring candidates with at most `cap` tracks per artist and
     ALBUM_CAP per album (the same album rule sequence_tracks applies, so nothing picked
@@ -817,16 +865,17 @@ def _enforce_share(selected: list[dict], max_share: float) -> list[dict]:
     return picked
 
 
-def _finish(candidates: list[dict], target_size: int, arc: str = "wave", cap: int = 3,
-            side_cap: int | None = None, max_share: float | None = None) -> list[dict]:
+def _finish(candidates: list[dict], target_size: int, arc: str = "wave", cap: int = ARTIST_CAP,
+            side_cap: int | None = None, max_share: float | None = None,
+            rng: random.Random | None = None) -> list[dict]:
     """Apply the user's filters, jitter, sort, cap per artist, strip internals, then sequence."""
-    rng = random.Random()
+    rng = rng or random.Random()
     seen: set[str] = set()
     unique = []
     for c in apply_user_filters(candidates, USER_FILTERS):
         if c["id"] and c["id"] not in seen:
             seen.add(c["id"])
-            c["_score"] += rng.random() * 0.1
+            c["_score"] += rng.random() * JITTER
             unique.append(c)
     unique.sort(key=lambda c: c["_score"], reverse=True)
     selected = _cap_per_artist(unique, target_size, cap, side_cap)
@@ -873,7 +922,8 @@ def _resolve_seed(sf: str, seed: str, seed_type: str) -> tuple[dict | None, dict
 
 
 def strategy_seed(profile: dict, sf: str, seed: str, seed_type: str = "auto",
-                  target_size: int = 25, include_library: bool = False) -> list[dict]:
+                  target_size: int = 25, include_library: bool = False,
+                  rng: random.Random | None = None) -> list[dict]:
     """Playlist of songs like a seed artist or song, filtered through the user's taste."""
     if seed_type not in ("auto", "artist", "song"):
         raise ValueError("seed_type must be auto, artist or song")
@@ -887,7 +937,7 @@ def strategy_seed(profile: dict, sf: str, seed: str, seed_type: str = "auto",
     seed_artist_name = artist_attrs.get("name") or (song or {}).get("attributes", {}).get("artistName", seed)
     seed_name = (song or {}).get("attributes", {}).get("name") if song else seed_artist_name
     seed_genres = _clean_genres(artist_attrs) or _clean_genres((song or {}).get("attributes", {}))
-    user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:10]]
+    user_genres = profile.get("genre_distribution", [])
     # Artists you play a lot, or just added to your library, get a small boost
     loved_artists = {a["name"].lower() for a in profile.get("top_artists", [])}
     loved_artists |= {n.lower() for n in profile.get("recently_added_artists", [])}
@@ -896,9 +946,10 @@ def strategy_seed(profile: dict, sf: str, seed: str, seed_type: str = "auto",
     seed_song_id = (song or {}).get("id", "")
 
     def score(genres: list[str], artist_name: str, base: float) -> float:
-        total = base + 0.6 * best_genre_match(genres, seed_genres) + 0.3 * best_genre_match(genres, user_genres)
+        total = (base + SEED_MATCH_WEIGHT * best_genre_match(genres, seed_genres)
+                 + TASTE_WEIGHT * taste_affinity(genres, user_genres))
         if artist_name.lower() in loved_artists:
-            total += 0.1
+            total += OWN_ARTIST_BOOST
         return total
 
     def usable(tid: str) -> bool:
@@ -912,7 +963,7 @@ def strategy_seed(profile: dict, sf: str, seed: str, seed_type: str = "auto",
         for top in _artist_top_songs(sf, artist["id"]):
             if usable(top.get("id", "")):
                 c = _song_candidate(top, "seed", f"One of {seed_artist_name}'s best.", 0.0, seed_artist_name)
-                c["_score"] = score(c["genre"], c["artist"], 0.5)
+                c["_score"] = score(c["genre"], c["artist"], SEED_BASE["top"])
                 candidates.append(c)
 
     # Source 2: other tracks from the seed song's album
@@ -921,7 +972,7 @@ def strategy_seed(profile: dict, sf: str, seed: str, seed_type: str = "auto",
         for t in get_album_tracks(sf, album_rel[0].get("id", "")):
             if usable(t.get("id", "")):
                 c = _song_candidate(t, "seed", f"From the same album as {seed_name}.", 0.0, seed_artist_name)
-                c["_score"] = score(c["genre"], c["artist"], 0.55)
+                c["_score"] = score(c["genre"], c["artist"], SEED_BASE["album"])
                 candidates.append(c)
 
     # Source 3: similar artists' top songs
@@ -932,7 +983,7 @@ def strategy_seed(profile: dict, sf: str, seed: str, seed_type: str = "auto",
         for top in _artist_top_songs(sf, sim.get("id", ""))[:4]:
             if usable(top.get("id", "")):
                 c = _song_candidate(top, "similar", f"Fans of {seed_name} tend to love {sim_name}.", 0.0, sim_name)
-                c["_score"] = score(c["genre"], c["artist"], 0.3)
+                c["_score"] = score(c["genre"], c["artist"], SEED_BASE["similar"])
                 candidates.append(c)
 
     # Fallback: no similar-artist data, so search by the seed's genre
@@ -944,10 +995,10 @@ def strategy_seed(profile: dict, sf: str, seed: str, seed_type: str = "auto",
             for top in _artist_top_songs(sf, found.get("id", ""))[:3]:
                 if usable(top.get("id", "")):
                     c = _song_candidate(top, "similar", f"Shares a {seed_genres[0]} sound with {seed_name}.", 0.0, fname)
-                    c["_score"] = score(c["genre"], c["artist"], 0.2)
+                    c["_score"] = score(c["genre"], c["artist"], SEED_BASE["genre_fallback"])
                     candidates.append(c)
 
-    return _finish(candidates, target_size)
+    return _finish(candidates, target_size, rng=rng)
 
 
 # ── Strategy: Era ("90s throwback") ──────────────────────────────
@@ -970,13 +1021,14 @@ def _release_decade(date_str: str | None) -> str | None:
 
 
 def strategy_era(profile: dict, sf: str, decade: str | None = None, target_size: int = 30,
-                 include_library: bool = False) -> list[dict]:
+                 include_library: bool = False, rng: random.Random | None = None) -> list[dict]:
     """A throwback playlist from one decade, built from the user's own taste."""
     eras = profile.get("era_distribution", [])
     decade = normalize_decade(decade) if decade else (eras[0]["decade"] if eras else "2020s")
 
     top_artists = profile.get("top_artists", [])[:15]
-    user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:10]]
+    user_genre_names = [g["genre"] for g in profile.get("genre_distribution", [])[:10]]
+    user_genres = profile.get("genre_distribution", [])
     library_ids = set() if include_library else set(profile.get("library_song_ids", []))
     disliked = set(profile.get("disliked_song_ids", []))
     candidates: list[dict] = []
@@ -994,14 +1046,14 @@ def strategy_era(profile: dict, sf: str, decade: str | None = None, target_size:
         in_decade = [a for a in albums
                      if _release_decade(a.get("attributes", {}).get("releaseDate")) == decade
                      and not a.get("attributes", {}).get("isSingle", False)]
-        weight = min(artist.get("play_weight", 0) * 2, 0.3)
+        weight = _artist_boost(artist)
         for album in in_decade[:3]:
             album_name = album.get("attributes", {}).get("name", "")
             for t in get_album_tracks(sf, album["id"]):
                 if usable(t.get("id", "")):
                     c = _song_candidate(t, "era", f"{artist_name} in the {decade} — from {album_name}.",
-                                        0.5 + weight, artist_name, album_name)
-                    c["_score"] += 0.3 * best_genre_match(c["genre"], user_genres)
+                                        ERA_BASE["artist"] + weight, artist_name, album_name)
+                    c["_score"] += TASTE_WEIGHT * taste_affinity(c["genre"], user_genres)
                     candidates.append(c)
         if len(candidates) >= target_size * 3:
             break
@@ -1016,30 +1068,28 @@ def strategy_era(profile: dict, sf: str, decade: str | None = None, target_size:
                 attrs = item.get("attributes", {})
                 if item.get("type", "songs") == "songs" and _release_decade(attrs.get("releaseDate")) == decade \
                         and usable(item.get("id", "")):
-                    c = _song_candidate(item, "era", f"A {decade} track that fits your taste.", 0.4)
-                    c["_score"] += 0.3 * best_genre_match(c["genre"], user_genres)
+                    c = _song_candidate(item, "era", f"A {decade} track that fits your taste.", ERA_BASE["chart"])
+                    c["_score"] += TASTE_WEIGHT * taste_affinity(c["genre"], user_genres)
                     candidates.append(c)
 
     # Source 3: genre + decade search when we still don't have enough
     if len(candidates) < target_size:
-        for genre in user_genres[:3]:
+        for genre in user_genre_names[:3]:
             found = _first_data(call_api("search", sf, f"{genre} {decade}", "songs"), "songs")
             for item in found:
                 attrs = item.get("attributes", {})
                 if _release_decade(attrs.get("releaseDate")) == decade and usable(item.get("id", "")):
-                    c = _song_candidate(item, "era", f"{genre} from the {decade}.", 0.3)
-                    c["_score"] += 0.3 * best_genre_match(c["genre"], user_genres)
+                    c = _song_candidate(item, "era", f"{genre} from the {decade}.", ERA_BASE["search"])
+                    c["_score"] += TASTE_WEIGHT * taste_affinity(c["genre"], user_genres)
                     candidates.append(c)
 
-    return _finish(candidates, target_size)
+    return _finish(candidates, target_size, rng=rng)
 
 
 # ── Strategy: Blend (two listeners, one playlist) ────────────────
 
-BLEND_MAX_SHARE = 0.6  # neither listener may supply more than this share of the tracks
-
-
-def strategy_blend(profile_a: dict, profile_b: dict, sf: str, target_size: int = 30) -> list[dict]:
+def strategy_blend(profile_a: dict, profile_b: dict, sf: str, target_size: int = 30,
+                   rng: random.Random | None = None) -> list[dict]:
     """A playlist both listeners should enjoy.
 
     Tracks are tagged ``source`` "shared" (artists in both top lists), "a" or "b"
@@ -1047,8 +1097,8 @@ def strategy_blend(profile_a: dict, profile_b: dict, sf: str, target_size: int =
     """
     compat = profile_compatibility(profile_a, profile_b)
     shared_names = set(compat["shared_artists"])
-    genres_a = [g["genre"] for g in profile_a.get("genre_distribution", [])[:10]]
-    genres_b = [g["genre"] for g in profile_b.get("genre_distribution", [])[:10]]
+    genres_a = profile_a.get("genre_distribution", [])
+    genres_b = profile_b.get("genre_distribution", [])
     disliked = set(profile_a.get("disliked_song_ids", [])) | set(profile_b.get("disliked_song_ids", []))
     candidates: list[dict] = []
 
@@ -1066,7 +1116,7 @@ def strategy_blend(profile_a: dict, profile_b: dict, sf: str, target_size: int =
             continue
         print(f"  Shared favorite: {artist['name']}...", file=sys.stderr)
         for song in _artist_top_songs(sf, artist["id"]):
-            add(song, "shared", f"You both love {artist['name']}.", 1.0, artist["name"])
+            add(song, "shared", f"You both love {artist['name']}.", BLEND_SHARED_SCORE, artist["name"])
 
     # Each listener's own artists, kept only when they fit the other's genres
     for side, mine, other_genres, who, whom in (
@@ -1078,20 +1128,20 @@ def strategy_blend(profile_a: dict, profile_b: dict, sf: str, target_size: int =
         for artist in own[:8]:
             print(f"  Checking {artist['name']} against the other taste profile...", file=sys.stderr)
             for song in _artist_top_songs(sf, artist["id"])[:5]:
-                match = best_genre_match(_clean_genres(song.get("attributes", {})), other_genres)
+                match = taste_affinity(_clean_genres(song.get("attributes", {})), other_genres)
                 if match > 0:
                     add(song, side, f"From {who} rotation — {artist['name']} should work for {whom} taste too.",
-                        0.4 + 0.5 * match, artist["name"])
+                        BLEND_SIDE_BASE + BLEND_SIDE_MATCH * match, artist["name"])
 
     # A few explicitly loved tracks from each listener
     for side, mine, who in (("a", profile_a, "your"), ("b", profile_b, "their")):
         for tid in mine.get("loved_track_ids", [])[:5]:
             detail = (call_api("song-detail", sf, tid) or {}).get("data", [])
             if detail:
-                add(detail[0], side, f"A loved track from {who} library.", 0.6, "")
+                add(detail[0], side, f"A loved track from {who} library.", BLEND_LOVED_SCORE, "")
 
     cap = max(1, int(target_size * BLEND_MAX_SHARE))
-    return _finish(candidates, target_size, side_cap=cap, max_share=BLEND_MAX_SHARE)
+    return _finish(candidates, target_size, side_cap=cap, max_share=BLEND_MAX_SHARE, rng=rng)
 
 
 # ── Playlist Creation ────────────────────────────────────────────

@@ -62,13 +62,14 @@ taste so it doesn't feel like a generic Spotify editorial playlist.
 
 Each mood's energy label maps to a target on `GENRE_ENERGY`'s 0–1 scale (`MOOD_ENERGY`:
 very-low 0.1, low 0.25, low-med 0.35, medium 0.5, med-high 0.65, high 0.8, very-high 0.95).
-A candidate must share or neighbour a mood genre, then scores
+A candidate needs an energy fit of at least 0.5 (energy fit = 1 − |track energy − target|) and
+must share or neighbour either a mood genre or one of your own genres. That's the
+personalization key below: a jazz fan's sleep mix can be quiet jazz. Then it scores
 
-`0.5 × mood-genre match + 0.35 × energy fit + 0.15 × taste match` (+0.1 for your own artists)
+`0.5 × mood-genre match + 0.35 × energy fit + 0.15 × taste affinity` (+0.1 for your own artists)
 
-where energy fit = 1 − |track energy − target|. A track with energy fit under 0.5 ranks behind
-every track that fits, so a sleep mix only reaches for a loud track when nothing quieter is
-left. Max 3 tracks per artist.
+Tracks outside the energy range are dropped, not used as filler: a short sleep mix beats one
+padded with loud tracks. Max 3 tracks per artist.
 
 ### Personalization Key
 
@@ -141,7 +142,7 @@ Named "Constellation" because it maps outward from known stars to discover new o
 3. From results, extract artist IDs NOT in user's library
 4. For each discovered artist, fetch their top songs
 5. Zone each artist by genre proximity to the user's top 10 genres:
-   - 1.0 = exact genre match → familiar
+   - 1.0 = exact genre match, or 0.75 = a sub-genre (e.g., Rock → Garage Rock) → familiar
    - 0.5 = same genre family (e.g., Alternative → Rock) → expansion
    - 0.0 = different family → frontier
 6. Fill ~30% familiar, ~45% expansion, ~25% frontier; a short zone is backfilled from the
@@ -264,6 +265,9 @@ flowchart LR
 ### Energy arcs in code
 
 Each track's `energy` (0–1) is the mean of its genres' values in `GENRE_ENERGY` (`_common.py`).
+A genre that table doesn't list takes the value of the listed genre its name ends with
+("Garage Rock" → Rock, "Underground Rap" → Hip-Hop/Rap); only a name with no listed genre in it
+counts as 0.5.
 `sequence_tracks(arc=...)` orders by it before applying the hard rules:
 
 - `wave` (default) — medium opener, build, peak in the middle, wind-down
@@ -299,6 +303,23 @@ xychart-beta
 - No explicit content unless user's library contains explicit
 - Exclude disliked artists (from ratings data)
 - End on a strong note, never a filler track
+
+### Genre matching
+
+Two scores compare genres (`_common.py`):
+
+- **`genre_proximity(a, b)`**: 1.0 for the same genre, 0.75 for the same root genre ("Hard Rock",
+  "Garage Rock" and "Rock" all have root Rock; K-Pop and J-Pop are their own roots), 0.5 for the
+  same family in `GENRE_ADJACENCY` (rock, electronic, hip-hop, folk, jazz, classical, pop, latin,
+  caribbean/african), else 0. Used against a *target* list: a mood's genres, a seed artist's genres.
+- **`taste_affinity(track_genres, genre_distribution)`**: the best proximity to any of the
+  listener's genres, times that genre's weight relative to their top genre. An exact match on
+  the top genre is 1.0; an exact match on a genre at 2% of the listening (top genre 40%) is 0.05.
+  Used wherever a track is compared with *your* taste: mood, trend, similar, era, blend and the daily pick.
+
+Every strategy's weights are named constants in one block near the top of `strategy_engine.py`
+(`JITTER`, `ARTIST_CAP`, `TASTE_WEIGHT`, `MOOD_*`, `TREND_*`, `SEED_BASE`, `ERA_BASE`, `BLEND_*`, …).
+The daily pick's are at the top of `daily_pick.py`.
 
 ### Your preferences (`~/.apple-music-dj/config.json`)
 

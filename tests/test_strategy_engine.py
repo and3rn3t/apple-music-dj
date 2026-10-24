@@ -1205,10 +1205,11 @@ class TestMoodEnergy:
                                   "us", "sleep", target_size=1)
         assert [t["id"] for t in result] == ["quiet"]
 
-    def test_off_energy_tracks_still_fill_when_nothing_fits(self, monkeypatch):
-        charts = self._charts(("loud", ["Electronic"]))
+    def test_off_energy_tracks_are_dropped_not_used_as_filler(self, monkeypatch):
+        """A short sleep mix beats one padded with loud tracks (the curation-quality test caught this)."""
+        charts = self._charts(("loud", ["Electronic"]), ("quiet", ["Ambient"]))
         monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
-        assert [t["id"] for t in se.strategy_mood({}, "us", "sleep", target_size=3)] == ["loud"]
+        assert [t["id"] for t in se.strategy_mood({}, "us", "sleep", target_size=3)] == ["quiet"]
 
     def test_every_mood_energy_has_a_target(self):
         assert {m["energy"] for m in se.MOOD_MAP.values()} <= set(se.MOOD_ENERGY)
@@ -1398,3 +1399,47 @@ class TestReviewFollowUps:
                             {"data": neighbours} if cmd == "similar-artists"
                             else _top([_song(f"{a[1]}-s", "S", "x", genres=("Polka",))]) if cmd == "artist-top" else None)
         assert len(se.strategy_constellation(profile, "us", target_size=size)) == size
+
+
+# ── Phase 3: shared scoring, deterministic runs ──────────────────
+
+class TestDeterministicRng:
+    def _deep_cut_mocks(self, monkeypatch):
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+                            {"data": [{"id": f"{a[1]}-{j}", "attributes": {"name": f"{a[1]} {j}"}} for j in range(6)]}
+                            if cmd == "artist-albums" else _top([]) if cmd == "artist-top" else None)
+        monkeypatch.setattr(se, "get_album_tracks", lambda sf, aid: [
+            _track(f"{aid}-{i}", f"{aid} song {i}", aid.split("-")[0], number=i + 1) for i in range(8)])
+
+    def test_same_seed_same_playlist(self, monkeypatch):
+        import random
+        self._deep_cut_mocks(monkeypatch)
+        profile = {"top_artists": [{"name": n, "id": n, "play_weight": 0.1} for n in "ABCDEF"]}
+        run = [[t["id"] for t in se.strategy_deep_cuts(profile, "us", 12, rng=random.Random(7))] for _ in range(2)]
+        assert run[0] == run[1]
+
+    def test_every_strategy_accepts_rng(self):
+        import inspect
+        for name in ("deep_cuts", "mood", "trend", "constellation", "refresh", "seed", "era", "blend"):
+            assert "rng" in inspect.signature(getattr(se, f"strategy_{name}")).parameters, name
+
+
+class TestWeightedTasteInStrategies:
+    def test_trend_ranks_your_main_genre_above_a_side_genre(self, monkeypatch):
+        profile = {"genre_distribution": [{"genre": "Alternative", "weight": 0.5}, {"genre": "Jazz", "weight": 0.02}]}
+        charts = {"results": {"songs": [{"data": [
+            {"id": "jazz", "attributes": {"name": "J", "artistName": "J", "genreNames": ["Jazz"]}},
+            {"id": "alt", "attributes": {"name": "A", "artistName": "A", "genreNames": ["Alternative"]}},
+        ]}]}}
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k: charts if cmd == "charts" else None)
+        # jazz is chart #1 but barely in your taste; it used to tie at a perfect match and win on rank
+        assert [t["id"] for t in se.strategy_trend(profile, "us", target_size=1)] == ["alt"]
+
+    def test_constellation_counts_subgenres_as_familiar(self, monkeypatch):
+        profile = {"top_artists": [{"name": "Seed", "id": "seed"}],
+                   "genre_distribution": [{"genre": "Rock", "weight": 1.0}]}
+        monkeypatch.setattr(se, "call_api", lambda cmd, *a, **k:
+                            {"data": [_artist("g", "Garage Band", genres=("Garage Rock",))]}
+                            if cmd == "similar-artists" else _top([_song("g1", "S", "Garage Band")])
+                            if cmd == "artist-top" else None)
+        assert [t["zone"] for t in se.strategy_constellation(profile, "us", target_size=3)] == ["familiar"]

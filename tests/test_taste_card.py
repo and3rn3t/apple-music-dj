@@ -14,6 +14,7 @@ from taste_card import (
     generate_text,
     generate_year_review_svg,
     generate_year_review_text,
+    main,
 )
 
 
@@ -560,3 +561,43 @@ class TestDriftCard:
         from taste_card import generate_drift_svg, generate_drift_text
         generate_drift_text({})
         xml.dom.minidom.parseString(generate_drift_svg({}))
+
+
+# ── --data errors ────────────────────────────────────────────────
+
+class TestDataFileErrors:
+    def _run(self, tmp_path, monkeypatch, capsys, data_path, mode="compatibility"):
+        import sys
+
+        profile = tmp_path / "profile.json"
+        profile.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["taste_card.py", str(profile), "--mode", mode, "--data", str(data_path)],
+        )
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+        assert excinfo.value.code == 1
+        return capsys.readouterr().err
+
+    def test_missing_data_file_names_the_path(self, tmp_path, monkeypatch, capsys):
+        missing = tmp_path / "missing.json"
+        err = self._run(tmp_path, monkeypatch, capsys, missing)
+        assert "not found" in err
+        assert str(missing) in err
+
+    def test_malformed_data_file_reports_the_parse_position(self, tmp_path, monkeypatch, capsys):
+        bad = tmp_path / "bad.json"
+        bad.write_text("{nope", encoding="utf-8")
+        err = self._run(tmp_path, monkeypatch, capsys, bad, mode="drift")
+        assert "Invalid JSON" in err
+        assert "line 1" in err
+        assert str(bad) in err
+
+    def test_unreadable_data_path_is_reported(self, tmp_path, monkeypatch, capsys):
+        directory = tmp_path / "data-dir"
+        directory.mkdir()
+        err = self._run(tmp_path, monkeypatch, capsys, directory)
+        assert "Cannot read" in err
+        assert str(directory) in err

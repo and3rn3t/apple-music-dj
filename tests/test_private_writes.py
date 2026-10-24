@@ -94,6 +94,14 @@ class TestWritePrivate:
         _common.write_private(f, "short")
         assert f.read_text() == "short"
 
+    def test_failed_write_leaves_the_old_file_intact_and_no_temp_behind(self, tmp_path, monkeypatch):
+        f = tmp_path / "f.json"
+        _common.write_private(f, "old")
+        monkeypatch.setattr(os, "replace", lambda *a: (_ for _ in ()).throw(OSError("disk full")))
+        with pytest.raises(OSError, match="disk full"):
+            _common.write_private(f, "new")
+        assert f.read_text() == "old" and [p.name for p in tmp_path.iterdir()] == ["f.json"]
+
     def test_ensure_private_dir_is_idempotent(self, tmp_path):
         d = tmp_path / "x" / "y"
         _common.ensure_private_dir(d)

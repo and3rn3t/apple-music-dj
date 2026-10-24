@@ -282,7 +282,10 @@ cmd_library_artists() {
     count=$(echo "$data" | jq 'length')
     [[ "$count" -lt "$limit" ]] && break
     offset=$((offset + limit))
-    [[ $offset -ge 500 ]] && break  # safety cap
+    if [[ $offset -ge 500 ]]; then  # safety cap
+      echo "NOTE: stopped at ${offset} items; the library may have more, so results cover only the first ${offset}." >&2
+      break
+    fi
   done
   echo "$all" | jq '{"data": .}'
 }
@@ -303,7 +306,10 @@ cmd_library_songs() {
     count=$(echo "$data" | jq 'length')
     [[ "$count" -lt "$limit" ]] && break
     offset=$((offset + limit))
-    [[ $offset -ge 500 ]] && break  # safety cap
+    if [[ $offset -ge 500 ]]; then  # safety cap
+      echo "NOTE: stopped at ${offset} items; the library may have more, so results cover only the first ${offset}." >&2
+      break
+    fi
   done
   echo "$all" | jq '{"data": .}'
 }

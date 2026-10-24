@@ -16,6 +16,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Literal, overload
 from datetime import datetime, UTC
@@ -193,44 +194,64 @@ def _is_stream(path: Path) -> bool:
     return stat.S_ISCHR(mode) or stat.S_ISFIFO(mode) or stat.S_ISSOCK(mode)
 
 
-def write_private(path, text: str) -> None:
-    """Write `text` to `path` readable by the owner only.
+def _stream_target(path: Path) -> Path | None:
+    """The device `path` stands for if it is (or links to) a stream; None for ordinary paths.
 
-    - `os.open(..., 0o600)` only applies when a file is *created*, so a pre-existing file is
-      fchmod'ed too. New parent directories are 0700, and our own ~/.apple-music-dj
-      directories are tightened to 0700.
-    - The target is validated *before* anything destructive happens: it is opened without
-      O_TRUNC and with O_NOFOLLOW, and only truncated once fstat shows a regular file we own.
-      A symlink (or a file owned by someone else) is refused rather than truncated/chmod'ed.
+    A symlink to anything else is refused: we never write through one.
+    """
+    if path.is_symlink():
+        target = path.resolve()
+        if _is_stream(target):
+            return target
+        raise OSError(errno.ELOOP, f"Refusing to write through the symlink {path}; pass the real path instead.")
+    return path if _is_stream(path) else None
+
+
+def write_private(path, text: str) -> None:
+    """Write `text` to `path` readable by the owner only, replacing it atomically.
+
+    - The text goes to an owner-only temp file in the same directory, is fsync'ed, then
+      `os.replace`d over the target, so a crash or a concurrent run never leaves a truncated
+      file: readers see the old content or the new, never half of either.
+    - New parent directories are 0700, and our own ~/.apple-music-dj directories are
+      tightened to 0700.
+    - The target is validated *before* anything is written: a symlink (or a file owned by
+      someone else) is refused rather than replaced.
     - Stream devices are the one exception, since `/dev/stdout` is itself a symlink on Linux;
-      they are opened directly and left untouched (no truncate, no chmod).
+      they are written directly and left untouched (no replace, no chmod).
     """
     path = Path(path)
     tighten_app_dir(path)
     ensure_private_dir(path.parent, tighten=path.parent == APP_DIR or APP_DIR in path.parent.parents)
+    stream = _stream_target(path)
+    if stream is not None:
+        # No O_TRUNC and O_NOFOLLOW, then check what we really opened: if the device was swapped for
+        # a regular file or symlink after _stream_target looked, refuse instead of truncating it.
+        fd = os.open(str(stream), os.O_WRONLY | os.O_NOFOLLOW)
+        try:
+            if stat.S_ISREG(os.fstat(fd).st_mode) or stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError(errno.ELOOP, f"{path} changed while opening it; refusing to write to it.")
+            with os.fdopen(fd, "w") as f:
+                fd = -1
+                f.write(text)
+        finally:
+            if fd != -1:
+                os.close(fd)
+        return
+    with contextlib.suppress(FileNotFoundError):
+        if os.lstat(path).st_uid != os.getuid():
+            raise PermissionError(errno.EPERM, f"{path} is owned by another user; refusing to overwrite it.")
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")  # created 0600
     try:
-        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-    except OSError as e:
-        if e.errno != errno.ELOOP:
-            raise
-        target = path.resolve()
-        if not _is_stream(target):
-            raise OSError(errno.ELOOP, f"Refusing to write through the symlink {path}; "
-                                       f"pass the real path instead.") from e
-        fd = os.open(str(target), os.O_WRONLY)
-    try:
-        st = os.fstat(fd)
-        if stat.S_ISREG(st.st_mode):
-            if st.st_uid != os.getuid():
-                raise PermissionError(errno.EPERM, f"{path} is owned by another user; refusing to overwrite it.")
-            os.fchmod(fd, 0o600)
-            os.ftruncate(fd, 0)
         with os.fdopen(fd, "w") as f:
-            fd = -1  # now owned by the file object
             f.write(text)
-    finally:
-        if fd != -1:
-            os.close(fd)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp_name)
+        raise
 
 
 def save_config(config: dict, path: str | None = None):

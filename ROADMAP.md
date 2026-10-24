@@ -6,6 +6,10 @@ playlist on their phone*, and more of them share what it made.
 Each item has a one-line reason and a rough size: **XS** under an hour, **S** a few hours, **M** a
 day or two, **L** several days. Shipped work lives in [CHANGELOG.md](CHANGELOG.md), not here.
 
+Issues are scheduled in milestones: [3.5 — Launch](https://github.com/and3rn3t/apple-music-dj/milestone/2) (due mid-November),
+[3.6 — Year in review](https://github.com/and3rn3t/apple-music-dj/milestone/3) (early December), [3.7 — Remix](https://github.com/and3rn3t/apple-music-dj/milestone/4) (end of January) and
+[Later](https://github.com/and3rn3t/apple-music-dj/milestone/1). Tech debt and trust items sit in whichever release needs them first.
+
 **Recently shipped:** demo mode and one-step token setup (3.3.0); taste codes, the animated README
 demo, the Spotify-switcher guide and the pre-publish self-audit (3.4.0); and, unreleased, likes and
 dislikes steering playlists ([#64](https://github.com/and3rn3t/apple-music-dj/issues/64)),
@@ -14,7 +18,7 @@ dislikes steering playlists ([#64](https://github.com/and3rn3t/apple-music-dj/is
 ([#63](https://github.com/and3rn3t/apple-music-dj/issues/63)), weighted taste profiles and the
 curation-quality test.
 
-## Now: launch, plus quick wins
+## Now: launch, plus quick wins (3.5)
 
 - [ ] **Screen recording for the listing** ([#80](https://github.com/and3rn3t/apple-music-dj/issues/80)):
       20–30 s of "songs like Phoebe Bridgers" in OpenClaw turning into a playlist on an iPhone; the
@@ -35,7 +39,7 @@ curation-quality test.
       tracks out of every playlist for family car rides and kids, using Apple's `contentRating`.
       *S*
 
-## Next: standout features
+## Next: standout features (3.6 and 3.7)
 
 The ones that make people say "wait, it can do *that*?" and share the result.
 
@@ -43,9 +47,6 @@ The ones that make people say "wait, it can do *that*?" and share the result.
       ([#101](https://github.com/and3rn3t/apple-music-dj/issues/101)): every editorial and shared
       playlist becomes a seed. Keep the tracks you'd like, swap the rest for taste-matched ones, and
       say "you'd keep 14 of 50". *M*
-- [ ] **Swipe before you save** ([#102](https://github.com/and3rn3t/apple-music-dj/issues/102)): a
-      local preview page with Apple's 30-second previews and the reason for each track. You keep or
-      skip each one, and every swipe becomes a rating the engine learns from. *L*
 - [ ] **World Tour** ([#103](https://github.com/and3rn3t/apple-music-dj/issues/103)): other
       countries' charts, filtered to your taste and to what plays in your storefront. Gives you new,
       already-proven music instead of the same local hits every week. *M*
@@ -64,6 +65,9 @@ The ones that make people say "wait, it can do *that*?" and share the result.
 
 ## Later
 
+- [ ] **Swipe before you save** ([#102](https://github.com/and3rn3t/apple-music-dj/issues/102)): a
+      local preview page with Apple's 30-second previews and the reason for each track. You keep or
+      skip each one, and every swipe becomes a rating the engine learns from. *L*
 - [ ] **Living playlists** ([#106](https://github.com/and3rn3t/apple-music-dj/issues/106)): an opt-in
       weekly job that rotates a DJ playlist (drops what you disliked or what has been there longest,
       adds fresh picks) and keeps a changelog. A playlist that stays fresh keeps people coming back.

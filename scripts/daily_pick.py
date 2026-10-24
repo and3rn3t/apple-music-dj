@@ -32,17 +32,24 @@ from pathlib import Path
 
 from _common import (
     apply_user_filters,
-    best_genre_match,
     call_api,
     check_token_expiry,
     check_user_token_age,
     filter_generic_genres,
     load_config,
     load_profile,
+    taste_affinity,
     user_filters,
 )
 
 SCRIPT_DIR = Path(__file__).parent
+
+# Scoring weights for one pick: taste and context outweigh chance
+BASE_SCORE = 0.5
+TASTE_WEIGHT = 0.3        # x taste_affinity
+DEEP_CUT_BONUS = 0.2      # the interesting picks
+TIME_OF_DAY_BONUS = 0.3   # a genre that suits the hour
+JITTER = 0.15
 
 
 # ── Seeded Random (deterministic per day) ────────────────────────
@@ -148,29 +155,26 @@ def get_candidates(profile: dict, sf: str, context: dict | None = None) -> list[
 def score_candidate(candidate: dict, profile: dict, context: dict | None = None, rng: random.Random | None = None) -> float:
     """Score a candidate track. Higher = better pick.
 
-    0.5 base + 0.2 for a deep cut + 0.3 x taste match + 0.3 for a time-of-day genre + up to
-    0.15 random, so taste and context outweigh chance.
+    BASE_SCORE + TASTE_WEIGHT x taste match + DEEP_CUT_BONUS + TIME_OF_DAY_BONUS + up to JITTER.
     """
     _rng = rng or random.Random()
-    score = 0.5  # base score
+    score = BASE_SCORE
 
-    # How close the track is to your top genres (half for a family match)
-    user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:10]]
-    score += 0.3 * best_genre_match(candidate.get("genre", []), user_genres)
+    # How much you like the track's sound, weighted by how much you play each genre
+    score += TASTE_WEIGHT * taste_affinity(candidate.get("genre", []), profile.get("genre_distribution", []))
 
-    # Boost deep cuts slightly (the interesting picks)
     if candidate.get("source") == "deep_cut":
-        score += 0.2
+        score += DEEP_CUT_BONUS
 
     # Time-of-day genre boost
     if context:
         boosted = {g.lower() for g in context.get("genres_boost", [])}
         track_genres = {g.lower() for g in candidate.get("genre", [])}
         if boosted & track_genres:
-            score += 0.3
+            score += TIME_OF_DAY_BONUS
 
     # Add some randomness so picks vary
-    score += _rng.random() * 0.15
+    score += _rng.random() * JITTER
 
     return score
 
@@ -194,7 +198,7 @@ def cmd_daily(profile: dict, sf: str) -> dict:
     candidates = get_candidates(profile, sf)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, rng=rng)
-    candidates = apply_user_filters(candidates, user_filters(load_config()))
+    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile))
     if not candidates:
         return {"error": "No candidates found. Try refreshing your taste profile."}
 
@@ -230,7 +234,7 @@ def cmd_now(profile: dict, sf: str) -> dict:
     candidates = get_candidates(profile, sf, context)
     for c in candidates:
         c["_score"] = score_candidate(c, profile, context, rng=rng)
-    candidates = apply_user_filters(candidates, user_filters(load_config()))
+    candidates = apply_user_filters(candidates, user_filters(load_config(), profile=profile))
     if not candidates:
         return {"error": "No candidates found.", "context": context}
 

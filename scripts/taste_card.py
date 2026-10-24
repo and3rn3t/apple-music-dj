@@ -649,6 +649,25 @@ def generate_drift_svg(report: dict) -> str:
     return "\n".join(out)
 
 
+# ── Data-file loading ────────────────────────────────────────────
+
+def load_data_file(path: str) -> dict:
+    """Load an extra-data JSON file, reporting a missing or malformed file cleanly."""
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"ERROR: --data file not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Invalid JSON in --data file: {path}", file=sys.stderr)
+        print(f"  Parse error at line {e.lineno}, column {e.colno}", file=sys.stderr)
+        sys.exit(1)
+    except OSError as e:
+        print(f"ERROR: Cannot read --data file: {path} ({e.strerror})", file=sys.stderr)
+        sys.exit(1)
+
+
 # ── Main ─────────────────────────────────────────────────────────
 
 def main():
@@ -676,8 +695,7 @@ def main():
             print("ERROR: --data required for compatibility mode "
                   "(path to compatibility result JSON).", file=sys.stderr)
             sys.exit(1)
-        with open(args.data) as f:
-            compat_data = json.load(f)
+        compat_data = load_data_file(args.data)
         if args.format == "svg":
             result = generate_compatibility_svg(compat_data)
         else:
@@ -687,8 +705,7 @@ def main():
             print("ERROR: --data required for year-review mode "
                   "(path to year review JSON).", file=sys.stderr)
             sys.exit(1)
-        with open(args.data) as f:
-            review_data = json.load(f)
+        review_data = load_data_file(args.data)
         if args.format == "svg":
             result = generate_year_review_svg(review_data)
         else:
@@ -698,8 +715,7 @@ def main():
             print("ERROR: --data required for drift mode "
                   "(path to taste_drift.py JSON output).", file=sys.stderr)
             sys.exit(1)
-        with open(args.data) as f:
-            drift_data = json.load(f)
+        drift_data = load_data_file(args.data)
         if args.format == "svg":
             result = generate_drift_svg(drift_data)
         else:

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] — 2026-10-24
+
 ### Added
 
 - **A bigger demo catalog** ([#46](https://github.com/and3rn3t/apple-music-dj/issues/46)): demo mode and `demo.py serve` now run against about 250 songs by 26 artists across rock, electronic, jazz, soul, pop, hip-hop, folk, country, metal and ambient, with a fictional listener whose history spans a dozen of them, so demo playlists come out close to full length (20–30 tracks, instead of the old catalog's handful). A quiet mood such as `sleep` stays short: it only draws on ambient and classical music. The old 13-song catalog stays as `SMALL_CATALOG` for the integration tests. A demo profile built from the old catalog is rebuilt automatically, and the README replay is regenerated.
@@ -21,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`strategy_engine.py` is split** ([#111](https://github.com/and3rn3t/apple-music-dj/issues/111)): each strategy now has its own module in `scripts/strategies/`, with the scoring constants, sequencing and candidate helpers in shared modules. The CLI and every documented command are unchanged, and the old names are still importable from `strategy_engine`. `daily_pick.py` shares `TASTE_WEIGHT`.
+- **One helper runs sibling scripts** ([#112](https://github.com/and3rn3t/apple-music-dj/issues/112)): `_common.run_script` replaces the ad-hoc `subprocess` calls in `call_api`, `strategy_engine.py` and `playlist_health.py`.
+- **More checks in CI:** every `apple_music_api.sh` command and the other shell scripts run against the mock ([#113](https://github.com/and3rn3t/apple-music-dj/issues/113)), the coverage floor is 90% ([#114](https://github.com/and3rn3t/apple-music-dj/issues/114)), and `scripts/` is type-checked with a pinned mypy ([#115](https://github.com/and3rn3t/apple-music-dj/issues/115)).
 - **Taste profile weighs where a track came from.** `taste_profiler.py` used to count every track once, so Apple's recommendations shaped your "taste" as much as what you actually play. Each source now has a weight (heavy rotation 3, loved 2.5, recently played 2, recently added 1.5, library 1, recommendations 0.25); loved library songs now lift their artist, genres and decade; a track's weight is split across its genres so "Rock" next to "Alternative" isn't counted twice. The variety score is now the normalized entropy of the weighted artist mix (0 = one artist, 1 = an even spread), and the mainstream score is the share of your listening that goes to charting artists. The profile's fields are unchanged (`count` is still the raw count; only `weight` / `play_weight` and the two scores move), but **the first taste-drift report after upgrading will show a one-time jump** as the old and new weighting are compared.
 - **Genre matching knows far more of Apple's genres** (about 30 → 90 listed, plus a fallback): an unlisted genre takes the energy and family of the listed genre its name ends with ("Garage Rock" → Rock, "Underground Rap" → Hip-Hop/Rap), so energy arcs and mood energy no longer flatten to 0.5. A sub-genre now counts as closer than a family match (0.75: "Hard Rock" vs "Rock"), and constellation treats sub-genres of your genres as familiar. New latin and caribbean/african families.
 - **Scoring weighs how much you play a genre:** a new `taste_affinity` scales a genre match by that genre's share of your listening, so a genre at 2% of it no longer counts as much as your top one. Used by mood, trend, similar, era, blend and the daily pick.
@@ -56,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A stalled request no longer leaves your tokens in `$TMPDIR`** ([#60](https://github.com/and3rn3t/apple-music-dj/issues/60)): `apple_music_api.sh` had no curl timeout, and the Python scripts ended a hung call with SIGKILL, which bash can't trap, so the temp file holding both tokens stayed behind. curl now has connect and total timeouts that fit inside the retry budget, and a stuck call is ended with SIGTERM (to the whole process group) before SIGKILL so the cleanup runs.
+- **Bad input files are reported, not crashed on** ([#62](https://github.com/and3rn3t/apple-music-dj/issues/62)): `taste_card.py --data` refuses valid JSON that isn't an object, and `playlist_history.py log` reports an unreadable `--track-ids-file`, each with an `ERROR:` line instead of a traceback.
+- **`playlist_health.py` no longer reports a failed fix as done:** a failing `build_playlist.sh` call used to be listed as "Removed …" or "Added replacement"; it now warns with the script's error.
+- **`build_playlist.sh` on an empty song-ID file** gave an arithmetic error instead of "No song IDs".
 - **`demo.py serve` and the `setup_auth.py` sign-in page could stall ~35 s on macOS before starting:** Python's `HTTPServer` does a reverse-DNS lookup of 127.0.0.1 (`socket.getfqdn`) when it binds, and on some macOS setups that lookup times out. Both local servers now skip it. This was also most of the macOS CI job's time.
 - **`pip install -e ".[dev]"` works again:** setuptools' automatic package discovery found `scripts/`, `tests/`, `assets/` … and refused to build; `pyproject.toml` now declares no packages (the scripts run in place).
 - **Scheduled-job schedules in SKILL.md were wrong.** They said the weekly mix runs Sundays and merges Trend Radar with Constellation, new releases run daily, and the health check weekly. `setup_cron.py` actually runs the weekly mix (Trend Radar only) on Mondays at 7:00, new releases on Wednesdays, the daily drop at 8:30 and the health check monthly. `references/automation.md` now lists each job's schedule and exact command from the code.

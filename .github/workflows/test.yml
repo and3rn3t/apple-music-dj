@@ -100,17 +100,22 @@ jobs:
         with:
           python-version: "3.15"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
 
-      # Keep in step with the ruff-pre-commit rev in .pre-commit-config.yaml.
-      - name: Install ruff
-        run: python -m pip install "ruff==0.17.0"
+      # ruff and ShellCheck come pinned from the [dev] extra; tests/test_ci_workflow.py keeps those
+      # pins equal to the revs in .pre-commit-config.yaml.
+      - name: Install the linters
+        run: pip install -e ".[dev]"
 
       - name: Ruff
         run: ruff check scripts tests .github/scripts
 
       - name: ShellCheck
-        run: shellcheck scripts/*.sh
+        run: |
+          shellcheck --version | head -2
+          shellcheck scripts/*.sh
 
   test:
     needs: changes
@@ -121,7 +126,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.11", "3.12", "3.14", "3.15"]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         include:
           # SKILL.md declares darwin support: run the real scripts on BSD tools too.
           - os: macos-latest
@@ -163,8 +168,7 @@ jobs:
             --cov=scripts \
             --cov-report=term-missing \
             --cov-report=json:coverage.json \
-            --cov-fail-under=80 \
-            -v
+            --cov-fail-under=80
 
       - name: Check README coverage badge
         if: matrix.python-version == '3.14' && runner.os == 'Linux'

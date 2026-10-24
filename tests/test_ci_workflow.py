@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,8 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = yaml.safe_load((ROOT / ".github" / "workflows" / "test.yml").read_text())
 JOBS = WORKFLOW["jobs"]
+PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
+PRE_COMMIT = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text())
 DOC_READING = re.compile(r"\.md|README|SKILL|ROADMAP|CHANGELOG|references|assets/")
 
 
@@ -81,3 +84,37 @@ def test_classify_step_runs_everything_on_push(tmp_path):
     subprocess.run(["bash", "-c", step("changes", "Classify the changed files")["run"]],
                    cwd=tmp_path, env=env, check=True, capture_output=True)
     assert out.read_text().strip() == "code=true"
+
+
+def dev_pin(package: str) -> str:
+    pins = [d.split("==", 1)[1] for d in PYPROJECT["project"]["optional-dependencies"]["dev"]
+            if d.startswith(f"{package}==")]
+    assert pins, f"pin {package} with == in the [dev] extra"
+    return pins[0]
+
+
+def pre_commit_rev(repo_suffix: str) -> str:
+    return next(r["rev"] for r in PRE_COMMIT["repos"] if r["repo"].endswith(repo_suffix)).removeprefix("v")
+
+
+def test_ruff_pin_matches_pre_commit():
+    assert dev_pin("ruff") == pre_commit_rev("/ruff-pre-commit")
+
+
+def test_shellcheck_pin_matches_pre_commit():
+    # shellcheck-py versions are the ShellCheck version plus a packaging suffix: 0.11.0.1 is 0.11.0.
+    assert dev_pin("shellcheck-py").rsplit(".", 1)[0] == pre_commit_rev("/shellcheck-precommit")
+
+
+def test_matrix_tests_every_advertised_python():
+    prefix = "Programming Language :: Python :: 3."
+    advertised = {c.removeprefix("Programming Language :: Python :: ")
+                  for c in PYPROJECT["project"]["classifiers"] if c.startswith(prefix)}
+    assert set(JOBS["test"]["strategy"]["matrix"]["python-version"]) == advertised
+
+
+def test_release_runs_the_full_ci_gate():
+    publish = yaml.safe_load((ROOT / ".github" / "workflows" / "publish-clawhub.yml").read_text())
+    run = next(s for s in publish["jobs"]["verify"]["steps"] if s.get("name") == "Lint and test")["run"]
+    assert '-e ".[dev]"' in run
+    assert "make ruff coverage" in run

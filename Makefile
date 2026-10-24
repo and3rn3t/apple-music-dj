@@ -4,7 +4,7 @@ PYTHON ?= python3
 
 ## Run all tests
 test:
-	$(PYTHON) -m pytest tests/ -v
+	$(PYTHON) -m pytest tests/
 
 ## Run all tests in parallel on every core (pytest-xdist)
 test-fast:

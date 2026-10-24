@@ -484,7 +484,8 @@ class TestUserFilters:
     def test_built_from_config(self):
         from _common import user_filters
         f = user_filters({"excluded_artists": ["Nickelback", 3], "preferred_genres": ["Jazz"]}, {"t1"})
-        assert f == {"excluded_artists": {"nickelback"}, "preferred_genres": ["Jazz"], "recent_track_ids": {"t1"}}
+        assert f == {"excluded_artists": {"nickelback"}, "preferred_genres": ["Jazz"], "recent_track_ids": {"t1"},
+                     "raters": []}
 
     def test_defaults_filter_nothing(self):
         from _common import DEFAULT_CONFIG, apply_user_filters, user_filters
@@ -510,3 +511,211 @@ class TestUserFilters:
         assert cands[1]["_score"] == pytest.approx(0.5 + PREFERRED_GENRE_BOOST / 2)  # same family
         assert cands[2]["_score"] == 0.5
         assert "_score" not in cands[3]
+
+
+# ── Genre tables: fallback, sub-genres, weighted taste ───────────
+
+class TestGenreFallback:
+    @pytest.mark.parametrize("genre,base", [
+        ("Rock", "Rock"), ("hard rock", "Hard Rock"), ("Garage Rock", "Rock"), ("Underground Rap", "Hip-Hop/Rap"),
+        ("Pop Punk", "Punk"), ("Indie Folk", "Folk"), ("Contemporary R&B", "Contemporary R&B"), ("Polka", None),
+    ])
+    def test_base_genre(self, genre, base):
+        from _common import base_genre
+        assert base_genre(genre) == base
+
+    @pytest.mark.parametrize("genre,root", [
+        ("Hard Rock", "Rock"), ("Rock", "Rock"), ("Neo-Soul", "Soul"), ("Indie Pop", "Pop"),
+        ("K-Pop", "K-Pop"), ("J-Pop", "J-Pop"), ("Alternative Rap", "Hip-Hop/Rap"),
+        ("Modern Hard Rock", "Rock"), ("Contemporary R&B", "Soul"), ("R&B/Soul", "Soul"),
+        ("Hip-Hop/Rap", "Hip-Hop/Rap"),
+    ])
+    def test_root_genre(self, genre, root):
+        from _common import root_genre
+        assert root_genre(genre) == root
+
+    def test_unlisted_genres_get_an_energy(self):
+        """Used to be 0.5 for anything not listed, which flattened arcs."""
+        from _common import track_energy
+        assert track_energy(["Garage Rock"]) == 0.7
+        assert track_energy(["Dream Pop"]) == 0.7
+        assert track_energy(["Ambient Electronic"]) == 0.8  # ends with Electronic
+        assert track_energy(["Polka"]) == 0.5  # still unknown
+
+    def test_every_family_genre_has_an_energy(self):
+        from _common import GENRE_ADJACENCY, GENRE_ENERGY
+        missing = {g for family in GENRE_ADJACENCY.values() for g in family} - set(GENRE_ENERGY)
+        assert not missing
+
+    @pytest.mark.parametrize("a,b,expected", [
+        ("Rock", "Hard Rock", 0.75), ("Hard Rock", "Garage Rock", 0.75), ("Rock", "Alternative", 0.5),
+        ("Garage Rock", "Grunge", 0.5), ("Pop", "K-Pop", 0.5), ("Reggaeton", "Latin", 0.5),
+        ("Indie Rock", "Indie Pop", 0.0), ("Polka", "Rock", 0.0), ("Polka", "polka", 1.0),
+        ("Modern Hard Rock", "Rock", 0.75), ("Contemporary R&B", "R&B/Soul", 0.75),
+    ])
+    def test_proximity_tiers(self, a, b, expected):
+        from _common import genre_proximity
+        assert genre_proximity(a, b) == expected
+
+
+class TestTasteAffinity:
+    DIST = [{"genre": "Alternative", "weight": 0.4}, {"genre": "Jazz", "weight": 0.02}]
+
+    def test_top_genre_is_full_affinity(self):
+        from _common import taste_affinity
+        assert taste_affinity(["Alternative"], self.DIST) == pytest.approx(1.0)
+
+    def test_a_barely_played_genre_counts_for_little(self):
+        """best_genre_match calls Jazz a perfect match; taste_affinity weighs it by listening share."""
+        from _common import best_genre_match, taste_affinity
+        assert best_genre_match(["Jazz"], [g["genre"] for g in self.DIST]) == 1.0
+        assert taste_affinity(["Jazz"], self.DIST) == pytest.approx(0.05)
+
+    def test_family_and_subgenre_credit(self):
+        from _common import taste_affinity
+        assert taste_affinity(["Rock"], self.DIST) == pytest.approx(0.5)
+        assert taste_affinity(["Adult Alternative"], self.DIST) == pytest.approx(0.75)
+
+    def test_unweighted_profile_counts_genres_equally(self):
+        from _common import taste_affinity
+        assert taste_affinity(["Jazz"], [{"genre": "Rock"}, {"genre": "Jazz"}]) == 1.0
+
+    def test_empty(self):
+        from _common import taste_affinity
+        assert taste_affinity([], self.DIST) == 0.0
+        assert taste_affinity(["Rock"], []) == 0.0
+
+
+# ── Rating signals (#64) ─────────────────────────────────────────
+
+def _attrs(artist, *genres):
+    return {"artistName": artist, "genreNames": [*genres, "Music"]}
+
+
+class TestRatingSignals:
+    def test_counts_from_ratings(self):
+        s = _signals([(1, _attrs("Radiohead", "Alternative")), (1, _attrs("Radiohead", "Alternative")),
+                      (-1, _attrs("Nickelback", "Rock"))])
+        assert s["artists"]["radiohead"] == {"name": "Radiohead", "likes": 2, "dislikes": 0}
+        assert s["artists"]["nickelback"]["dislikes"] == 1
+        assert s["genres"] == {"Alternative": {"likes": 2, "dislikes": 0}, "Rock": {"likes": 0, "dislikes": 1}}
+
+    def test_changing_a_rating_moves_the_count(self):
+        from _common import set_song_rating
+        s = {}
+        set_song_rating(s, "a", 1, _attrs("X", "Pop"))
+        set_song_rating(s, "a", -1)  # re-rated: keeps its artist without a new lookup
+        assert s["artists"]["x"] == {"name": "X", "likes": 0, "dislikes": 1}
+        set_song_rating(s, "a", 0)  # cleared: needs no lookup either
+        assert s == {"songs": {}, "artists": {}, "genres": {}}
+
+    def test_clearing_an_uncounted_song_never_touches_another_songs_count(self):
+        """#95 review: a song that never contributed (failed lookup, past the profiler's cap) used to be
+        subtracted anyway, taking another song's dislike with it and letting an excluded artist back in."""
+        from _common import set_song_rating
+        s = _signals([(-1, _attrs("Nope")), (-1, _attrs("Nope"))])
+        set_song_rating(s, "never-counted", 0)
+        set_song_rating(s, "never-counted", -1)  # unknown song, no details: can't contribute
+        assert s["artists"]["nope"]["dislikes"] == 2
+
+    def test_an_unknown_song_counts_once_its_details_arrive(self):
+        from _common import set_song_rating
+        s = {}
+        set_song_rating(s, "a", -1)
+        assert s["artists"] == {}
+        set_song_rating(s, "a", -1, _attrs("Nope"))  # same rating, now resolvable
+        assert s["artists"]["nope"]["dislikes"] == 1
+
+    def test_one_dislike_changes_nothing_two_demote(self):
+        from _common import ARTIST_DISLIKE_PENALTY, rating_adjustment
+        one = _signals([(-1, _attrs("Nope"))])
+        two = _signals([(-1, _attrs("Nope")), (-1, _attrs("Nope"))])
+        assert rating_adjustment("Nope", [], one) == (0.0, None)
+        adjustment, note = rating_adjustment("nope", [], two)
+        assert adjustment == -ARTIST_DISLIKE_PENALTY
+        assert note == "demoted: you disliked 2 songs by Nope"
+
+    def test_an_artist_you_play_a_lot_is_demoted_less(self):
+        from _common import ARTIST_DISLIKE_PENALTY, FAVOURITE_PENALTY_FACTOR, rating_adjustment
+        two = _signals([(-1, _attrs("Fave")), (-1, _attrs("Fave"))])
+        assert rating_adjustment("Fave", [], two, play_weight=0.2)[0] == -ARTIST_DISLIKE_PENALTY * FAVOURITE_PENALTY_FACTOR
+
+    def test_a_like_saves_an_artist_from_demotion(self):
+        from _common import rating_adjustment
+        mixed = _signals([(-1, _attrs("M")), (-1, _attrs("M")), (1, _attrs("M"))])
+        assert rating_adjustment("M", [], mixed) == (0.0, None)
+
+    def test_likes_boost_is_capped(self):
+        from _common import LIKE_BOOST_MAX, LIKE_BOOST_PER_SONG, rating_adjustment
+        one = _signals([(1, _attrs("Y"))])
+        many = _signals([(1, _attrs("Y"))] * 10)
+        assert rating_adjustment("Y", [], one) == (LIKE_BOOST_PER_SONG, "boosted: you liked 1 song by Y")
+        assert rating_adjustment("Y", [], many)[0] == LIKE_BOOST_MAX
+
+    def test_liked_genres_nudge_other_artists(self):
+        from _common import GENRE_LIKE_BOOST_MAX, GENRE_LIKE_BOOST_PER_SONG, rating_adjustment
+        s = _signals([(1, _attrs("A", "Jazz")), (1, _attrs("B", "Jazz")), (-1, _attrs("C", "Jazz"))])
+        assert rating_adjustment("Someone Else", ["Jazz"], s) == (GENRE_LIKE_BOOST_PER_SONG, None)  # net 1
+        lots = _signals([(1, _attrs(f"A{i}", "Jazz")) for i in range(20)])
+        assert rating_adjustment("Z", ["Jazz"], lots)[0] == GENRE_LIKE_BOOST_MAX
+
+    def test_summary(self):
+        from _common import rating_summary
+        s = _signals([(1, _attrs("Liked")), (-1, _attrs("Nope")), (-1, _attrs("Nope")), (-1, _attrs("Once"))])
+        assert rating_summary(s) == {"boosted_artists": ["Liked"], "demoted_artists": ["Nope"]}
+
+    def test_shared_filter_applies_and_explains(self):
+        from _common import apply_user_filters, user_filters
+        profile = {"rating_signals": _signals([(1, _attrs("Liked")), (1, _attrs("Liked"))]),
+                   "top_artists": [{"name": "Liked", "play_weight": 0.1}]}
+        cands = [{"id": "a", "artist": "Liked", "genre": [], "reason": "Fits.", "_score": 0.5}]
+        apply_user_filters(cands, user_filters({}, profile=profile))
+        assert cands[0]["_score"] == pytest.approx(0.6)
+        assert cands[0]["reason"] == "Fits. (boosted: you liked 2 songs by Liked)"
+
+    def test_demoted_artists_are_excluded_unless_you_play_them_a_lot(self):
+        from _common import passes_user_filters, user_filters
+        signals = _signals([(-1, _attrs(n)) for n in ("Nope", "Nope", "Fave", "Fave")])
+        f = user_filters({}, profile={"rating_signals": signals, "top_artists": [{"name": "Fave", "play_weight": 0.2}]})
+        assert not passes_user_filters({"id": "x", "artist": "NOPE"}, f)
+        assert passes_user_filters({"id": "y", "artist": "Fave"}, f)  # only scored down
+
+
+class TestBlendRatings:
+    """#95 review: in a blend, the second listener's ratings count too."""
+
+    def test_second_listeners_dislikes_leave_an_artist_out(self):
+        from _common import passes_user_filters, user_filters
+        b = {"rating_signals": _signals([(-1, _attrs("Nope")), (-1, _attrs("Nope"))])}
+        f = user_filters({}, None, {}, b)
+        assert not passes_user_filters({"id": "x", "artist": "Nope"}, f)
+
+    def test_one_listeners_like_overrides_the_others_exclusion(self):
+        from _common import ARTIST_DISLIKE_PENALTY, LIKE_BOOST_PER_SONG, apply_user_filters, user_filters
+        a = {"rating_signals": _signals([(1, _attrs("Split"))])}
+        b = {"rating_signals": _signals([(-1, _attrs("Split")), (-1, _attrs("Split"))])}
+        f = user_filters({}, None, a, b)
+        cands = [{"id": "x", "artist": "Split", "genre": [], "reason": "R.", "_score": 1.0}]
+        kept = apply_user_filters(cands, f)
+        assert kept  # not excluded: you like them
+        assert kept[0]["_score"] == pytest.approx(1.0 + LIKE_BOOST_PER_SONG - ARTIST_DISLIKE_PENALTY)
+        assert kept[0]["reason"] == "R. (boosted: you liked 1 song by Split; demoted: they disliked 2 songs by Split)"
+
+    def test_each_listeners_own_play_weight_decides_the_favourite_exception(self):
+        from _common import passes_user_filters, user_filters
+        b = {"rating_signals": _signals([(-1, _attrs("Fave")), (-1, _attrs("Fave"))]),
+             "top_artists": [{"name": "Fave", "play_weight": 0.3}]}
+        a = {"top_artists": [{"name": "Fave", "play_weight": 0.0}]}
+        assert passes_user_filters({"id": "x", "artist": "Fave"}, user_filters({}, None, a, b))  # b plays them a lot
+
+    def test_summary_covers_both_listeners(self):
+        from _common import rating_summary
+        a = _signals([(1, _attrs("Liked"))])
+        b = _signals([(-1, _attrs("Nope")), (-1, _attrs("Nope"))])
+        assert rating_summary(a, b) == {"boosted_artists": ["Liked"], "demoted_artists": ["Nope"]}
+
+
+def _signals(pairs):
+    """rating_signals_from with a distinct song ID per (value, attrs) pair."""
+    from _common import rating_signals_from
+    return rating_signals_from([(f"song{i}", value, attrs) for i, (value, attrs) in enumerate(pairs)])

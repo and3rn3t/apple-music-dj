@@ -34,30 +34,76 @@ GENERIC_GENRES = {"music"}
 
 # Rough 0-1 energy per genre. >=0.7 counts as high-energy, <=0.3 as low-energy
 # (see taste_profiler.infer_energy_profile); everything else is mid-range.
+# Names follow Apple Music's genre list. A name not listed here falls back to the
+# listed genre it ends with (see base_genre): "Garage Rock" → Rock.
 GENRE_ENERGY = {
-    "Metal": 0.95, "Punk": 0.9, "Dance": 0.85, "Electronic": 0.8, "House": 0.8,
-    "Techno": 0.85, "Grunge": 0.8, "Hip-Hop/Rap": 0.75, "Rock": 0.7, "Pop": 0.7,
-    "K-Pop": 0.75, "J-Pop": 0.7, "Synth Pop": 0.65, "Funk": 0.65, "Alternative": 0.6,
-    "IDM": 0.55, "Indie": 0.5, "R&B/Soul": 0.5, "Soul": 0.5, "Blues": 0.45,
-    "Country": 0.45, "Indie Pop": 0.45, "Americana": 0.4, "Bluegrass": 0.45,
-    "Soundtrack": 0.4, "Bossa Nova": 0.35, "Acoustic": 0.35,
-    "Jazz": 0.3, "Folk": 0.3, "Singer/Songwriter": 0.3, "Classical": 0.2,
-    "Ambient": 0.1, "New Age": 0.1,
+    # rock / metal / punk
+    "Metal": 0.95, "Hardcore": 0.95, "Punk": 0.9, "Grunge": 0.8, "Hard Rock": 0.85, "Emo": 0.75,
+    "Rock": 0.7, "Alternative": 0.6, "Indie Rock": 0.6, "Prog-Rock/Art Rock": 0.6, "Psychedelic": 0.55,
+    "Indie": 0.5, "Soft Rock": 0.4, "Pop/Rock": 0.65, "Adult Alternative": 0.5, "College Rock": 0.6,
+    # electronic
+    "Dance": 0.85, "Electronic": 0.8, "House": 0.8, "Techno": 0.85, "Trance": 0.85, "Dubstep": 0.9,
+    "Drum & Bass": 0.9, "Hardstyle": 0.95, "Electronica": 0.65, "IDM": 0.55, "Downtempo": 0.3,
+    "Lo-Fi": 0.2, "Ambient": 0.1, "Chill": 0.25,
+    # hip-hop / r&b
+    "Hip-Hop/Rap": 0.75, "Trap": 0.8, "Drill": 0.8, "Alternative Rap": 0.65, "Grime": 0.8,
+    "R&B/Soul": 0.5, "Contemporary R&B": 0.5, "Neo-Soul": 0.4, "Soul": 0.5, "Funk": 0.65,
+    "Disco": 0.75, "Motown": 0.6,
+    # pop
+    "Pop": 0.7, "K-Pop": 0.75, "J-Pop": 0.7, "Synth Pop": 0.65, "Indie Pop": 0.45, "Teen Pop": 0.7,
+    "Dance Pop": 0.8, "Anime": 0.65,
+    # country / folk
+    "Country": 0.45, "Contemporary Country": 0.55, "Americana": 0.4, "Bluegrass": 0.45, "Folk": 0.3,
+    "Singer/Songwriter": 0.3, "Acoustic": 0.35,
+    # jazz / blues
+    "Jazz": 0.3, "Smooth Jazz": 0.25, "Big Band": 0.55, "Bebop": 0.45, "Blues": 0.45, "Bossa Nova": 0.35,
+    "Lounge": 0.25,
+    # latin / world / reggae
+    "Latin": 0.7, "Reggaeton": 0.8, "Urbano latino": 0.8, "Salsa y Tropical": 0.75, "Afrobeats": 0.75,
+    "Afro-Beat": 0.75, "Reggae": 0.5, "Dancehall": 0.75, "World": 0.5,
+    # classical / quiet
+    "Classical": 0.2, "Opera": 0.35, "Baroque": 0.3, "Chamber Music": 0.2, "Soundtrack": 0.4,
+    "Easy Listening": 0.25, "Vocal": 0.3, "New Age": 0.1, "Meditation": 0.05,
+    # other
+    "Christian & Gospel": 0.55, "Gospel": 0.6, "Fitness & Workout": 0.9, "Holiday": 0.5,
+    "Christmas": 0.5, "Children's Music": 0.55,
 }
+# Short names inside compound genres that stand for a listed genre ("Underground Rap" → Hip-Hop/Rap)
+GENRE_ALIASES = {"rap": "Hip-Hop/Rap", "hip-hop": "Hip-Hop/Rap", "hip hop": "Hip-Hop/Rap",
+                 "r&b": "R&B/Soul", "edm": "Dance", "lofi": "Lo-Fi", "christian": "Christian & Gospel"}
 HIGH_ENERGY = 0.7
 LOW_ENERGY = 0.3
 
-# Genres in the same family get half credit when tastes and tracks are compared
+# Genres in the same family get half credit when tastes and tracks are compared.
+# A genre not listed here is placed by its base_genre.
 GENRE_ADJACENCY = {
-    "rock_family": {"Rock", "Alternative", "Indie", "Punk", "Metal", "Grunge"},
-    "electronic_family": {"Electronic", "Dance", "House", "Techno", "Ambient", "IDM"},
-    "hiphop_family": {"Hip-Hop/Rap", "R&B/Soul", "Funk"},
-    "folk_family": {"Folk", "Singer/Songwriter", "Country", "Americana", "Bluegrass"},
-    "jazz_family": {"Jazz", "Blues", "Bossa Nova", "Soul"},
-    "classical_family": {"Classical", "Soundtrack", "New Age"},
-    "pop_family": {"Pop", "Synth Pop", "Indie Pop", "K-Pop", "J-Pop"},
+    "rock_family": {"Rock", "Alternative", "Indie", "Punk", "Metal", "Grunge", "Hard Rock", "Indie Rock",
+                    "Emo", "Hardcore", "Soft Rock", "Pop/Rock", "Prog-Rock/Art Rock", "Psychedelic",
+                    "Adult Alternative", "College Rock"},
+    "electronic_family": {"Electronic", "Dance", "House", "Techno", "Ambient", "IDM", "Trance", "Dubstep",
+                          "Drum & Bass", "Hardstyle", "Electronica", "Downtempo", "Lo-Fi", "Chill"},
+    "hiphop_family": {"Hip-Hop/Rap", "R&B/Soul", "Funk", "Trap", "Drill", "Alternative Rap", "Grime",
+                      "Contemporary R&B", "Neo-Soul"},
+    "folk_family": {"Folk", "Singer/Songwriter", "Country", "Americana", "Bluegrass", "Acoustic",
+                    "Contemporary Country"},
+    "jazz_family": {"Jazz", "Blues", "Bossa Nova", "Soul", "Smooth Jazz", "Big Band", "Bebop", "Lounge",
+                    "Motown"},
+    "classical_family": {"Classical", "Soundtrack", "New Age", "Opera", "Baroque", "Chamber Music",
+                         "Easy Listening", "Meditation"},
+    "pop_family": {"Pop", "Synth Pop", "Indie Pop", "K-Pop", "J-Pop", "Teen Pop", "Dance Pop", "Disco",
+                   "Anime"},
+    "latin_family": {"Latin", "Reggaeton", "Urbano latino", "Salsa y Tropical", "Bossa Nova"},
+    "caribbean_african_family": {"Reggae", "Dancehall", "Afrobeats", "Afro-Beat", "World"},
 }
 _GENRE_FAMILIES = [{g.lower() for g in family} for family in GENRE_ADJACENCY.values()]
+_KNOWN_GENRES = {g.lower(): g for g in GENRE_ENERGY} | GENRE_ALIASES
+_KNOWN_GENRE_PATTERNS = [
+    (re.compile(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])"), canonical)
+    for name, canonical in sorted(_KNOWN_GENRES.items(), key=lambda kv: -len(kv[0]))
+]
+SUBGENRE_PROXIMITY = 0.75  # "Garage Rock" vs "Rock": closer than a family match, short of exact
+# Listed genres that are scenes of their own, not a sub-genre of the word they end with
+SELF_ROOTED_GENRES = {"K-Pop", "J-Pop", "Afro-Beat"}
 
 SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
@@ -430,18 +476,73 @@ def get_album_tracks(sf: str, album_id: str) -> list:
     return tracks
 
 
+def _rightmost_genre(name: str, skip_whole: bool) -> str | None:
+    """The listed genre whose whole-word match ends furthest right in `name` (longest on a tie)."""
+    best: tuple[int, int, str] | None = None
+    for pattern, canonical in _KNOWN_GENRE_PATTERNS:
+        for m in pattern.finditer(name):
+            if skip_whole and m.start() == 0 and m.end() == len(name):
+                continue
+            key = (m.end(), m.end() - m.start(), canonical)
+            if best is None or key[:2] > best[:2]:
+                best = key
+    return best[2] if best else None
+
+
+def base_genre(genre: str) -> str | None:
+    """The listed genre a name is or ends with: "Rock" → Rock, "Garage Rock" → Rock,
+    "Underground Rap" → Hip-Hop/Rap. In English compounds the last word names the kind,
+    so the match ending furthest right wins. None if nothing matches."""
+    name = genre.strip().lower()
+    return _KNOWN_GENRES.get(name) or _rightmost_genre(name, skip_whole=False)
+
+
+def root_genre(genre: str) -> str | None:
+    """Like base_genre, but reduced until it stops changing: "Hard Rock" → Rock,
+    "Modern Hard Rock" → Hard Rock → Rock, "Contemporary R&B" → R&B/Soul → Soul.
+    A plain listed genre and SELF_ROOTED_GENRES are their own roots."""
+    root = base_genre(genre)
+    seen: set[str] = set()
+    while root and root not in SELF_ROOTED_GENRES and root not in seen:
+        seen.add(root)
+        parent = _rightmost_genre(root.lower(), skip_whole=True)
+        if not parent:
+            break
+        root = parent
+    return root
+
+
+def genre_energy(genre: str) -> float | None:
+    """0-1 energy for one genre, via base_genre for names GENRE_ENERGY doesn't list."""
+    base = base_genre(genre)
+    return GENRE_ENERGY.get(base) if base else None
+
+
 def track_energy(genres: list[str]) -> float:
     """Average 0-1 energy of a track's genres (0.5 when none are recognised)."""
-    known = [GENRE_ENERGY[g] for g in genres if g in GENRE_ENERGY]
+    known = [e for e in (genre_energy(g) for g in genres) if e is not None]
     return sum(known) / len(known) if known else 0.5
 
 
+def _families(genre: str) -> list[int]:
+    """Indexes of the families a genre belongs to (directly, else through its base genre)."""
+    name = genre.lower()
+    found = [i for i, family in enumerate(_GENRE_FAMILIES) if name in family]
+    if not found and (base := base_genre(genre)):
+        found = [i for i, family in enumerate(_GENRE_FAMILIES) if base.lower() in family]
+    return found
+
+
 def genre_proximity(genre_a: str, genre_b: str) -> float:
-    """Score genre proximity: 1.0 exact, 0.5 same family, 0.0 different."""
+    """Score genre proximity: 1.0 exact, 0.75 same root genre ("Hard Rock" / "Rock" /
+    "Garage Rock"), 0.5 same family, 0.0 different."""
     a, b = genre_a.lower(), genre_b.lower()
     if a == b:
         return 1.0
-    if any(a in family and b in family for family in _GENRE_FAMILIES):
+    root_a, root_b = root_genre(genre_a), root_genre(genre_b)
+    if root_a and root_a == root_b:
+        return SUBGENRE_PROXIMITY
+    if set(_families(genre_a)) & set(_families(genre_b)):
         return 0.5
     return 0.0
 
@@ -451,17 +552,61 @@ def best_genre_match(track_genres: list[str], target_genres: list[str]) -> float
     return max((genre_proximity(tg, target) for tg in track_genres for target in target_genres), default=0.0)
 
 
+def taste_affinity(track_genres: list[str], genre_distribution: list[dict]) -> float:
+    """How much a listener likes a track's sound, 0-1.
+
+    The best proximity between any of the track's genres and any of the listener's,
+    scaled by that genre's weight relative to their top genre. So an exact match on
+    the top genre is 1.0, while an exact match on a genre at 2% of the listening (top
+    genre 40%) is only 0.05. `best_genre_match` treats both the same. A profile without
+    weights counts every genre equally.
+    """
+    weights = [(g["genre"], max(g.get("weight") or 0, 0)) for g in genre_distribution if g.get("genre")]
+    if not any(w for _, w in weights):
+        weights = [(name, 1.0) for name, _ in weights]
+    top = max((w for _, w in weights), default=0)
+    if top <= 0:
+        return 0.0
+    return max((genre_proximity(t, name) * w / top for t in track_genres for name, w in weights), default=0.0)
+
+
 # ── User preferences applied to every playlist ───────────────────
 
 PREFERRED_GENRE_BOOST = 0.1
 
 
-def user_filters(config: dict, recent_track_ids: set[str] | None = None) -> dict:
-    """The parts of config.json (and recent playlist history) that every strategy honours."""
+def _rater(profile: dict, who: str) -> dict:
+    """One listener's ratings and play weights, as the filters use them."""
     return {
-        "excluded_artists": {a.lower() for a in config.get("excluded_artists") or [] if isinstance(a, str)},
+        "who": who,
+        "signals": profile.get("rating_signals") or {},
+        "play_weights": {a["name"].lower(): a.get("play_weight", 0) for a in profile.get("top_artists", [])
+                         if a.get("name")},
+    }
+
+
+def user_filters(config: dict, recent_track_ids: set[str] | None = None, profile: dict | None = None,
+                 profile_b: dict | None = None) -> dict:
+    """The parts of config.json, recent playlist history and ratings that every strategy honours.
+
+    `profile_b` is the second listener of a blend: both listeners' ratings count.
+    """
+    raters = [_rater(p, who) for p, who in ((profile, "you"), (profile_b, "they")) if p]
+    excluded = {a.lower() for a in config.get("excluded_artists") or [] if isinstance(a, str)}
+    # An artist a listener disliked enough is left out, like excluded_artists, unless that
+    # listener plays them a lot or the other listener likes them (then they're only scored
+    # down, in apply_user_filters)
+    for rater in raters:
+        others = [r for r in raters if r is not rater]
+        for key in rating_summary_keys(rater["signals"])["demoted"]:
+            liked_elsewhere = any((r["signals"].get("artists") or {}).get(key, {}).get("likes") for r in others)
+            if rater["play_weights"].get(key, 0) < FAVOURITE_PLAY_WEIGHT and not liked_elsewhere:
+                excluded.add(key)
+    return {
+        "excluded_artists": excluded,
         "preferred_genres": [g for g in config.get("preferred_genres") or [] if isinstance(g, str)],
         "recent_track_ids": set(recent_track_ids or ()),
+        "raters": raters,
     }
 
 
@@ -474,22 +619,140 @@ def passes_user_filters(candidate: dict, filters: dict | None) -> bool:
 
 
 def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dict]:
-    """Drop excluded artists and recently used tracks; nudge preferred genres up.
+    """Drop excluded artists and recently used tracks; nudge preferred genres up; let your
+    likes and dislikes steer.
 
     Candidates with a ``_score`` get ``PREFERRED_GENRE_BOOST`` scaled by how well they
-    match a preferred genre (half for a family match).
+    match a preferred genre (half for a family match), plus ``rating_adjustment`` for the
+    artist and genres each listener has rated (summed), noted in the track's ``reason``.
     """
     if not filters:
         return candidates
     preferred = filters.get("preferred_genres") or []
+    raters = filters.get("raters") or []
     kept = []
     for c in candidates:
         if not passes_user_filters(c, filters):
             continue
-        if preferred and "_score" in c:
-            c["_score"] += PREFERRED_GENRE_BOOST * best_genre_match(c.get("genre", []), preferred)
+        if "_score" in c:
+            if preferred:
+                c["_score"] += PREFERRED_GENRE_BOOST * best_genre_match(c.get("genre", []), preferred)
+            artist = c.get("artist", "")
+            notes = []
+            for rater in raters:
+                adjustment, note = rating_adjustment(artist, c.get("genre", []), rater["signals"],
+                                                     rater["play_weights"].get(artist.lower(), 0), rater["who"])
+                c["_score"] += adjustment
+                notes += [note] if note else []
+            if notes:
+                c["reason"] = f"{c.get('reason', '')} ({'; '.join(notes)})".strip()
         kept.append(c)
     return kept
+
+
+# ── Rating signals: likes and dislikes steer every strategy ──────
+# A dislike always removes that one song. These act on the artist and genres around it,
+# and stay bounded: one dislike changes nothing at artist level. An artist with
+# DISLIKES_TO_DEMOTE dislikes and no likes is left out of playlists, unless you play them
+# a lot (play weight >= FAVOURITE_PLAY_WEIGHT): then they're only scored down.
+
+DISLIKES_TO_DEMOTE = 2            # dislikes (and no likes) before an artist is demoted
+ARTIST_DISLIKE_PENALTY = 0.5      # larger than most score gaps, so a demoted artist rarely makes the cut
+FAVOURITE_PLAY_WEIGHT = 0.05      # artists at or above this play weight ...
+FAVOURITE_PENALTY_FACTOR = 0.5    # ... get only this share of the penalty
+LIKE_BOOST_PER_SONG, LIKE_BOOST_MAX = 0.05, 0.15          # per net like for the artist
+GENRE_LIKE_BOOST_PER_SONG, GENRE_LIKE_BOOST_MAX = 0.02, 0.1  # per net like for the genre
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
+def _recount(signals: dict) -> dict:
+    """Rebuild the artist and genre counts from the per-song ratings (returns the same dict)."""
+    artists: dict = {}
+    genres: dict = {}
+    for song in (signals.get("songs") or {}).values():
+        field = {1: "likes", -1: "dislikes"}.get(song.get("value"))
+        if not field:
+            continue
+        if song.get("artist"):
+            entry = artists.setdefault(song["artist"].lower(), {"name": song["artist"], "likes": 0, "dislikes": 0})
+            entry[field] += 1
+        for genre in song.get("genres", []):
+            genres.setdefault(genre, {"likes": 0, "dislikes": 0})[field] += 1
+    signals["artists"], signals["genres"] = artists, genres
+    return signals
+
+
+def set_song_rating(signals: dict, song_id: str, value: int, attrs: dict | None = None) -> dict:
+    """Set one song's rating (1 like, -1 dislike, 0 cleared) and recount. Returns the same dict.
+
+    Each song keeps its own artist and genres under ``songs``, and the counts are always
+    rebuilt from those, so clearing a song removes exactly what it contributed. A song
+    whose details aren't known (`attrs` None and never seen) can't contribute and is skipped.
+    """
+    songs = signals.setdefault("songs", {})
+    if value == 0:
+        songs.pop(song_id, None)
+    elif attrs and attrs.get("artistName"):
+        songs[song_id] = {"value": value, "artist": attrs["artistName"],
+                          "genres": filter_generic_genres(attrs.get("genreNames", []))}
+    elif song_id in songs:
+        songs[song_id]["value"] = value
+    return _recount(signals)
+
+
+def rating_signals_from(rated: list[tuple[str, int, dict]]) -> dict:
+    """Ratings signals from (song ID, value, song attributes) triples."""
+    signals: dict = {"songs": {}, "artists": {}, "genres": {}}
+    for song_id, value, attrs in rated:
+        set_song_rating(signals, song_id, value, attrs)
+    return signals
+
+
+def rating_adjustment(artist: str, genres: list[str], signals: dict,
+                      play_weight: float = 0.0, who: str = "you") -> tuple[float, str | None]:
+    """Score change from one listener's ratings, and a note for the track's reason (None if nothing applies)."""
+    adjustment, note = 0.0, None
+    entry = (signals.get("artists") or {}).get(artist.lower())
+    if entry:
+        likes, dislikes = entry.get("likes", 0), entry.get("dislikes", 0)
+        if dislikes >= DISLIKES_TO_DEMOTE and not likes:
+            factor = FAVOURITE_PENALTY_FACTOR if play_weight >= FAVOURITE_PLAY_WEIGHT else 1.0
+            adjustment -= ARTIST_DISLIKE_PENALTY * factor
+            note = f"demoted: {who} disliked {_plural(dislikes, 'song')} by {entry.get('name', artist)}"
+        elif likes > dislikes:
+            adjustment += min(LIKE_BOOST_PER_SONG * (likes - dislikes), LIKE_BOOST_MAX)
+            note = f"boosted: {who} liked {_plural(likes, 'song')} by {entry.get('name', artist)}"
+    genre_table = signals.get("genres") or {}
+    net = max((genre_table[g].get("likes", 0) - genre_table[g].get("dislikes", 0) for g in genres if g in genre_table),
+              default=0)
+    if net > 0:
+        adjustment += min(GENRE_LIKE_BOOST_PER_SONG * net, GENRE_LIKE_BOOST_MAX)
+    return adjustment, note
+
+
+def rating_summary_keys(signals: dict) -> dict[str, list[str]]:
+    """Lower-cased artist keys your ratings boost or demote."""
+    boosted, demoted = [], []
+    for key, entry in (signals.get("artists") or {}).items():
+        likes, dislikes = entry.get("likes", 0), entry.get("dislikes", 0)
+        if dislikes >= DISLIKES_TO_DEMOTE and not likes:
+            demoted.append(key)
+        elif likes > dislikes:
+            boosted.append(key)
+    return {"boosted": boosted, "demoted": demoted}
+
+
+def rating_summary(*all_signals: dict) -> dict:
+    """Artists the ratings currently boost or demote (any listener's), for a playlist's summary."""
+    summary: dict[str, set[str]] = {"boosted_artists": set(), "demoted_artists": set()}
+    for signals in all_signals:
+        artists = signals.get("artists") or {}
+        for kind, keys in rating_summary_keys(signals).items():
+            summary[f"{kind}_artists"] |= {artists[k].get("name", k) for k in keys}
+    return {kind: sorted(names) for kind, names in summary.items()}
 
 
 # ── Taste snapshots (for drift tracking) ─────────────────────────

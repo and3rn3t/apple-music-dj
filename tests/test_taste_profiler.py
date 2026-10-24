@@ -681,7 +681,8 @@ class TestRecentSignals:
         assert extract_station_genres({"data": [{"attributes": {"name": title}}]}) == []
 
     @pytest.mark.parametrize("title,genre", [("Pop Hits", "Pop"), ("Radio: Rock", "Rock"), ("K-Pop Hits", "K-Pop"),
-                                             ("indie pop favorites", "Indie Pop"), ("Smooth Jazz.", "Jazz")])
+                                             ("indie pop favorites", "Indie Pop"), ("Late Night Jazz.", "Jazz"),
+                                             ("Smooth Jazz.", "Smooth Jazz")])
     def test_station_genres_whole_word_hits(self, title, genre):
         assert extract_station_genres({"data": [{"attributes": {"name": title}}]}) == [genre]
 
@@ -792,3 +793,37 @@ class TestSourceWeights:
         assert by["Beloved"]["play_weight"] > by["Plain"]["play_weight"]
         assert by["Beloved"]["count"] == by["Plain"]["count"] == 1
         assert profile["library_song_ids"] == ["l.1", "c2"]
+
+# ── Rating signals (#64) ─────────────────────────────────────────
+
+class TestBuildRatingSignals:
+    RATINGS = {"data": [{"id": "c1", "attributes": {"value": 1}}, {"id": "c2", "attributes": {"value": -1}},
+                        {"id": "c3", "attributes": {"value": -1}}, {"id": "c4", "attributes": {"value": 0}}]}
+
+    def test_uses_tracks_already_fetched_and_catalog_ids(self, monkeypatch):
+        import taste_profiler as tp
+        known = [{"id": "c1", "attributes": {"artistName": "Liked", "genreNames": ["Jazz"]}},
+                 {"id": "i.lib", "attributes": {"artistName": "Nope", "genreNames": ["Rock"]},
+                  "relationships": {"catalog": {"data": [{"id": "c2"}]}}},
+                 {"id": "c3", "attributes": {"artistName": "Nope", "genreNames": ["Rock"]}}]
+        monkeypatch.setattr(tp, "call_api", lambda *a, **k: pytest.fail("no lookup needed"))
+        signals, resolved = tp.build_rating_signals(self.RATINGS, known, "us")
+        assert resolved == 3
+        assert signals["artists"]["nope"]["dislikes"] == 2 and signals["artists"]["liked"]["likes"] == 1
+
+    def test_looks_up_the_rest_dislikes_first_with_a_cap(self, monkeypatch):
+        import taste_profiler as tp
+        monkeypatch.setattr(tp, "MAX_RATING_LOOKUPS", 2)
+        looked_up = []
+
+        def api(cmd, sf, sid, **kw):
+            looked_up.append(sid)
+            return {"data": [{"attributes": {"artistName": f"A-{sid}", "genreNames": []}}]}
+        monkeypatch.setattr(tp, "call_api", api)
+        signals, resolved = tp.build_rating_signals(self.RATINGS, [], "us")
+        assert looked_up == ["c2", "c3"] and resolved == 2  # dislikes first, then the cap
+        assert set(signals["artists"]) == {"a-c2", "a-c3"}
+
+    def test_no_ratings(self):
+        import taste_profiler as tp
+        assert tp.build_rating_signals(None, [], "us") == ({"songs": {}, "artists": {}, "genres": {}}, 0)

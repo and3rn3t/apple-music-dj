@@ -141,11 +141,18 @@ class TestScoreCandidate:
         score = score_candidate(base_candidate, {}, rng=rng)
         assert 0.5 <= score <= 0.65  # base 0.5 + random(0, 0.15); no taste to match
 
-    def test_taste_match_adds_up_to_point_three(self, base_candidate, sample_profile):
-        """Rock is in the sample profile's top genres: a full match adds 0.3."""
+    def test_taste_match_adds_up_to_point_three(self, sample_profile):
+        """Alternative is the sample profile's top genre: an exact match adds the full 0.3."""
+        top = {"genre": ["Alternative"], "source": "charts"}
+        no_taste = score_candidate(top, {}, rng=random.Random(42))
+        with_taste = score_candidate(top, sample_profile, rng=random.Random(42))
+        assert with_taste - no_taste == pytest.approx(0.3)
+
+    def test_taste_match_scales_with_how_much_you_play_the_genre(self, base_candidate, sample_profile):
+        """Rock is 0.2 of the listening against Alternative's 0.3, so it earns two thirds of the 0.3."""
         no_taste = score_candidate(base_candidate, {}, rng=random.Random(42))
         with_taste = score_candidate(base_candidate, sample_profile, rng=random.Random(42))
-        assert with_taste - no_taste == pytest.approx(0.3)
+        assert with_taste - no_taste == pytest.approx(0.2)
 
     def test_taste_outweighs_chance(self, sample_profile):
         """A track in your genres beats one outside them whatever the random draw."""

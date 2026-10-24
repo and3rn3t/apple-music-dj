@@ -1015,6 +1015,30 @@ class TestMainCli:
         state.update(run=run, profile=profile, other=other)
         return state
 
+    def test_minutes_sizes_the_pool_and_trims_to_the_running_time(self, cli, monkeypatch, capsys):
+        from strategies.duration import pool_size_for
+        pool = [{"id": f"t{i}", "name": "N", "artist": "A", "album": "B", "genre": [],
+                 "duration_ms": 180_000 + i % 3 * 30_000} for i in range(40)]
+        seen = {}
+        monkeypatch.setattr(se, "strategy_trend", lambda p, sf, n: seen.update(size=n) or list(pool))
+        cli["run"]("--strategy", "trend", "--minutes", "45", "--size", "5")
+        out = json.loads(capsys.readouterr().out)
+        assert seen["size"] == pool_size_for(45)  # --minutes overrides --size
+        assert out["target_minutes"] == 45 and abs(out["duration_minutes"] - 45) <= 1
+        assert out["track_count"] == len(out["tracks"]) < len(pool)
+
+    @pytest.mark.parametrize("minutes", ["0", "-5", "601"])
+    def test_minutes_out_of_range_is_refused(self, cli, minutes):
+        with pytest.raises(SystemExit) as exc:
+            cli["run"]("--strategy", "trend", "--minutes", minutes)
+        assert exc.value.code == 2
+
+    def test_without_minutes_the_output_has_no_duration_fields(self, cli, monkeypatch, capsys):
+        monkeypatch.setattr(se, "strategy_trend", lambda p, sf, n: cli["tracks"])
+        cli["run"]("--strategy", "trend")
+        out = json.loads(capsys.readouterr().out)
+        assert "duration_minutes" not in out and "target_minutes" not in out
+
     def test_seed_requires_seed(self, cli):
         with pytest.raises(SystemExit):
             cli["run"]("--strategy", "similar")

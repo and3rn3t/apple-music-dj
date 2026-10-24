@@ -16,6 +16,7 @@ import pytest
 
 import strategy_engine as se
 from tests.strategy_helpers import patch_everywhere
+from strategies.duration import TOLERANCE_MS, fit_to_duration, pool_size_for, total_ms
 from _common import best_genre_match, taste_affinity, track_energy, user_filters
 
 # ── Synthetic catalog ────────────────────────────────────────────
@@ -46,7 +47,8 @@ def _song(artist_i: int, album_j: int, track_k: int) -> dict:
         title = f"{name} {album_j}-1 (Live)"
     return {"id": f"s{artist_i}-{album_j}-{track_k}", "type": "songs", "attributes": {
         "name": title, "artistName": name, "genreNames": [*genres, "Music"], "trackNumber": track_k,
-        "releaseDate": f"{year + 4 * album_j}-06-01", "albumName": f"{name} LP{album_j}"}}
+        "releaseDate": f"{year + 4 * album_j}-06-01", "albumName": f"{name} LP{album_j}",
+        "durationInMillis": 150_000 + (artist_i * 7 + album_j * 5 + track_k * 3) % 9 * 20_000}}  # 2:30 to 5:10
 
 
 def _album(artist_i: int, album_j: int) -> dict:
@@ -148,25 +150,29 @@ def catalog(monkeypatch):
 
 SIZE = 20
 STRATEGIES = {
-    "deep-cuts": lambda rng: se.strategy_deep_cuts(ROCK_FAN, "us", SIZE, rng=rng),
-    "mood-workout": lambda rng: se.strategy_mood(ROCK_FAN, "us", "workout", SIZE, rng=rng),
-    "mood-sleep": lambda rng: se.strategy_mood(JAZZ_FAN, "us", "sleep", SIZE, rng=rng),
-    "trend": lambda rng: se.strategy_trend(ROCK_FAN, "us", SIZE, rng=rng),
-    "constellation": lambda rng: se.strategy_constellation(ROCK_FAN, "us", SIZE, rng=rng),
-    "similar": lambda rng: se.strategy_seed(ROCK_FAN, "us", "Static Bloom", "artist", SIZE, rng=rng),
-    "era": lambda rng: se.strategy_era(ROCK_FAN, "us", "1990s", SIZE, rng=rng),
-    "blend": lambda rng: se.strategy_blend(ROCK_FAN, ELECTRO_FAN, "us", SIZE, rng=rng),
+    "deep-cuts": lambda rng, size=SIZE: se.strategy_deep_cuts(ROCK_FAN, "us", size, rng=rng),
+    "mood-workout": lambda rng, size=SIZE: se.strategy_mood(ROCK_FAN, "us", "workout", size, rng=rng),
+    "mood-sleep": lambda rng, size=SIZE: se.strategy_mood(JAZZ_FAN, "us", "sleep", size, rng=rng),
+    "trend": lambda rng, size=SIZE: se.strategy_trend(ROCK_FAN, "us", size, rng=rng),
+    "constellation": lambda rng, size=SIZE: se.strategy_constellation(ROCK_FAN, "us", size, rng=rng),
+    "similar": lambda rng, size=SIZE: se.strategy_seed(ROCK_FAN, "us", "Static Bloom", "artist", size, rng=rng),
+    "era": lambda rng, size=SIZE: se.strategy_era(ROCK_FAN, "us", "1990s", size, rng=rng),
+    "blend": lambda rng, size=SIZE: se.strategy_blend(ROCK_FAN, ELECTRO_FAN, "us", size, rng=rng),
 }
 
 
-def run(name: str, seed: int = 1) -> list[dict]:
-    return STRATEGIES[name](random.Random(seed))
+def run(name: str, seed: int = 1, size: int = SIZE) -> list[dict]:
+    return STRATEGIES[name](random.Random(seed), size)
 
 
 # ── Every strategy ───────────────────────────────────────────────
 
 @pytest.mark.parametrize("name", STRATEGIES)
 class TestEveryStrategy:
+    def test_every_track_carries_its_duration(self, name):
+        """--minutes is only as good as the durations; one candidate builder forgetting it skews the total."""
+        assert all(isinstance(t.get("duration_ms"), int) for t in run(name))
+
     def test_reaches_target_length(self, name):
         assert len(run(name)) == SIZE
 
@@ -300,3 +306,56 @@ def _signals(pairs):
     """rating_signals_from with a distinct song ID per (value, attrs) pair."""
     from _common import rating_signals_from
     return rating_signals_from([(f"song{i}", value, attrs) for i, (value, attrs) in enumerate(pairs)])
+
+
+# ── Running time (--minutes) ─────────────────────────────────────
+
+TARGET_MINUTES = 30
+
+
+def fitted(name: str, minutes: int = TARGET_MINUTES) -> tuple[list[dict], list[dict]]:
+    pool = run(name, size=pool_size_for(minutes))
+    return pool, fit_to_duration(pool, minutes * 60_000)
+
+
+@pytest.mark.parametrize("name", [n for n in STRATEGIES if n != "constellation"] + ["constellation"])
+class TestMinutes:
+    def test_lands_within_a_minute_of_the_target(self, name):
+        _, tracks = fitted(name)
+        assert abs(total_ms(tracks) - TARGET_MINUTES * 60_000) <= TOLERANCE_MS
+
+    def test_keeps_the_strategys_order(self, name):
+        pool, tracks = fitted(name)
+        ids = [t["id"] for t in pool]
+        assert [ids.index(t["id"]) for t in tracks] == sorted(ids.index(t["id"]) for t in tracks)
+
+
+def _thirds(values: list[float]) -> tuple[float, float]:
+    n = len(values) // 3
+    return sum(values[:n]) / n, sum(values[-n:]) / n
+
+
+def test_a_workout_still_climbs_after_fitting():
+    pool, tracks = fitted("mood-workout")
+    first, last = _thirds([t["energy"] for t in tracks])
+    assert first < last
+    assert _thirds([t["energy"] for t in pool])[0] < _thirds([t["energy"] for t in pool])[1]
+
+
+def test_a_sleep_mix_still_winds_down_after_fitting():
+    first, last = _thirds([t["energy"] for t in fitted("mood-sleep")[1]])
+    assert first > last
+
+
+def test_a_wave_still_peaks_in_the_middle_after_fitting():
+    energies = [t["energy"] for t in fitted("deep-cuts")[1]]
+    peak = energies.index(max(energies))
+    assert len(energies) * 0.25 <= peak <= len(energies) * 0.75
+    assert energies[0] < max(energies) and energies[-1] < max(energies)
+
+
+def test_constellation_keeps_its_gradient_after_fitting():
+    zones = [t["zone"] for t in fitted("constellation")[1]]
+    order = {"familiar": 0, "expansion": 1, "frontier": 2}
+    assert [order[z] for z in zones] == sorted(order[z] for z in zones)
+

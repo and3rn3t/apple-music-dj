@@ -28,6 +28,7 @@ Usage:
 Common options:
   --name NAME         Custom playlist name (auto-generated if omitted)
   --size N            Target track count (default: from config or 30)
+  --minutes N         Target running time instead (overrides --size; lands within about a minute)
   --include-library   Allow songs already in your library (refresh, seed, era)
   --create            Actually create the playlist in Apple Music
   --favorite          With --create: also favorite every track (writes to your account)
@@ -75,6 +76,7 @@ from strategies.constellation import strategy_constellation
 from strategies.deep_cuts import strategy_deep_cuts
 from strategies.deep_cuts import _is_alt_version  # noqa: F401  (re-exported for callers and tests)
 from strategies.deep_cuts import _title_key  # noqa: F401  (re-exported for callers and tests)
+from strategies.duration import MAX_MINUTES, fit_to_duration, pool_size_for, total_ms
 from strategies.era import normalize_decade, strategy_era
 from strategies.era import _release_decade  # noqa: F401  (re-exported for callers and tests)
 from strategies.mood import MOOD_MAP, strategy_mood
@@ -244,6 +246,9 @@ def main():
     parser.add_argument("--name", default=None, help="Custom playlist name")
     parser.add_argument("--size", type=int, default=None,
                         help="Target track count")
+    parser.add_argument("--minutes", type=float, default=None,
+                        help="Target running time instead of a track count (overrides --size); the playlist lands "
+                             "within about a minute of it, keeping the strategy's order")
     parser.add_argument("--include-library", action="store_true",
                         help="Refresh: allow songs already in your library")
     parser.add_argument("--create", action="store_true",
@@ -257,6 +262,8 @@ def main():
         args.strategy = "similar"
     if args.favorite and not args.create:
         parser.error("--favorite only applies together with --create")
+    if args.minutes is not None and not 0 < args.minutes <= MAX_MINUTES:
+        parser.error(f"--minutes must be between 0 and {MAX_MINUTES}")
 
     require_env_tokens()
     profile = load_profile(args.profile)
@@ -265,6 +272,8 @@ def main():
     sf = get_storefront(args.storefront or config.get("default_storefront"))
 
     target_size = args.size or config.get("playlist_size", 30)
+    if args.minutes:
+        target_size = pool_size_for(args.minutes)  # a pool to trim down to the running time
 
     # excluded_artists / preferred_genres from config.json, and tracks the DJ used recently
     repeat_days = config.get("avoid_repeat_days", 30)
@@ -276,7 +285,8 @@ def main():
     USER_FILTERS.update(user_filters(config, recent_ids, profile))
     profile_b: dict | None = None  # the second listener, for a blend
 
-    print(f"🎧 Strategy: {args.strategy} | Target: {target_size} tracks", file=sys.stderr)
+    target_label = f"{args.minutes:g} min" if args.minutes else f"{target_size} tracks"
+    print(f"🎧 Strategy: {args.strategy} | Target: {target_label}", file=sys.stderr)
 
     # Run the selected strategy
     if args.strategy == "deep-cuts":
@@ -327,6 +337,9 @@ def main():
         print("No tracks found for this strategy. Try refreshing your profile.", file=sys.stderr)
         sys.exit(1)
 
+    if args.minutes:
+        tracks = fit_to_duration(tracks, round(args.minutes * 60_000))
+
     # Generate name & description
     name = args.name or generate_name(args.strategy, args.mood, profile, args.similar_to, args.decade)
     description = generate_description(args.strategy, args.mood, len(tracks))
@@ -338,6 +351,9 @@ def main():
         "track_count": len(tracks),
         "tracks": tracks,
     }
+    if args.minutes:
+        result["target_minutes"] = args.minutes
+        result["duration_minutes"] = round(total_ms(tracks) / 60_000, 1)
     steered = rating_summary(*(p.get("rating_signals") or {} for p in (profile, profile_b) if p))
     if steered["boosted_artists"] or steered["demoted_artists"]:
         result["steered_by_ratings"] = steered
@@ -345,7 +361,9 @@ def main():
         compat = profile_compatibility(profile, profile_b)
         result["compatibility"] = {k: compat[k] for k in ("compatibility_pct", "verdict", "shared_artists")}
 
-    print(f"\n✅ {len(tracks)} tracks selected.", file=sys.stderr)
+    print(f"\n✅ {len(tracks)} tracks selected"
+          + (f", {result['duration_minutes']:g} min (target {args.minutes:g})" if args.minutes else "") + ".",
+          file=sys.stderr)
 
     # Output
     output_json = json.dumps(result, indent=2)

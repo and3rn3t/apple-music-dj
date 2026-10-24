@@ -100,6 +100,7 @@ def song(sid: str) -> dict:
         "attributes": {
             "name": name, "artistName": ARTISTS[aid]["name"], "genreNames": genres + ["Music"],
             "releaseDate": date, "albumName": ALBUMS[alb][0], "isrc": isrc, "trackNumber": 1,
+            "durationInMillis": 170_000 + int(sid[1:]) % 6 * 25_000,  # 2:50 to 4:55, varied but fixed
         },
         "relationships": {"artists": {"data": [{"id": aid, "type": "artists"}]},
                           "albums": {"data": [{"id": alb, "type": "albums"}]}},

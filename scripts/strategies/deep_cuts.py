@@ -100,6 +100,7 @@ def strategy_deep_cuts(profile: dict, sf: str, target_size: int = 30,
                     "artist": attrs.get("artistName", artist_name),
                     "album": album_attrs.get("name", ""),
                     "genre": filter_generic_genres(attrs.get("genreNames", [])),
+                    "duration_ms": attrs.get("durationInMillis"),
                     "source": "deep_cut",
                     "reason": f"A deep cut from {artist_name} — album track you haven't heard.",
                     # later tracks score slightly higher

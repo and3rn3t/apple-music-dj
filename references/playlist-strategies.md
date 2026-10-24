@@ -428,3 +428,12 @@ genre-adjacent new releases the user would never find on their own.
 ### Description Template
 
 "Fresh releases from your artists and genre discoveries. {N} tracks."
+
+## Exact running time (`--minutes`)
+
+`--minutes N` replaces `--size` for any strategy. The strategy is asked for about 30% more tracks than N minutes
+needs, then tracks are dropped until the total `durationInMillis` is within about 60 seconds of N. Dropping tracks
+from an already-ordered list leaves its order intact, so a workout still climbs, a sleep mix still winds down, a wave
+still peaks in the middle and constellation keeps its familiar-to-frontier gradient. Drops are spread out and the
+opener and closer are kept. The output reports `target_minutes` and the real `duration_minutes`; a strategy that
+can't find enough tracks returns what it has rather than padding.

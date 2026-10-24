@@ -248,6 +248,7 @@ inside; it makes no network calls and writes nothing). A bad or cut-off code is 
 message and nothing is created.
 
 ### Options shared by all strategies
+- `--minutes N` — build for a running time ("45 minutes for my run") instead of `--size`; lands within about a minute
 - `--include-library` — allow songs already in the library (refresh, similar and era skip them by default)
 - `--create` — create the playlist in Apple Music (without it, only JSON is printed)
 - `--favorite` — with `--create`, also add every track to the user's Apple Music favorites.

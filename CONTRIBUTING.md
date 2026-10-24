@@ -2,12 +2,26 @@
 
 Thanks for your interest in contributing! Here's how to get started.
 
+## Quick start
+
+```bash
+git clone https://github.com/<you>/apple-music-dj && cd apple-music-dj
+make setup                         # .venv, dev tools, git hooks; checks bash, curl and jq
+. .venv/bin/activate
+python3 scripts/demo.py tour       # see what it does, no account or tokens needed
+make ci                            # everything CI checks; `make help` lists the other targets
+```
+
+Then make your change on a branch and open a PR. Commit messages follow
+[Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:` …); the git hook checks this
+as you commit. `make ci` also needs actionlint (`brew install actionlint`). The sections below have the detail.
+
 ## Getting Started
 
 1. Fork the repo and clone your fork
 2. Set up: `make setup` creates `.venv`, installs the dev tools (pytest, pytest-cov, pytest-xdist, ruff, mypy,
-   ShellCheck, pyyaml) and checks that `bash`, `curl` and `jq` are installed. Then `. .venv/bin/activate`. `make ci` also
-   needs actionlint (`brew install actionlint`)
+   ShellCheck, pre-commit, pyyaml), installs the git hooks and checks that `bash`, `curl` and `jq` are installed.
+   Then `. .venv/bin/activate`
 3. Try it with no account: `python3 scripts/demo.py tour`, then `make ci` (everything CI checks)
 
 You don't need an Apple Developer account to contribute: the test suite and the demo run the real
@@ -47,9 +61,9 @@ To try changes on your own library as well, run `python3 scripts/setup_auth.py` 
 - `PyJWT` is the only exception (for token generation)
 - Functions use `snake_case`, classes use `PascalCase`
 - Run tests before submitting: `python3 -m pytest tests/ -v`
-- One-time setup: `pip install -e ".[dev]"`, install ShellCheck and actionlint
-  (`brew install shellcheck actionlint`), then `pre-commit install --hook-type pre-commit --hook-type
-  commit-msg` so ruff, ShellCheck and the conventional-commit check run on every commit
+- One-time setup: `make setup` (it installs the dev extra and the `pre-commit` hooks, so ruff, ShellCheck and the
+  conventional-commit check run on every commit; by hand: `pip install -e ".[dev]"` then `pre-commit install
+  --hook-type pre-commit --hook-type commit-msg`). `make ci` also needs actionlint (`brew install actionlint`)
 - Before submitting: `make ci` runs everything CI checks (ruff, ShellCheck, mypy, tests with the 90% coverage
   floor, actionlint); `make ruff` is the quick lint-only run
 

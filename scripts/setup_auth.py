@@ -35,11 +35,24 @@ import secrets
 import shlex
 import threading
 import webbrowser
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from _common import check_token_expiry, check_user_token_age, record_user_token, write_private
 from generate_dev_token import TokenError, make_dev_token
+
+
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer without HTTPServer.server_bind's socket.getfqdn() reverse-DNS lookup.
+
+    The server only binds 127.0.0.1, and on some macOS setups that lookup hangs ~35 s before failing.
+    """
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
 
 MUSICKIT_JS = "https://js-cdn.music.apple.com/musickit/v3/musickit.js"
 MAX_TOKEN_BYTES = 8192
@@ -143,7 +156,7 @@ class TokenCatcher:
                 status, body = catcher.accept(self)
                 self._reply(status, body)
 
-        self._server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        self._server = LoopbackHTTPServer(("127.0.0.1", port), Handler)
         bound = self._server.server_address[1]
         self.hosts = {f"127.0.0.1:{bound}", f"localhost:{bound}"}
         self.origins = {f"http://{h}" for h in self.hosts}

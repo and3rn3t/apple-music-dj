@@ -47,6 +47,18 @@ GENRE_ENERGY = {
 HIGH_ENERGY = 0.7
 LOW_ENERGY = 0.3
 
+# Genres in the same family get half credit when tastes and tracks are compared
+GENRE_ADJACENCY = {
+    "rock_family": {"Rock", "Alternative", "Indie", "Punk", "Metal", "Grunge"},
+    "electronic_family": {"Electronic", "Dance", "House", "Techno", "Ambient", "IDM"},
+    "hiphop_family": {"Hip-Hop/Rap", "R&B/Soul", "Funk"},
+    "folk_family": {"Folk", "Singer/Songwriter", "Country", "Americana", "Bluegrass"},
+    "jazz_family": {"Jazz", "Blues", "Bossa Nova", "Soul"},
+    "classical_family": {"Classical", "Soundtrack", "New Age"},
+    "pop_family": {"Pop", "Synth Pop", "Indie Pop", "K-Pop", "J-Pop"},
+}
+_GENRE_FAMILIES = [{g.lower() for g in family} for family in GENRE_ADJACENCY.values()]
+
 SCRIPT_DIR = Path(__file__).parent
 API_SCRIPT = SCRIPT_DIR / "apple_music_api.sh"
 
@@ -62,6 +74,7 @@ DEFAULT_CONFIG = {
     "excluded_artists": [],
     "playlist_size": 30,
     "cache_ttl_hours": 168,
+    "avoid_repeat_days": 30,
 }
 
 
@@ -421,6 +434,62 @@ def track_energy(genres: list[str]) -> float:
     """Average 0-1 energy of a track's genres (0.5 when none are recognised)."""
     known = [GENRE_ENERGY[g] for g in genres if g in GENRE_ENERGY]
     return sum(known) / len(known) if known else 0.5
+
+
+def genre_proximity(genre_a: str, genre_b: str) -> float:
+    """Score genre proximity: 1.0 exact, 0.5 same family, 0.0 different."""
+    a, b = genre_a.lower(), genre_b.lower()
+    if a == b:
+        return 1.0
+    if any(a in family and b in family for family in _GENRE_FAMILIES):
+        return 0.5
+    return 0.0
+
+
+def best_genre_match(track_genres: list[str], target_genres: list[str]) -> float:
+    """Best proximity score between any track genre and any target genre."""
+    return max((genre_proximity(tg, target) for tg in track_genres for target in target_genres), default=0.0)
+
+
+# ── User preferences applied to every playlist ───────────────────
+
+PREFERRED_GENRE_BOOST = 0.1
+
+
+def user_filters(config: dict, recent_track_ids: set[str] | None = None) -> dict:
+    """The parts of config.json (and recent playlist history) that every strategy honours."""
+    return {
+        "excluded_artists": {a.lower() for a in config.get("excluded_artists") or [] if isinstance(a, str)},
+        "preferred_genres": [g for g in config.get("preferred_genres") or [] if isinstance(g, str)],
+        "recent_track_ids": set(recent_track_ids or ()),
+    }
+
+
+def passes_user_filters(candidate: dict, filters: dict | None) -> bool:
+    """False for an excluded artist or a track used in a recent DJ playlist."""
+    if not filters:
+        return True
+    return (candidate.get("artist", "").lower() not in (filters.get("excluded_artists") or set())
+            and candidate.get("id") not in (filters.get("recent_track_ids") or set()))
+
+
+def apply_user_filters(candidates: list[dict], filters: dict | None) -> list[dict]:
+    """Drop excluded artists and recently used tracks; nudge preferred genres up.
+
+    Candidates with a ``_score`` get ``PREFERRED_GENRE_BOOST`` scaled by how well they
+    match a preferred genre (half for a family match).
+    """
+    if not filters:
+        return candidates
+    preferred = filters.get("preferred_genres") or []
+    kept = []
+    for c in candidates:
+        if not passes_user_filters(c, filters):
+            continue
+        if preferred and "_score" in c:
+            c["_score"] += PREFERRED_GENRE_BOOST * best_genre_match(c.get("genre", []), preferred)
+        kept.append(c)
+    return kept
 
 
 # ── Taste snapshots (for drift tracking) ─────────────────────────

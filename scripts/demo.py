@@ -38,8 +38,21 @@ import subprocess
 from pathlib import Path
 import json
 import threading
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
+
+
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer without HTTPServer.server_bind's socket.getfqdn() reverse-DNS lookup.
+
+    The server only binds 127.0.0.1, and on some macOS setups that lookup hangs ~35 s before failing.
+    """
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
 
 # ── Fixed catalog ────────────────────────────────────────────────
 
@@ -168,7 +181,7 @@ class MockAppleMusic:
             def do_DELETE(self):
                 self._handle("DELETE")
 
-        self._server = ThreadingHTTPServer(("127.0.0.1", self._port), Handler)
+        self._server = LoopbackHTTPServer(("127.0.0.1", self._port), Handler)
         # A short poll interval keeps stop() fast: shutdown() waits for the next poll (default 0.5 s).
         threading.Thread(target=self._server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
         return self

@@ -1,8 +1,94 @@
 """Tests for listening_insights.py — timeline, streaks, year-review."""
 
+import json
+import sys
+from unittest.mock import Mock
 
-from listening_insights import cmd_streaks, cmd_timeline, cmd_year_review, year_review_caption
+import pytest
+
+from listening_insights import cmd_streaks, cmd_timeline, cmd_year_review, year_review_caption, main
 from taste_card import generate_year_review_svg, generate_year_review_text
+
+
+class TestMain:
+    @pytest.fixture(autouse=True)
+    def isolate_commands(self, monkeypatch):
+        for command in ("timeline", "streaks", "year_review"):
+            monkeypatch.setattr(
+                f"listening_insights.cmd_{command}", Mock(side_effect=AssertionError("Unexpected command dispatch"))
+            )
+
+    @pytest.fixture
+    def profile_path(self, tmp_path, sample_profile):
+        profile = tmp_path / "profile.json"
+        profile.write_text(json.dumps(sample_profile), encoding="utf-8")
+        return str(profile)
+
+    @pytest.fixture(autouse=True)
+    def fixed_year(self, monkeypatch):
+        clock = Mock()
+        clock.now.return_value.year = 2026
+        monkeypatch.setattr("listening_insights.datetime", clock)
+
+    @pytest.mark.parametrize("command", ["timeline", "streaks"])
+    def test_dispatches_with_the_loaded_profile_and_prints_json(
+        self, monkeypatch, capsys, profile_path, sample_profile, command
+    ):
+        result = {"command": command, "insights": ["Example insight"]}
+        handler = Mock(return_value=result)
+        monkeypatch.setattr(f"listening_insights.cmd_{command}", handler)
+        monkeypatch.setattr(sys, "argv", ["listening_insights.py", command, profile_path])
+
+        main()
+
+        handler.assert_called_once_with(sample_profile)
+        captured = capsys.readouterr()
+        assert json.loads(captured.out) == result and captured.err == ""
+
+    @pytest.mark.parametrize(("flags", "year"), [([], 2025), (["--year", "2015"], 2015), (["--year", "2026"], 2026)])
+    def test_year_review_accepts_the_default_and_both_range_boundaries(
+        self, monkeypatch, capsys, profile_path, sample_profile, flags, year
+    ):
+        result = {"year": year, "insights": []}
+        handler = Mock(return_value=result)
+        monkeypatch.setattr("listening_insights.cmd_year_review", handler)
+        monkeypatch.setattr(sys, "argv", ["listening_insights.py", "year-review", profile_path, *flags])
+
+        main()
+
+        handler.assert_called_once_with(sample_profile, year)
+        captured = capsys.readouterr()
+        assert json.loads(captured.out) == result and captured.err == ""
+
+    @pytest.mark.parametrize("year", [2014, 2027])
+    def test_out_of_range_year_exits_without_running_the_review(
+        self, monkeypatch, capsys, profile_path, year
+    ):
+        handler = Mock()
+        monkeypatch.setattr("listening_insights.cmd_year_review", handler)
+        monkeypatch.setattr(sys, "argv", ["listening_insights.py", "year-review", profile_path, "--year", str(year)])
+
+        with pytest.raises(SystemExit) as error:
+            main()
+
+        assert error.value.code == 1
+        handler.assert_not_called()
+        captured = capsys.readouterr()
+        assert captured.out == "" and "Year must be between 2015 and 2026" in captured.err
+
+    @pytest.mark.parametrize("argv", [[], ["unknown"], ["timeline"], ["year-review", "unused", "--year", "invalid"]])
+    def test_invalid_arguments_exit_before_loading_a_profile(self, monkeypatch, capsys, argv):
+        loader = Mock()
+        monkeypatch.setattr("listening_insights.load_profile", loader)
+        monkeypatch.setattr(sys, "argv", ["listening_insights.py", *argv])
+
+        with pytest.raises(SystemExit) as error:
+            main()
+
+        assert error.value.code == 2
+        loader.assert_not_called()
+        captured = capsys.readouterr()
+        assert captured.out == "" and "usage:" in captured.err
 
 
 # ── cmd_timeline ─────────────────────────────────────────────────

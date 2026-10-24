@@ -5,7 +5,7 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Getting Started
 
 1. Fork the repo and clone your fork
-2. Install the dev tools: `pip install -e ".[dev]"` (pytest, pytest-cov, ruff, pyyaml), plus ShellCheck
+2. Install the dev tools: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, pyyaml), plus ShellCheck
    and actionlint (`brew install shellcheck actionlint`)
 3. Try it with no account: `python3 scripts/demo.py tour`, then `make ci` (everything CI checks)
 
@@ -56,6 +56,7 @@ To try changes on your own library as well, run `python3 scripts/setup_auth.py` 
 
 ```bash
 make ci                                   # what CI runs; `make lint` is a quick syntax check
+make test-fast                            # just the tests, in parallel on every core
 
 # Run any script against the mock API, no tokens needed
 python3 scripts/demo.py run strategy_engine.py --profile DEMO_PROFILE --storefront us --strategy similar --similar-to Radiohead
@@ -67,6 +68,11 @@ With your own tokens (live API):
 scripts/apple_music_api.sh verify                                  # API connectivity
 python3 scripts/taste_profiler.py --cache /tmp/test_profile.json  # a real taste profile
 ```
+
+CI picks what to run from the files a PR changes. A PR that only touches docs (`*.md`, `assets/`,
+`LICENSE`, issue templates) runs just the tests that read docs and assets, on one Python version.
+Anything else runs lint and the full matrix. The **CI result** check sums it up either way, and it's
+the one to require in branch protection.
 
 ### Testing without an Apple Developer account
 

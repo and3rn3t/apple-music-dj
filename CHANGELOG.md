@@ -9,10 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`config.json` preferences are honoured:** `excluded_artists` and `preferred_genres` were read into the config but never used. Every strategy and the daily pick now drop excluded artists and give preferred genres a small boost. A new `avoid_repeat_days` key (default 30, `0` to turn off) skips tracks from playlists the DJ created recently. Documented in `references/playlist-strategies.md`.
+- CLI entry-point tests for daily picks, listening insights and the demo, including year limits and refusal of account paths, authentication and cron setup in demo mode.
 - **Token-renewal reminder in the daily drop:** when the developer token is close to expiry or the user token is getting old, `daily_pick.py daily` adds the warning to the day's pick message, so a scheduled job surfaces it where you'll see it instead of only in its log.
 - **Year-in-review caption:** `listening_insights.py year-review` adds a ready-to-post `caption` ("My 2025 on Apple Music: 500 hours of music, #1 artist …"), leaving out whatever is unknown.
 
 ### Changed
+
+- **Scoring fixes across the strategies:**
+  - **Deep cuts:** max 3 tracks per artist. The first artist's discography could fill the whole playlist before. The track-position bonus is capped at 0.15 (track 25 used to add +0.83). Live, remix, demo and other alternate takes, live albums, compilations and the same song on a deluxe edition are skipped. Artists you play more score higher.
+  - **Mood:** the mood's energy level is now used. It was defined but never read, so a sleep mix could pick up a loud track from a mood-adjacent genre. Score = 0.5 × mood-genre match + 0.35 × energy fit + 0.15 × taste match, and tracks far from the target energy rank last. Max 3 tracks per artist.
+  - **Constellation** ([#61](https://github.com/and3rn3t/apple-music-dj/issues/61)): finds neighbours through Apple's similar artists, falling back to text search only when there are none. A short zone is backfilled so the playlist reaches its length.
+  - **Trend radar:** rank weight is relative to the chart's length (longer charts used to give negative weights); max 3 tracks per artist.
+  - **Refresh:** "new from" an artist really uses their newest albums; max 3 tracks per artist.
+  - **Daily pick:** never picks a song you disliked. Taste match (+0.3) now counts and the random term is halved to 0.15, so a track in your genres beats one outside them.
+  - **Compatibility:** era overlap is weighted by how much you listen to each decade, not just whether a decade appears in both lists.
+  - Genre adjacency lives once in `_common.py` instead of two copies.
+  - **Playlists reach their length more reliably:** picking now applies the 2-per-album cap (sequencing used to drop the extra tracks afterwards); deep cuts keep scanning artists until the capped, filtered candidates can fill the list; trend radar never returns more tracks than asked for; constellation at 1–2 tracks no longer returns almost a whole zone. Non-Latin song titles are no longer treated as duplicates of each other, and preferred genres now also rank constellation picks and the daily pick.
+
+- **Docs-only PRs get a quick CI run:** a PR that only touches `*.md`, `assets/`, `LICENSE` or issue templates runs just the tests that read docs and assets, on one Python version, instead of lint and the five-job matrix. A **CI result** check sums up every run and is the one to require in branch protection. `tests/test_ci_workflow.py` checks which PRs take the short path and that the docs job lists every test that reads docs.
+- **CI:** a new push to a PR cancels that PR's previous test run; lint and test jobs have timeouts; the macOS job (the slowest by ~4×) runs the tests in parallel with `pytest-xdist`; every job prints its 15 slowest tests; ruff is pinned to the pre-commit version; dev dependencies come from `pyproject.toml`'s `[dev]` extra instead of a separate list. `make test-fast` runs the suite in parallel locally.
 
 - **Spotify import in the ClawHub listing:** surface the import workflow in the opening skill and package descriptions.
 - **Python 3.11 is now the minimum** ([#65](https://github.com/and3rn3t/apple-music-dj/issues/65)): 3.10 reached end of life in October 2026. Every script's version guard, `verify_setup.sh`, `pyproject.toml` and the CI matrix (now 3.11, 3.12, 3.14 and 3.15, plus macOS) say 3.11.
@@ -28,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`demo.py serve` and the `setup_auth.py` sign-in page could stall ~35 s on macOS before starting:** Python's `HTTPServer` does a reverse-DNS lookup of 127.0.0.1 (`socket.getfqdn`) when it binds, and on some macOS setups that lookup times out. Both local servers now skip it. This was also most of the macOS CI job's time.
+- **`pip install -e ".[dev]"` works again:** setuptools' automatic package discovery found `scripts/`, `tests/`, `assets/` … and refused to build; `pyproject.toml` now declares no packages (the scripts run in place).
 - **Scheduled-job schedules in SKILL.md were wrong.** They said the weekly mix runs Sundays and merges Trend Radar with Constellation, new releases run daily, and the health check weekly. `setup_cron.py` actually runs the weekly mix (Trend Radar only) on Mondays at 7:00, new releases on Wednesdays, the daily drop at 8:30 and the health check monthly. `references/automation.md` now lists each job's schedule and exact command from the code.
 - **Compatibility scores were deflated, worst for varied taste** ([#59](https://github.com/and3rn3t/apple-music-dj/issues/59)). The genre score counted each genre's weight twice, so a profile compared with itself scored 75% ("Strong alignment"), a listener spread over ten genres matched themselves at 0.2, and Muse came out as a 32% "Stretch pick" for someone whose top genres are Alternative and Rock. Profile and blend comparisons now use a weighted overlap of the two genre mixes (identical = 100%, half credit within a genre family, same score in both directions). Artist compatibility now scores how much the listener likes each of the artist's genres relative to their top genre, so Muse lands at 77% "Strong overlap". Expect higher scores across the board for listeners with varied taste.
 - **Year-in-review card showed 0 hours and "Unknown" for everything.** `listening_insights.py year-review` nested its Replay numbers under `replay_data`, while `taste_card.py --mode year-review` read top-level fields, so a card made from real output lost the hours, #1 artist, top genre and top songs. The review now also emits `total_minutes`, `top_artist`, `top_genre` and `top_songs` (`replay_data` is unchanged). Without Replay for that year the card shows "—" for hours instead of 0, and takes the top artist and genre from the current profile, labelled "(now)" on the card and in the caption ("My Apple Music taste right now: …") so they are never passed off as that year's. A test now feeds real `year-review` output into the card.

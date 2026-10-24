@@ -12,7 +12,7 @@ test-fast:
 
 ## Run tests with coverage summary
 coverage:
-	$(PYTHON) -m pytest tests/ --cov=scripts --cov-report=term-missing --cov-fail-under=80
+	$(PYTHON) -m pytest tests/ --cov=scripts --cov-report=term-missing --cov-fail-under=90
 
 ## Generate HTML coverage report
 coverage-html:

@@ -168,7 +168,7 @@ jobs:
             --cov=scripts \
             --cov-report=term-missing \
             --cov-report=json:coverage.json \
-            --cov-fail-under=80
+            --cov-fail-under=90
 
       - name: Check README coverage badge
         if: matrix.python-version == '3.14' && runner.os == 'Linux'

@@ -17,7 +17,7 @@ Brief description of what this PR does.
 
 ### Required
 
-- [ ] `make ci` passes (ruff + ShellCheck, tests at the 80% coverage floor, actionlint)
+- [ ] `make ci` passes (ruff + ShellCheck, tests at the 90% coverage floor, actionlint)
 - [ ] No tokens, keys, or secrets in the diff
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` (user-visible changes)
 - [ ] Touches code that writes to a user's Apple Music account? Every write still needs `--yes`; add the `account-writes` label

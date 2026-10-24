@@ -41,7 +41,7 @@ tests/                # pytest; mock_api.py re-exports scripts/demo.py
 ```bash
 make test           # pytest tests/ -v
 make test-fast      # same, in parallel on every core (pytest-xdist)
-make coverage       # pytest with --cov-fail-under=80 (CI's floor)
+make coverage       # pytest with --cov-fail-under=90 (CI's floor)
 make ruff           # ruff check scripts tests .github/scripts + shellcheck scripts/*.sh
 make lint           # syntax-check every scripts/*.py and scripts/*.sh
 make actionlint     # lint workflows

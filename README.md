@@ -353,7 +353,7 @@ All data stays on your machine. The skill reads your Apple Music listening data 
 
 ```bash
 make test              # Run all tests
-make coverage          # Tests with coverage summary (fails below 80%)
+make coverage          # Tests with coverage summary (fails below 90%)
 make coverage-html     # Generate HTML coverage report
 ```
 

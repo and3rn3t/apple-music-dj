@@ -49,7 +49,7 @@ To try changes on your own library as well, run `python3 scripts/setup_auth.py` 
 - One-time setup: `pip install -e ".[dev]"`, install ShellCheck and actionlint
   (`brew install shellcheck actionlint`), then `pre-commit install --hook-type pre-commit --hook-type
   commit-msg` so ruff, ShellCheck and the conventional-commit check run on every commit
-- Before submitting: `make ci` runs everything CI checks (ruff, ShellCheck, tests with the 80% coverage
+- Before submitting: `make ci` runs everything CI checks (ruff, ShellCheck, tests with the 90% coverage
   floor, actionlint); `make ruff` is the quick lint-only run
 
 ### Testing Changes

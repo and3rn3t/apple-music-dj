@@ -20,8 +20,9 @@ setup:
 	done; \
 	command -v actionlint >/dev/null || echo "NOTE: actionlint is not installed; 'make ci' needs it (brew install actionlint)"; \
 	[ $$missing -eq 0 ] || exit 1
-	@# Git hooks (ruff, ShellCheck, Conventional Commits): only inside a git checkout, never fatal
-	@if [ -d .git ]; then .venv/bin/pre-commit install --hook-type pre-commit --hook-type commit-msg >/dev/null && echo "Git hooks installed (ruff, ShellCheck, commit-message check)." || echo "NOTE: could not install the git hooks; run: .venv/bin/pre-commit install --hook-type pre-commit --hook-type commit-msg"; fi
+	@# Git hooks (ruff, ShellCheck, Conventional Commits): only inside a git checkout (a plain one, or a linked
+	@# worktree or submodule, where .git is a file), never fatal
+	@if [ -e .git ]; then .venv/bin/pre-commit install --hook-type pre-commit --hook-type commit-msg >/dev/null && echo "Git hooks installed (ruff, ShellCheck, commit-message check)." || echo "NOTE: could not install the git hooks; run: .venv/bin/pre-commit install --hook-type pre-commit --hook-type commit-msg"; fi
 	@echo "Ready. Run:  . .venv/bin/activate && make ci   (make help lists everything else)"
 
 ## Run all tests

@@ -287,9 +287,11 @@ def run_script(script: str, *args: str, timeout: float = 30) -> subprocess.Compl
 
 
 @overload
-def call_api(command: str, *args: str, raw: Literal[True]) -> str | None: ...
+def call_api(command: str, *args: str, raw: Literal[True]) -> str | None:
+    """With raw=True: stdout as a stripped string (None on failure)."""
 @overload
-def call_api(command: str, *args: str, raw: Literal[False] = False) -> Any: ...
+def call_api(command: str, *args: str, raw: Literal[False] = False) -> Any:
+    """Otherwise: the parsed JSON (None on failure)."""
 def call_api(command: str, *args: str, raw: bool = False) -> Any:
     """Call apple_music_api.sh and parse JSON output.
 

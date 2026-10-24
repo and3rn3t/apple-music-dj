@@ -3,7 +3,6 @@
 import pytest
 
 import _common
-from _common import apply_user_filters, passes_user_filters, swap_explicit_for_clean, user_filters
 
 
 def song(sid: str, name: str, artist: str, rating: str | None) -> dict:
@@ -35,84 +34,84 @@ def searches(monkeypatch):
 
 
 def filters(**kw):
-    return user_filters({"clean_only": True}, storefront="us", **kw)
+    return _common.user_filters({"clean_only": True}, storefront="us", **kw)
 
 
 class TestSwitch:
     def test_off_by_default(self):
-        assert user_filters({})["clean_only"] is False
+        assert _common.user_filters({})["clean_only"] is False
 
     def test_config_turns_it_on(self):
-        assert user_filters({"clean_only": True})["clean_only"] is True
+        assert _common.user_filters({"clean_only": True})["clean_only"] is True
 
     @pytest.mark.parametrize("value", ["yes", 1, None])
     def test_only_a_real_true_counts(self, value):
-        assert user_filters({"clean_only": value})["clean_only"] is False
+        assert _common.user_filters({"clean_only": value})["clean_only"] is False
 
     def test_the_flag_overrides_the_config(self):
-        assert user_filters({}, clean_only=True)["clean_only"] is True
-        assert user_filters({"clean_only": True}, clean_only=False)["clean_only"] is False
+        assert _common.user_filters({}, clean_only=True)["clean_only"] is True
+        assert _common.user_filters({"clean_only": True}, clean_only=False)["clean_only"] is False
 
 
 class TestPasses:
     def test_explicit_is_refused_in_clean_mode_only(self):
-        assert not passes_user_filters(candidate("1", "x", explicit=True), filters())
-        assert passes_user_filters(candidate("1", "x", explicit=True), user_filters({}))
-        assert passes_user_filters(candidate("1", "x"), filters())
+        assert not _common.passes_user_filters(candidate("1", "x", explicit=True), filters())
+        assert _common.passes_user_filters(candidate("1", "x", explicit=True), _common.user_filters({}))
+        assert _common.passes_user_filters(candidate("1", "x"), filters())
 
     def test_a_candidate_without_the_field_is_not_explicit(self):
-        assert passes_user_filters({"id": "1", "artist": "A"}, filters())
+        assert _common.passes_user_filters({"id": "1", "artist": "A"}, filters())
 
 
 class TestSwap:
     def test_uses_the_clean_version(self, searches):
-        out = swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), filters())
+        out = _common.swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), filters())
         assert out["id"] == "loud-c" and out["explicit"] is False and out["reason"] == "r (clean version)"
         assert out["_score"] == 0.5 and out["genre"] == ["Rock"]  # the rest is unchanged
 
     def test_a_live_take_is_not_the_clean_version(self, searches):
-        out = swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), filters())
+        out = _common.swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), filters())
         assert out["id"] != "other"
 
     def test_no_clean_version_leaves_it_to_be_dropped(self, searches):
         c = candidate("filthy-x", "Filthy", explicit=True)
-        assert swap_explicit_for_clean(c, filters()) is c
+        assert _common.swap_explicit_for_clean(c, filters()) is c
 
     def test_clean_songs_cost_no_lookup(self, searches):
-        swap_explicit_for_clean(candidate("1", "Loud"), filters())
+        _common.swap_explicit_for_clean(candidate("1", "Loud"), filters())
         assert searches == []
 
     def test_each_song_is_looked_up_once(self, searches):
         f = filters()
         for _ in range(3):
-            swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), f)
+            _common.swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), f)
         assert len(searches) == 1
 
     def test_lookups_are_capped_per_run(self, searches):
         f = filters()
         for i in range(_common.CLEAN_LOOKUP_LIMIT + 5):
-            swap_explicit_for_clean(candidate(f"x{i}", f"Song {i}", explicit=True), f)
+            _common.swap_explicit_for_clean(candidate(f"x{i}", f"Song {i}", explicit=True), f)
         assert len(searches) == _common.CLEAN_LOOKUP_LIMIT
 
     def test_needs_a_storefront(self, searches):
         c = candidate("loud-x", "Loud", explicit=True)
-        assert swap_explicit_for_clean(c, user_filters({"clean_only": True})) is c and searches == []
+        assert _common.swap_explicit_for_clean(c, _common.user_filters({"clean_only": True})) is c and searches == []
 
     def test_does_nothing_outside_clean_mode(self, searches):
         c = candidate("loud-x", "Loud", explicit=True)
-        assert swap_explicit_for_clean(c, user_filters({}, storefront="us")) is c and searches == []
+        assert _common.swap_explicit_for_clean(c, _common.user_filters({}, storefront="us")) is c and searches == []
 
     def test_a_failed_search_keeps_the_song_explicit(self, monkeypatch):
         monkeypatch.setattr(_common, "call_api", lambda *a, **k: None)
         c = candidate("loud-x", "Loud", explicit=True)
-        assert swap_explicit_for_clean(c, filters()) is c
+        assert _common.swap_explicit_for_clean(c, filters()) is c
 
 
 class TestApply:
     def test_swaps_what_it_can_and_drops_the_rest(self, searches):
         cands = [candidate("a", "Fine"), candidate("loud-x", "Loud", explicit=True),
                  candidate("filthy-x", "Filthy", explicit=True)]
-        out = apply_user_filters(cands, filters())
+        out = _common.apply_user_filters(cands, filters())
         assert [c["id"] for c in out] == ["a", "loud-c"]
 
 

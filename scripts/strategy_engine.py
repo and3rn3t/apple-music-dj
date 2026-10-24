@@ -71,31 +71,25 @@ from _common import (
     write_private,
 )
 from strategies.blend import strategy_blend
-from strategies.candidates import USER_FILTERS
-from strategies.candidates import _cap_per_artist  # noqa: F401  (re-exported for callers and tests)
-from strategies.candidates import _enforce_share  # noqa: F401  (re-exported for callers and tests)
-from strategies.candidates import _finish  # noqa: F401  (re-exported for callers and tests)
+from strategies.candidates import USER_FILTERS, _cap_per_artist, _enforce_share, _finish
 from strategies.constellation import strategy_constellation
-from strategies.deep_cuts import strategy_deep_cuts
-from strategies.deep_cuts import _is_alt_version  # noqa: F401  (re-exported for callers and tests)
-from strategies.deep_cuts import _title_key  # noqa: F401  (re-exported for callers and tests)
+from strategies.deep_cuts import _is_alt_version, _title_key, strategy_deep_cuts
 from strategies.duration import MAX_MINUTES, fit_to_duration, pool_size_for, total_ms
-from strategies.era import normalize_decade, strategy_era
-from strategies.era import _release_decade  # noqa: F401  (re-exported for callers and tests)
-from strategies.mood import MOOD_MAP, strategy_mood
-from strategies.mood import MOOD_ENERGY  # noqa: F401  (re-exported for callers and tests)
+from strategies.era import _release_decade, normalize_decade, strategy_era
+from strategies.mood import MOOD_ENERGY, MOOD_MAP, strategy_mood
 from strategies.refresh import strategy_refresh
 from strategies.remix import LAST_REMIX, strategy_remix
-from strategies.scoring import ARTIST_CAP  # noqa: F401  (re-exported for callers and tests)
-from strategies.scoring import BLEND_MAX_SHARE  # noqa: F401  (re-exported for callers and tests)
-from strategies.scoring import MIN_ENERGY_FIT  # noqa: F401  (re-exported for callers and tests)
-from strategies.scoring import TREND_WILDCARDS  # noqa: F401  (re-exported for callers and tests)
-from strategies.seed import strategy_seed
-from strategies.seed import _resolve_seed  # noqa: F401  (re-exported for callers and tests)
-from strategies.sequencing import ALBUM_CAP  # noqa: F401  (re-exported for callers and tests)
-from strategies.sequencing import ARCS  # noqa: F401  (re-exported for callers and tests)
-from strategies.sequencing import sequence_tracks  # noqa: F401  (re-exported for callers and tests)
+from strategies.scoring import ARTIST_CAP, BLEND_MAX_SHARE, MIN_ENERGY_FIT, TREND_WILDCARDS
+from strategies.seed import _resolve_seed, strategy_seed
+from strategies.sequencing import ALBUM_CAP, ARCS, sequence_tracks
 from strategies.trend import strategy_trend
+
+# Moved to scripts/strategies/ but still importable from here (callers and tests use these names)
+__all__ = [
+    "ALBUM_CAP", "ARCS", "ARTIST_CAP", "BLEND_MAX_SHARE", "MIN_ENERGY_FIT", "MOOD_ENERGY", "TREND_WILDCARDS",
+    "_cap_per_artist", "_enforce_share", "_finish", "_is_alt_version", "_release_decade", "_resolve_seed",
+    "_title_key", "sequence_tracks",
+]
 
 
 # ── Playlist Creation ────────────────────────────────────────────

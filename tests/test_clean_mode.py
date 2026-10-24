@@ -126,3 +126,48 @@ class TestDailyPick:
         monkeypatch.setattr(daily_pick, "get_token_renewal_reminder", lambda: "")
         for _ in range(5):  # the pick is random among the top tier
             assert daily_pick.cmd_daily({}, "us")["track"]["id"] == "ok"
+
+
+class TestReplacementsRespectExclusions:
+    """A clean twin must not bring back a song the strategy or listener already ruled out."""
+
+    def swap(self, searches, **kw):
+        f = _common.user_filters({"clean_only": True}, storefront="us", **kw)
+        return _common.swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), f), f
+
+    def test_a_disliked_clean_twin_is_not_used(self, searches):
+        out, _ = self.swap(searches, profile={"disliked_song_ids": ["loud-c"]})
+        assert out["id"] == "loud-x"  # stays explicit, so it is then dropped
+
+    def test_the_other_listeners_dislikes_count_in_a_blend(self, searches):
+        out, _ = self.swap(searches, profile={}, profile_b={"disliked_song_ids": ["loud-c"]})
+        assert out["id"] == "loud-x"
+
+    def test_a_library_song_is_blocked_unless_the_run_allows_the_library(self, searches):
+        profile = {"library_song_ids": ["loud-c"]}
+        assert self.swap(searches, profile=profile)[0]["id"] == "loud-x"
+        assert self.swap(searches, profile=profile, include_library=True)[0]["id"] == "loud-c"
+
+    def test_a_recently_used_twin_is_not_used(self, searches):
+        out, _ = self.swap(searches, recent_track_ids={"loud-c"})
+        assert out["id"] == "loud-x"
+
+    def test_a_strategy_can_block_its_own_ids(self, searches):
+        f = _common.user_filters({"clean_only": True}, storefront="us")
+        f["blocked_ids"].add("loud-c")  # e.g. the seed song, or a track already in the playlist
+        assert _common.swap_explicit_for_clean(candidate("loud-x", "Loud", explicit=True), f)["id"] == "loud-x"
+
+
+class TestTwinsBecomeOneEntry:
+    def test_an_explicit_song_and_its_clean_twin_do_not_fill_two_slots(self, searches):
+        cands = [candidate("loud-x", "Loud", explicit=True), candidate("loud-c", "Loud")]
+        out = _common.apply_user_filters(cands, filters())
+        assert [c["id"] for c in out] == ["loud-c"]
+
+    def test_two_explicit_entries_for_one_song_become_one(self, searches):
+        cands = [candidate("loud-x", "Loud", explicit=True), candidate("loud-x2", "Loud", explicit=True)]
+        assert [c["id"] for c in _common.apply_user_filters(cands, filters())] == ["loud-c"]
+
+    def test_outside_clean_mode_nothing_is_deduplicated(self):
+        cands = [candidate("a", "X"), candidate("a", "X")]
+        assert len(_common.apply_user_filters(cands, _common.user_filters({}))) == 2

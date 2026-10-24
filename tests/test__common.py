@@ -486,7 +486,7 @@ class TestUserFilters:
         from _common import user_filters
         f = user_filters({"excluded_artists": ["Nickelback", 3], "preferred_genres": ["Jazz"]}, {"t1"})
         assert f == {"excluded_artists": {"nickelback"}, "preferred_genres": ["Jazz"], "recent_track_ids": {"t1"},
-                     "raters": [], "clean_only": False, "storefront": None, "clean_lookups_left": 15,
+                     "raters": [], "clean_only": False, "storefront": None, "blocked_ids": set(), "clean_lookups_left": 15,
                      "clean_cache": {}}
 
     def test_defaults_filter_nothing(self):
@@ -736,3 +736,32 @@ class TestRunScript:
     def test_refuses_anything_but_a_bare_script_name(self, script):
         with pytest.raises(ValueError):
             run_script(script)
+
+
+class TestRunWithTermGrace:
+    def test_a_stuck_descendant_cannot_hold_the_call_past_the_timeout(self):
+        """Killing only the shell leaves `sleep` holding the output pipes; the whole group is ended."""
+        import time
+
+        from _common import _run_with_term_grace
+
+        started = time.time()
+        with pytest.raises(subprocess.TimeoutExpired):
+            _run_with_term_grace(["bash", "-c", "sleep 30 & wait"], timeout=0.5, grace=1)
+        assert time.time() - started < 5
+
+    def test_a_child_that_ignores_term_is_killed_after_the_grace_period(self):
+        import time
+
+        from _common import _run_with_term_grace
+
+        started = time.time()
+        with pytest.raises(subprocess.TimeoutExpired):
+            _run_with_term_grace(["bash", "-c", "trap '' TERM; sleep 30 & sleep 30"], timeout=0.5, grace=1)
+        assert time.time() - started < 6
+
+    def test_a_script_that_finishes_returns_its_output(self):
+        from _common import _run_with_term_grace
+
+        r = _run_with_term_grace(["bash", "-c", "echo out; echo err >&2; exit 3"], timeout=5)
+        assert (r.returncode, r.stdout, r.stderr) == (3, "out\n", "err\n")

@@ -5,7 +5,7 @@ import sys
 
 from _common import best_genre_match, call_api, filter_generic_genres, get_album_tracks, search_artist
 from collections import Counter
-from strategies.candidates import _finish
+from strategies.candidates import USER_FILTERS, _finish
 from strategies.scoring import REFRESH_ARTIST_SCORE
 
 
@@ -39,6 +39,8 @@ def strategy_refresh(profile: dict, sf: str, playlist_id: str, target_add: int =
         artist = attrs.get("artistName", "")
         if artist:
             playlist_artists[artist] += 1
+
+    USER_FILTERS.setdefault("blocked_ids", set()).update(existing_ids)  # nor may a clean twin repeat a track
 
     # Build a target genre profile from the existing playlist
     target_genres = [g for g, _ in playlist_genres.most_common(5)]

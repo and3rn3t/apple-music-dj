@@ -83,3 +83,36 @@ def test_a_missing_duration_counts_as_an_average_track():
 @pytest.mark.parametrize("minutes", [10, 45, 120])
 def test_the_pool_has_room_to_trim(minutes):
     assert pool_size_for(minutes) * AVERAGE_TRACK_MS >= minutes * MIN * 1.25
+
+
+class TestAllowedConstraint:
+    def test_blend_shares_survive_the_trim(self):
+        items = [{"id": f"t{i}", "source": s, "duration_ms": 3 * MIN} for i, s in enumerate("ababa")]
+
+        def balanced(playlist):
+            counts = {s: sum(1 for t in playlist if t["source"] == s) for s in "ab"}
+            return max(counts.values()) / len(playlist) <= 0.6
+
+        out = fit_to_duration(items, 12 * MIN, allowed=balanced)
+        assert total_ms(out) == 12 * MIN and balanced(out)
+        assert [t["source"] for t in fit_to_duration(items, 12 * MIN)] != [t["source"] for t in out] or balanced(out)
+
+    def test_without_the_constraint_it_would_have_been_lopsided(self):
+        items = [{"id": f"t{i}", "source": s, "duration_ms": 3 * MIN} for i, s in enumerate("ababa")]
+        out = fit_to_duration(items, 12 * MIN)
+        assert sum(1 for t in out if t["source"] == "a") / len(out) > 0.6  # the bug the constraint prevents
+
+    def test_stops_when_every_removal_would_break_the_constraint(self):
+        items = tracks(3, 3, 3, 3)
+        out = fit_to_duration(items, 3 * MIN, allowed=lambda playlist: len(playlist) >= 3)
+        assert len(out) == 3
+
+
+class TestSettleMoves:
+    def test_dropping_a_single_end_track_can_land_the_target(self):
+        items = tracks(2, 10, 2)
+        out = fit_to_duration(items, 12 * MIN)
+        assert total_ms(out) == 12 * MIN and len(out) == 2
+
+    def test_always_keeps_at_least_one_track(self):
+        assert len(fit_to_duration(tracks(30), MIN)) == 1

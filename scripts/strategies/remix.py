@@ -5,8 +5,8 @@ import re
 import sys
 from urllib.parse import urlparse
 
-from _common import call_api, search_artist, taste_affinity
-from strategies.candidates import _artist_top_songs, _clean_genres, _finish, _similar_artists, _song_candidate
+from _common import call_api, passes_user_filters, search_artist, swap_explicit_for_clean, taste_affinity
+from strategies.candidates import USER_FILTERS, _artist_top_songs, _clean_genres, _finish, _similar_artists, _song_candidate
 from strategies.scoring import (
     OWN_ARTIST_BOOST,
     REMIX_KEEP_BASE,
@@ -17,6 +17,8 @@ from strategies.scoring import (
 
 # What the last run did, for the CLI to report ("you'd keep 14 of 50"). Cleared at the start of each run.
 LAST_REMIX: dict = {}
+
+MAX_PLAYLIST_PAGES = 10  # up to 1,000 tracks
 
 _CATALOG_PLAYLIST_ID = re.compile(r"^pl\.[A-Za-z0-9_-]+$")
 _STOREFRONT = re.compile(r"^[a-z]{2}$")
@@ -41,7 +43,15 @@ def _fetch_playlist(sf: str, playlist_id: str) -> tuple[str, list[dict]]:
     if not data:
         return "", []
     playlist = data[0]
-    tracks = playlist.get("relationships", {}).get("tracks", {}).get("data", [])
+    page = playlist.get("relationships", {}).get("tracks", {})
+    tracks = list(page.get("data", []))
+    pages = 1
+    while page.get("next") and pages < MAX_PLAYLIST_PAGES:  # long playlists come in pages of up to 100
+        page = call_api("catalog-playlist-tracks", sf, playlist_id, str(len(tracks))) or {}
+        if not page.get("data"):
+            break
+        tracks += page["data"]
+        pages += 1
     return playlist.get("attributes", {}).get("name", ""), [t for t in tracks if t.get("type", "songs") == "songs"]
 
 
@@ -74,6 +84,12 @@ def strategy_remix(profile: dict, sf: str, playlist: str, target_size: int = 30,
         score = taste_affinity(genres, user_genres)
         return score + OWN_ARTIST_BOOST if artist_name.lower() in loved_artists else score
 
+    def eligible(song: dict, source: str, reason: str, fallback_artist: str = "") -> dict | None:
+        """The song as a candidate (its clean version in clean mode), or None if your filters rule it out:
+        an excluded artist, a recently used track, an explicit song with no clean version."""
+        c = swap_explicit_for_clean(_song_candidate(song, source, reason, 0.0, fallback_artist), USER_FILTERS)
+        return c if passes_user_filters(c, USER_FILTERS) else None
+
     candidates: list[dict] = []
     dropped: list[dict] = []
     kept_artists: list[str] = []
@@ -84,10 +100,10 @@ def strategy_remix(profile: dict, sf: str, playlist: str, target_size: int = 30,
         attrs = song.get("attributes", {})
         genres = _clean_genres(attrs)
         fits = fit(genres, attrs.get("artistName", ""))
-        if tid in disliked or fits < REMIX_KEEP_MIN:
-            dropped.append(song)
+        c = eligible(song, "remix_keep", "Kept from the original: it fits your taste.")
+        if tid in disliked or fits < REMIX_KEEP_MIN or c is None:
+            dropped.append(song)  # not for you, so it is swapped
             continue
-        c = _song_candidate(song, "remix_keep", "Kept from the original: it fits your taste.", 0.0)
         c["_score"] = REMIX_KEEP_BASE + fits
         candidates.append(c)
         if c["artist"] not in kept_artists:
@@ -107,7 +123,8 @@ def strategy_remix(profile: dict, sf: str, playlist: str, target_size: int = 30,
 
         def usable(top: dict) -> bool:
             tid = top.get("id", "")
-            return bool(tid) and tid not in used and tid not in disliked and tid not in library_ids
+            return (bool(tid) and tid not in used and tid not in disliked and tid not in library_ids
+                    and eligible(top, "remix_swap", "") is not None)
 
         pick: dict | None = None
         reason = ""
@@ -135,12 +152,11 @@ def strategy_remix(profile: dict, sf: str, playlist: str, target_size: int = 30,
                 if more:
                     pick, reason = more[0], f"Swapped '{title}' for more {fan_name}, whom you'd keep from this playlist."
                     break
-        if pick:
-            used.add(pick["id"])
-            top_attrs = pick.get("attributes", {})
-            c = _song_candidate(pick, "remix_swap", reason, 0.0, top_attrs.get("artistName", ""))
-            c["_score"] = REMIX_SWAP_BASE + fit(c["genre"], c["artist"])
-            candidates.append(c)
+        swap = eligible(pick, "remix_swap", reason, pick.get("attributes", {}).get("artistName", "")) if pick else None
+        if swap:
+            used.add(swap["id"])
+            swap["_score"] = REMIX_SWAP_BASE + fit(swap["genre"], swap["artist"])
+            candidates.append(swap)
 
     result = _finish(candidates, target_size, rng=rng)
     kept = sum(1 for t in result if t.get("source") == "remix_keep")

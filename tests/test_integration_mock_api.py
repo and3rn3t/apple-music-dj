@@ -70,6 +70,15 @@ class TestRemixAgainstTheMock:
         assert api.mock.writes() == []
         assert any(q["path"] == "/v1/catalog/us/playlists/pl.demo-alt-essentials" for q in api.mock.requests)
 
+    def test_a_long_playlist_is_read_in_pages(self, api, profile, monkeypatch):
+        monkeypatch.setattr(api.mock.catalog, "playlist_page_size", 4)
+        r = api("strategy_engine.py", "--strategy", "remix", "--profile", profile, "--storefront", "us",
+                "--size", "8", "--playlist-url", "pl.demo-alt-essentials")
+        assert _json(r)["remix"]["original_tracks"] == 13  # all of it, from four pages
+        paths = [(q["path"], q["query"].get("offset")) for q in api.mock.requests if "/playlists/" in q["path"]]
+        assert ("/v1/catalog/us/playlists/pl.demo-alt-essentials/tracks", ["4"]) in paths
+        assert ("/v1/catalog/us/playlists/pl.demo-alt-essentials/tracks", ["12"]) in paths
+
     def test_a_bad_playlist_link_is_refused_before_any_request(self, api, profile):
         r = api("strategy_engine.py", "--strategy", "remix", "--profile", profile, "--storefront", "us",
                 "--playlist-url", "https://evil.example/us/playlist/x/pl.abc", check=False)
@@ -114,6 +123,7 @@ COMMAND_ARGS = {
     "artist-top": ["us", "a1"], "artist-detail": ["us", "a1"], "album-tracks": ["us", "alb1"],
     "song-detail": ["us", "s1"], "genres": ["us"], "similar-artists": ["us", "a1"],
     "songs-by-isrc": ["us", "GBAYE9700001"], "catalog-playlist": ["us", "pl.demo-alt-essentials"],
+    "catalog-playlist-tracks": ["us", "pl.demo-alt-essentials", "0"],
     "create-playlist": ["{ids}", "--yes"], "add-to-playlist": ["p.1", "{ids}", "--yes"],
     "remove-from-playlist": ["p.1", "{ids}", "--yes"], "add-to-library": ["albums", "alb1", "--yes"],
     "favorite": ["songs", "s1", "--yes"], "rate": ["s1", "1", "--yes"], "unrate": ["s1", "--yes"],

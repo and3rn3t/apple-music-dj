@@ -1048,8 +1048,9 @@ class TestMainCli:
 
         def fake(profile, sf, playlist, n, include_library):
             seen.update(playlist=playlist, include=include_library)
-            se.LAST_REMIX.update(name="Chill Vibes", original=50, kept=14, swapped=6)
-            return cli["tracks"]
+            se.LAST_REMIX.update(name="Chill Vibes", original=50)
+            return [{**cli["tracks"][0], "id": f"t{i}", "source": "remix_keep" if i < 14 else "remix_swap"}
+                    for i in range(20)]
 
         monkeypatch.setattr(se, "strategy_remix", fake)
         cli["run"]("--strategy", "remix", "--playlist-url", "pl.abc", "--include-library")
@@ -1576,3 +1577,43 @@ class TestCleanFlag:
 
     def test_config_turns_it_on(self, run):
         assert run({"clean_only": True})["clean_only"] is True
+
+
+class TestRemixCountsAfterMinutes:
+    def test_kept_and_swapped_add_up_to_the_trimmed_playlist(self, monkeypatch, tmp_path, sample_profile, capsys):
+        import sys
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        pool = [{"id": f"t{i}", "name": "N", "artist": f"A{i}", "album": "B", "genre": [], "duration_ms": 180_000,
+                 "source": "remix_keep" if i % 3 else "remix_swap"} for i in range(30)]
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {})
+        monkeypatch.setattr(se, "strategy_remix", lambda *a: se.LAST_REMIX.update(name="P", original=40, kept=20,
+                                                                                swapped=10) or list(pool))
+        monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--strategy", "remix", "--profile", str(profile),
+                                          "--playlist-url", "pl.x", "--minutes", "30"])
+        se.main()
+        out = json.loads(capsys.readouterr().out)
+        assert out["track_count"] < 30
+        assert out["remix"]["kept"] + out["remix"]["swapped"] == out["track_count"]
+        assert out["remix"]["original_tracks"] == 40
+
+
+class TestBlendMinutes:
+    def test_a_trimmed_blend_stays_balanced(self, monkeypatch, tmp_path, sample_profile, capsys):
+        import sys
+        profile = tmp_path / "p.json"
+        profile.write_text(json.dumps(sample_profile))
+        pool = [{"id": f"t{i}", "name": "N", "artist": f"A{i}", "album": "B", "genre": [], "duration_ms": 180_000,
+                 "source": "ab"[i % 2]} for i in range(24)]
+        monkeypatch.setattr(se, "require_env_tokens", lambda: None)
+        monkeypatch.setattr(se, "get_storefront", lambda sf=None: "us")
+        monkeypatch.setattr(se, "load_config", lambda: {})
+        monkeypatch.setattr(se, "strategy_blend", lambda *a: list(pool))
+        monkeypatch.setattr(sys, "argv", ["strategy_engine.py", "--strategy", "blend", "--profile", str(profile),
+                                          "--profile-b", str(profile), "--minutes", "40"])
+        se.main()
+        tracks = json.loads(capsys.readouterr().out)["tracks"]
+        a = sum(1 for t in tracks if t["source"] == "a")
+        assert max(a, len(tracks) - a) / len(tracks) <= se.BLEND_MAX_SHARE + 1e-9

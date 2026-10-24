@@ -131,3 +131,52 @@ class TestRemix:
     def test_the_user_filters_still_apply(self):
         se.USER_FILTERS.update(se.user_filters({"excluded_artists": ["Indie Kids"]}, set()))
         assert "Indie Kids" not in {t["artist"] for t in remix()}
+
+
+class TestPagination:
+    def test_a_long_playlist_is_read_page_by_page(self, monkeypatch):
+        songs = [song(f"p{i}", f"T{i}", "Rockers", ["Rock"]) for i in range(7)]
+        calls = []
+
+        def fake_api(cmd, *args, **kwargs):
+            calls.append((cmd, *args))
+            if cmd == "catalog-playlist":
+                return {"data": [{"id": PLAYLIST_ID, "attributes": {"name": "Long"},
+                                  "relationships": {"tracks": {"data": songs[:3], "next": "/more"}}}]}
+            if cmd == "catalog-playlist-tracks":
+                offset = int(args[2])
+                return {"data": songs[offset:offset + 3], **({"next": "/more"} if offset + 3 < len(songs) else {})}
+            return None
+
+        patch_everywhere(monkeypatch, "call_api", fake_api)
+        strategy_remix(PROFILE, "us", PLAYLIST_ID, 20, rng=random.Random(1))
+        assert LAST_REMIX["original"] == 7
+        assert [c for c in calls if c[0] == "catalog-playlist-tracks"] == [
+            ("catalog-playlist-tracks", "us", PLAYLIST_ID, "3"), ("catalog-playlist-tracks", "us", PLAYLIST_ID, "6")]
+
+    def test_a_server_that_never_stops_paging_is_cut_off(self, monkeypatch):
+        page = [song("p1", "T", "Rockers", ["Rock"])]
+
+        def fake_api(cmd, *args, **kwargs):
+            if cmd == "catalog-playlist":
+                return {"data": [{"id": PLAYLIST_ID, "attributes": {"name": "Loop"},
+                                  "relationships": {"tracks": {"data": page, "next": "/more"}}}]}
+            return {"data": page, "next": "/more"} if cmd == "catalog-playlist-tracks" else None
+
+        patch_everywhere(monkeypatch, "call_api", fake_api)
+        strategy_remix(PROFILE, "us", PLAYLIST_ID, 20, rng=random.Random(1))
+        assert LAST_REMIX["original"] == 10  # MAX_PLAYLIST_PAGES pages of one track
+
+
+class TestEligibility:
+    def test_an_excluded_artist_in_the_original_is_swapped_not_kept(self):
+        se.USER_FILTERS.update(se.user_filters({"excluded_artists": ["Rockers"]}, set()))
+        tracks = remix()
+        assert "Rockers" not in {t["artist"] for t in tracks}
+        assert any(t["source"] == "remix_swap" for t in tracks)  # an eligible alternative was still tried
+
+    def test_a_swap_that_your_filters_rule_out_is_skipped_for_the_next_option(self):
+        se.USER_FILTERS.update(se.user_filters({"excluded_artists": ["Indie Kids"]}, set()))
+        tracks = remix()
+        assert "i-new" not in {t["id"] for t in tracks} and "Indie Kids" not in {t["artist"] for t in tracks}
+        assert any(t["source"] == "remix_swap" for t in tracks)

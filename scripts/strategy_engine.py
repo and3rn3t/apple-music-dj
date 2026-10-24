@@ -71,7 +71,7 @@ from _common import (
     write_private,
 )
 from strategies.blend import strategy_blend
-from strategies.candidates import USER_FILTERS, _cap_per_artist, _enforce_share, _finish
+from strategies.candidates import USER_FILTERS, _cap_per_artist, _enforce_share, _finish, share_within
 from strategies.constellation import strategy_constellation
 from strategies.deep_cuts import _is_alt_version, _title_key, strategy_deep_cuts
 from strategies.duration import MAX_MINUTES, fit_to_duration, pool_size_for, total_ms
@@ -289,7 +289,8 @@ def main():
         recent_ids = get_recent_track_ids(repeat_days)
     USER_FILTERS.clear()
     clean_only = True if args.clean else None  # None: follow config.json
-    USER_FILTERS.update(user_filters(config, recent_ids, profile, clean_only=clean_only, storefront=sf))
+    USER_FILTERS.update(user_filters(config, recent_ids, profile, clean_only=clean_only, storefront=sf,
+                                     include_library=args.include_library))
     profile_b: dict | None = None  # the second listener, for a blend
 
     target_label = f"{args.minutes:g} min" if args.minutes else f"{target_size} tracks"
@@ -327,7 +328,7 @@ def main():
             print(f"  Found {found} of their top artists in the catalog "
                   "(a taste code has no song IDs, so their loved tracks and dislikes aren't used).", file=sys.stderr)
         USER_FILTERS.update(user_filters(config, recent_ids, profile, profile_b, clean_only=clean_only,
-                                         storefront=sf))  # both listeners' ratings
+                                         storefront=sf, include_library=args.include_library))  # both ratings
         tracks = strategy_blend(profile, profile_b, sf, target_size)
     elif args.strategy == "remix":
         if not args.playlist_url:
@@ -351,7 +352,9 @@ def main():
         sys.exit(1)
 
     if args.minutes:
-        tracks = fit_to_duration(tracks, round(args.minutes * 60_000))
+        # A blend must stay balanced after trimming, not just before it
+        keep_balanced = (lambda t: share_within(t, BLEND_MAX_SHARE)) if args.strategy == "blend" else None
+        tracks = fit_to_duration(tracks, round(args.minutes * 60_000), allowed=keep_balanced)
 
     # Generate name & description
     name = args.name or generate_name(args.strategy, args.mood, profile,
@@ -370,8 +373,10 @@ def main():
         result["target_minutes"] = args.minutes
         result["duration_minutes"] = round(total_ms(tracks) / 60_000, 1)
     if args.strategy == "remix":
+        # counted from the final list, so they still add up after --minutes trims it
+        kept = sum(1 for t in tracks if t.get("source") == "remix_keep")
         result["remix"] = {"playlist": LAST_REMIX.get("name", ""), "original_tracks": LAST_REMIX.get("original", 0),
-                           "kept": LAST_REMIX.get("kept", 0), "swapped": LAST_REMIX.get("swapped", 0)}
+                           "kept": kept, "swapped": len(tracks) - kept}
         print(f"🔀 You'd keep {result['remix']['kept']} of {result['remix']['original_tracks']} tracks from "
               f"'{result['remix']['playlist']}'; {result['remix']['swapped']} swapped for closer matches.",
               file=sys.stderr)

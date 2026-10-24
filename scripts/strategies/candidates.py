@@ -96,6 +96,14 @@ def _cap_per_artist(candidates: list[dict], target_size: int, cap: int = ARTIST_
     return picked
 
 
+def share_within(tracks: list[dict], max_share: float) -> bool:
+    """True when neither blend side supplies more than `max_share` of `tracks`."""
+    if not tracks:
+        return True
+    counts = Counter(c.get("source") for c in tracks)
+    return max(counts["a"], counts["b"]) / len(tracks) <= max_share + 1e-9
+
+
 def _enforce_share(selected: list[dict], max_share: float) -> list[dict]:
     """Drop the lowest-scoring tracks from whichever blend side exceeds `max_share` of the
     *final* playlist. `selected` is in descending score order, so the last track of a side

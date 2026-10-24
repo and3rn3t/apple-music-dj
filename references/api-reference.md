@@ -232,6 +232,9 @@ GET /v1/catalog/{storefront}/playlists/{id}?include=tracks
 ```
 An editorial or shared playlist (`pl.…` ID, the last part of its music.apple.com URL) with its tracks in `relationships.tracks.data`.
 Wrapper: `apple_music_api.sh catalog-playlist <storefront> <playlist_id>`.
+A long playlist's `relationships.tracks` carries a `next` link; the rest come from
+`GET /v1/catalog/{storefront}/playlists/{id}/tracks?limit=100&offset=N`
+(wrapper: `apple_music_api.sh catalog-playlist-tracks <storefront> <playlist_id> [offset]`).
 
 ### Genres
 ```

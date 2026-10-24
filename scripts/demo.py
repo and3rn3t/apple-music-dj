@@ -72,7 +72,8 @@ class Catalog:
                  similar: dict[str, list[str]], *, content_ratings: dict[str, str], playlist_id: str,
                  playlist_name: str, playlist_songs: list[str], library_songs: list[str],
                  ratings: dict[str, int], recent_tracks: list[str], library_artists: list[str],
-                 charts: list[str], recently_added_album: str, top_songs: int = 2, spread_top_songs: bool = False):
+                 charts: list[str], recently_added_album: str, top_songs: int = 2, spread_top_songs: bool = False,
+                 playlist_page_size: int = 100):
         self.artists, self.songs, self.albums, self.similar = artists, songs, albums, similar
         self.content_ratings = content_ratings
         self.playlist_id, self.playlist_name, self.playlist_songs = playlist_id, playlist_name, playlist_songs
@@ -80,6 +81,7 @@ class Catalog:
         self.library_artists, self.charts = library_artists, charts
         self.recently_added_album, self.top_songs = recently_added_album, top_songs
         self.spread_top_songs = spread_top_songs
+        self.playlist_page_size = playlist_page_size  # Apple pages long playlists; tests shrink this
 
     def top_songs_for(self, aid: str) -> list[dict]:
         """An artist's top songs. SMALL_CATALOG keeps catalog order; DEMO_CATALOG takes one song from
@@ -488,6 +490,14 @@ class MockAppleMusic:
             return 204, None
         return 404, {"errors": [{"status": "404", "detail": f"no mock for {method} {path}"}]}
 
+    @staticmethod
+    def _playlist_page(cat: "Catalog", offset: int) -> dict:
+        ids = cat.playlist_songs[offset:offset + cat.playlist_page_size]
+        page: dict = {"data": [cat.song(sid) for sid in ids]}
+        if offset + len(ids) < len(cat.playlist_songs):
+            page["next"] = f"/v1/catalog/us/playlists/{cat.playlist_id}/tracks?offset={offset + len(ids)}"
+        return page
+
     def _catalog(self, rest: list[str], q: dict) -> tuple[int, dict]:
         cat = self.catalog
         if rest == ["charts"]:
@@ -529,10 +539,13 @@ class MockAppleMusic:
             if len(rest) == 2:
                 return 200, {"data": [cat.artist(aid)]}
         if len(rest) == 2 and rest[0] == "playlists" and rest[1] == cat.playlist_id:
+            page = self._playlist_page(cat, 0)
             return 200, {"data": [{
                 "id": cat.playlist_id, "type": "playlists",
                 "attributes": {"name": cat.playlist_name, "curatorName": "Apple Music Alternative"},
-                "relationships": {"tracks": {"data": [cat.song(sid) for sid in cat.playlist_songs]}}}]}
+                "relationships": {"tracks": page}}]}
+        if len(rest) == 3 and rest[0] == "playlists" and rest[1] == cat.playlist_id and rest[2] == "tracks":
+            return 200, self._playlist_page(cat, int(q.get("offset", ["0"])[0]))
         if len(rest) == 2 and rest[0] == "albums" and rest[1] in cat.albums:
             a = cat.album(rest[1])
             a["relationships"] = {"tracks": {"data": [cat.song(r[0]) for r in cat.songs if r[5] == rest[1]]}}

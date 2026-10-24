@@ -4,7 +4,7 @@ import random
 import sys
 
 from _common import best_genre_match, call_api, get_album_tracks, search_artist, taste_affinity
-from strategies.candidates import _artist_top_songs, _clean_genres, _finish, _first_data, _similar_artists, _song_candidate
+from strategies.candidates import USER_FILTERS, _artist_top_songs, _clean_genres, _finish, _first_data, _similar_artists, _song_candidate
 from strategies.scoring import OWN_ARTIST_BOOST, SEED_BASE, SEED_MATCH_WEIGHT, TASTE_WEIGHT
 
 
@@ -65,6 +65,7 @@ def strategy_seed(profile: dict, sf: str, seed: str, seed_type: str = "auto",
     library_ids = set() if include_library else set(profile.get("library_song_ids", []))
     disliked = set(profile.get("disliked_song_ids", []))
     seed_song_id = (song or {}).get("id", "")
+    USER_FILTERS.setdefault("blocked_ids", set()).add(seed_song_id)  # a clean twin must not bring the seed back
 
     def score(genres: list[str], artist_name: str, base: float) -> float:
         total = (base + SEED_MATCH_WEIGHT * best_genre_match(genres, seed_genres)

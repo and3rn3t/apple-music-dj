@@ -41,7 +41,7 @@ To try changes on your own library as well, run `python3 scripts/setup_auth.py` 
 
 **Python:**
 
-- Python 3.11+ (CI tests 3.11, 3.12, 3.14 and 3.15 on Linux, and 3.14 on macOS)
+- Python 3.11+ (CI tests 3.11 through 3.15 on Linux, and 3.14 on macOS)
 - No pip dependencies for core scripts (stdlib only)
 - `PyJWT` is the only exception (for token generation)
 - Functions use `snake_case`, classes use `PascalCase`

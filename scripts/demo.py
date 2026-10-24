@@ -275,6 +275,8 @@ class MockAppleMusic:
     def _catalog(self, rest: list[str], q: dict) -> tuple[int, dict]:
         if rest == ["charts"]:
             return 200, {"results": {"songs": [{"name": "Top Songs", "data": [song("s9"), song("s12")]}]}}
+        if rest == ["genres"]:
+            return 200, {"data": [{"id": "20", "type": "genres", "attributes": {"name": "Alternative"}}]}
         if rest == ["search"]:
             term = (q.get("term", [""])[0]).lower()
             types = (q.get("types", ["songs"])[0]).split(",")

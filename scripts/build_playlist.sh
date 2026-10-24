@@ -35,7 +35,7 @@ case "$MODE" in
     IDS_FILE="${4:?Usage: build_playlist.sh create <name> <description> <song_ids_file>}"
     [[ ! -f "$IDS_FILE" ]] && { echo "ERROR: File not found: ${IDS_FILE}" >&2; exit 1; }
 
-    track_count=$(grep -c -v '^\s*$' "$IDS_FILE" 2>/dev/null || echo 0)
+    track_count=$(grep -c -v '^\s*$' "$IDS_FILE" 2>/dev/null || true)
     [[ "$track_count" -eq 0 ]] && { echo "ERROR: No song IDs in ${IDS_FILE}" >&2; exit 1; }
     _require_yes "create playlist '${NAME}' with ${track_count} tracks"
 
@@ -84,7 +84,7 @@ case "$MODE" in
     IDS_FILE="${3:?Usage: build_playlist.sh refresh <playlist_id> <song_ids_file>}"
     [[ ! -f "$IDS_FILE" ]] && { echo "ERROR: File not found: ${IDS_FILE}" >&2; exit 1; }
 
-    track_count=$(grep -c -v '^\s*$' "$IDS_FILE" 2>/dev/null || echo 0)
+    track_count=$(grep -c -v '^\s*$' "$IDS_FILE" 2>/dev/null || true)
     [[ "$track_count" -eq 0 ]] && { echo "ERROR: No song IDs in ${IDS_FILE}" >&2; exit 1; }
 
     _require_yes "add ${track_count} tracks to playlist ${PID}"
@@ -107,7 +107,7 @@ case "$MODE" in
     IDS_FILE="${3:?Usage: build_playlist.sh remove <playlist_id> <song_ids_file>}"
     [[ ! -f "$IDS_FILE" ]] && { echo "ERROR: File not found: ${IDS_FILE}" >&2; exit 1; }
 
-    track_count=$(grep -c -v '^\s*$' "$IDS_FILE" 2>/dev/null || echo 0)
+    track_count=$(grep -c -v '^\s*$' "$IDS_FILE" 2>/dev/null || true)
     [[ "$track_count" -eq 0 ]] && { echo "ERROR: No song IDs in ${IDS_FILE}" >&2; exit 1; }
 
     _require_yes "remove ${track_count} tracks from playlist ${PID}"

@@ -5,8 +5,9 @@ PYTHON ?= python3
 ## Create .venv, install the dev tools, and check the system tools the scripts and CI need
 setup:
 	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else "ERROR: Python 3.11+ is required (this is $(PYTHON))")'
-	@# A venv copied or moved from another folder keeps scripts that point at the old path: rebuild it
-	@.venv/bin/pip --version >/dev/null 2>&1 || $(PYTHON) -m venv --clear .venv
+	@# A venv copied or moved from another folder keeps scripts whose #! line names the old one (and still
+	@# works while the old folder exists): rebuild it unless pip's #! line points into this .venv
+	@.venv/bin/python -c 'import pathlib, sys; first = pathlib.Path(".venv/bin/pip").read_text().splitlines()[0]; sys.exit(0 if first.startswith("#!" + str(pathlib.Path(".venv/bin").resolve()) + "/") else 1)' 2>/dev/null || $(PYTHON) -m venv --clear .venv
 	@.venv/bin/python -m pip install --quiet --upgrade pip
 	@.venv/bin/python -m pip install --quiet -e ".[dev]"
 	@missing=0; \

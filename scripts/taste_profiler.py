@@ -36,6 +36,7 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, UTC
 from pathlib import Path
+from typing import Any
 
 from _common import (
     GENRE_ENERGY,
@@ -285,8 +286,8 @@ def compute_mainstream_score(top_artists: list[dict], chart_data: dict | None,
 
 def extract_ratings(ratings_data: dict | None) -> tuple[list[str], list[str]]:
     """Extract loved and disliked song IDs from ratings."""
-    loved_ids = []
-    disliked_song_ids = []
+    loved_ids: list[str] = []
+    disliked_song_ids: list[str] = []
     if not ratings_data or "data" not in ratings_data:
         return loved_ids, disliked_song_ids
     for item in ratings_data.get("data", []):
@@ -332,7 +333,7 @@ def build_rating_signals(ratings_data: dict | None, known_tracks: list[dict], st
 
 def extract_replay_highlights(summary_data: dict | None, milestones_data: dict | None) -> dict:
     """Extract Replay / Music Summaries highlights."""
-    highlights = {
+    highlights: dict[str, Any] = {
         "available": False,
         "top_artist_all_time": None,
         "total_minutes_latest_year": None,

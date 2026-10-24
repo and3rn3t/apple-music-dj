@@ -45,12 +45,13 @@ make coverage       # pytest with --cov-fail-under=90 (CI's floor)
 make ruff           # ruff check scripts tests .github/scripts + shellcheck scripts/*.sh
 make lint           # syntax-check every scripts/*.py and scripts/*.sh
 make actionlint     # lint workflows
-make ci             # ruff + coverage + actionlint — everything CI checks
+make typecheck      # mypy on scripts/ (non-strict)
+make ci             # ruff + mypy + coverage + actionlint — everything CI checks
 make audit          # pre-publish self-audit (trust claims, listing, packaging, diff since last tag)
 make demo-svg       # regenerate assets/demo-tour.svg after the demo tour changes
 ```
 
-Dev deps: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, pyyaml); token generation
+Dev deps: `pip install -e ".[dev]"` (pytest, pytest-cov, pytest-xdist, ruff, mypy, pyyaml); token generation
 needs `requirements.txt` (`PyJWT`, `cryptography`). ShellCheck and actionlint come from the
 system (e.g. Homebrew).
 

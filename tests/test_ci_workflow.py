@@ -117,4 +117,11 @@ def test_release_runs_the_full_ci_gate():
     publish = yaml.safe_load((ROOT / ".github" / "workflows" / "publish-clawhub.yml").read_text())
     run = next(s for s in publish["jobs"]["verify"]["steps"] if s.get("name") == "Lint and test")["run"]
     assert '-e ".[dev]"' in run
-    assert "make ruff coverage" in run
+    assert "make ruff typecheck coverage" in run
+
+
+def test_lint_job_type_checks_with_a_pinned_mypy():
+    assert dev_pin("mypy")
+    assert step("lint", "Mypy")["run"].strip() == "mypy"
+    assert "typecheck" in (ROOT / "Makefile").read_text().split("\nci:")[1].splitlines()[0]
+

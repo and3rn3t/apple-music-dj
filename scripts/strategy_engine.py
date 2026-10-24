@@ -83,7 +83,7 @@ SCRIPT_DIR = Path(__file__).parent
 
 # ── Mood/Activity Mapping ────────────────────────────────────────
 
-MOOD_MAP = {
+MOOD_MAP: dict[str, dict] = {
     "workout": {
         "arc": "ascending",
         "energy": "high", "genres": ["Electronic", "Hip-Hop/Rap", "Pop", "Rock", "Dance"],

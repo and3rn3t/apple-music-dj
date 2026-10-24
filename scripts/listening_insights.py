@@ -26,6 +26,7 @@ import argparse
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from _common import call_api, load_profile
 
@@ -47,7 +48,7 @@ def cmd_timeline(profile: dict) -> dict:
         print(f"  Fetching {year}...", file=sys.stderr)
         summary = call_api("replay-summary", str(year))
         if summary and "data" in summary and summary["data"]:
-            year_info = {"year": year}
+            year_info: dict[str, Any] = {"year": year}
             for s in summary["data"]:
                 attrs = s.get("attributes", {})
                 year_info["listen_minutes"] = attrs.get("listenTimeInMinutes")

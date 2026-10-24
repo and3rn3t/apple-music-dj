@@ -85,7 +85,7 @@ jobs:
       - name: Lint and test
         run: |
           pip install -r requirements.txt -e ".[dev]"
-          make ruff coverage
+          make ruff typecheck coverage
 
   publish:
     name: Publish to ClawHub

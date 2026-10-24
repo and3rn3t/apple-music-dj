@@ -104,7 +104,7 @@ jobs:
             requirements.txt
             pyproject.toml
 
-      # ruff and ShellCheck come pinned from the [dev] extra; tests/test_ci_workflow.py keeps those
+      # ruff, mypy and ShellCheck come pinned from the [dev] extra; tests/test_ci_workflow.py keeps those
       # pins equal to the revs in .pre-commit-config.yaml.
       - name: Install the linters
         run: pip install -e ".[dev]"
@@ -116,6 +116,9 @@ jobs:
         run: |
           shellcheck --version | head -2
           shellcheck scripts/*.sh
+
+      - name: Mypy
+        run: mypy
 
   test:
     needs: changes

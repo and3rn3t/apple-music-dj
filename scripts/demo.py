@@ -40,6 +40,7 @@ import json
 import threading
 import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 
@@ -56,7 +57,7 @@ class LoopbackHTTPServer(ThreadingHTTPServer):
 
 # ── Fixed catalog ────────────────────────────────────────────────
 
-ARTISTS = {
+ARTISTS: dict[str, dict[str, Any]] = {
     "a1": {"name": "Radiohead", "genres": ["Alternative", "Music"]},
     "a2": {"name": "Oasis", "genres": ["Rock", "Alternative", "Music"]},
     "a3": {"name": "Björk", "genres": ["Electronic", "Music"]},
@@ -131,6 +132,7 @@ class MockAppleMusic:
 
     @property
     def url(self) -> str:
+        assert self._server is not None, "start() the mock first"
         return f"http://127.0.0.1:{self._server.server_address[1]}"
 
     def start(self) -> "MockAppleMusic":
@@ -161,6 +163,8 @@ class MockAppleMusic:
                 user = bool(self.headers.get("Music-User-Token"))
                 mock.requests.append({"method": method, "path": unquote(url.path), "query": query,
                                       "body": body, "auth": auth, "user_token": user})
+                status: int
+                payload: dict | None
                 if not auth:
                     status, payload = 401, {"errors": [{"status": "401"}]}
                 elif "/me/" in url.path + "/" and not user:

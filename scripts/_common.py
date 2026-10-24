@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import time
+from typing import Any, Literal, overload
 from datetime import datetime, UTC
 from pathlib import Path
 import contextlib
@@ -272,7 +273,11 @@ def _run_with_term_grace(cmd: list[str], timeout: float, grace: float = 5) -> su
         return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
-def call_api(command: str, *args, raw: bool = False) -> dict | list | str | None:
+@overload
+def call_api(command: str, *args: str, raw: Literal[True]) -> str | None: ...
+@overload
+def call_api(command: str, *args: str, raw: Literal[False] = False) -> Any: ...
+def call_api(command: str, *args: str, raw: bool = False) -> Any:
     """Call apple_music_api.sh and parse JSON output.
 
     If raw=True, return stdout as a stripped string instead of parsing JSON.

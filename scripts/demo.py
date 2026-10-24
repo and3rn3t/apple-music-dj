@@ -87,6 +87,7 @@ ALBUMS = {
     "alb5": ("Homogenic", "a3", "1997-09-22"),
 }
 SIMILAR = {"a1": ["a2", "a4"], "a2": ["a1"], "a3": ["a1"], "a4": ["a1", "a2"]}
+CATALOG_PLAYLIST_ID = "pl.demo-alt-essentials"
 LIBRARY_SONGS = ["s1", "s4"]
 RATINGS = {"s5": 1, "s11": -1}
 RECENT_TRACKS = ["s1", "s2", "s6"]
@@ -316,6 +317,11 @@ class MockAppleMusic:
                 return 200, {"data": [a]}
             if len(rest) == 2:
                 return 200, {"data": [artist(aid)]}
+        if len(rest) == 2 and rest[0] == "playlists" and rest[1] == CATALOG_PLAYLIST_ID:
+            return 200, {"data": [{
+                "id": CATALOG_PLAYLIST_ID, "type": "playlists",
+                "attributes": {"name": "Alt Essentials", "curatorName": "Apple Music Alternative"},
+                "relationships": {"tracks": {"data": [song(r[0]) for r in _SONGS[:24]]}}}]}
         if len(rest) == 2 and rest[0] == "albums" and rest[1] in ALBUMS:
             a = album(rest[1])
             a["relationships"] = {"tracks": {"data": [song(r[0]) for r in _SONGS if r[5] == rest[1]]}}

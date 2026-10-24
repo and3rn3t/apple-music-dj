@@ -365,6 +365,14 @@ cmd_song_detail() {
   _get_catalog "/v1/catalog/${sf}/songs/${id}?include=artists,albums" | jq .
 }
 
+cmd_catalog_playlist() {
+  local sf="${1:?Usage: catalog-playlist <storefront> <playlist_id>}"
+  local id="${2:?Usage: catalog-playlist <storefront> <playlist_id>}"
+  [[ "$sf" =~ ^[a-z]{2}$ ]] || { echo "ERROR: Invalid storefront code: $sf" >&2; return 1; }
+  [[ "$id" =~ ^pl\.[A-Za-z0-9_-]+$ ]] || { echo "ERROR: Invalid catalog playlist ID: $id (expected pl.…)" >&2; return 1; }
+  _get_catalog "/v1/catalog/${sf}/playlists/${id}?include=tracks" | jq .
+}
+
 cmd_genres() {
   local sf="${1:?Usage: genres <storefront>}"
   [[ "$sf" =~ ^[a-z]{2}$ ]] || { echo "ERROR: Invalid storefront code: $sf" >&2; return 1; }
@@ -524,6 +532,7 @@ case "$cmd" in
   album-tracks)      cmd_album_tracks "$@" ;;
   song-detail)       cmd_song_detail "$@" ;;
   genres)            cmd_genres "$@" ;;
+  catalog-playlist)  cmd_catalog_playlist "$@" ;;
   library-playlists) cmd_library_playlists "$@" ;;
   playlist-tracks)   cmd_playlist_tracks "$@" ;;
   create-playlist)   cmd_create_playlist "$@" ;;
@@ -576,6 +585,7 @@ Catalog (require dev token only):
   album-tracks <storefront> <id>      Album with track listing
   song-detail <storefront> <id>       Song with artist & album info
   genres <storefront>                  List all genre categories
+  catalog-playlist <storefront> <id>  An Apple Music (catalog) playlist with its tracks
   similar-artists <storefront> <id>   Artists similar to an artist
   songs-by-isrc <storefront> <isrcs>  Look up songs by ISRC (max 25)
 EOF

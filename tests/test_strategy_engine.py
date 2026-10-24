@@ -1039,6 +1039,27 @@ class TestMainCli:
         out = json.loads(capsys.readouterr().out)
         assert "duration_minutes" not in out and "target_minutes" not in out
 
+    def test_remix_requires_a_playlist_link(self, cli):
+        with pytest.raises(SystemExit):
+            cli["run"]("--strategy", "remix")
+
+    def test_remix_reports_how_much_was_kept(self, cli, monkeypatch, capsys):
+        seen = {}
+
+        def fake(profile, sf, playlist, n, include_library):
+            seen.update(playlist=playlist, include=include_library)
+            se.LAST_REMIX.update(name="Chill Vibes", original=50, kept=14, swapped=6)
+            return cli["tracks"]
+
+        monkeypatch.setattr(se, "strategy_remix", fake)
+        cli["run"]("--strategy", "remix", "--playlist-url", "pl.abc", "--include-library")
+        captured = capsys.readouterr()
+        out = json.loads(captured.out)
+        assert seen == {"playlist": "pl.abc", "include": True}
+        assert out["remix"] == {"playlist": "Chill Vibes", "original_tracks": 50, "kept": 14, "swapped": 6}
+        assert out["name"].startswith("Remix: Chill Vibes")
+        assert "keep 14 of 50" in captured.err
+
     def test_seed_requires_seed(self, cli):
         with pytest.raises(SystemExit):
             cli["run"]("--strategy", "similar")

@@ -59,6 +59,24 @@ def _json(r):
     return json.loads(r.stdout)
 
 
+class TestRemixAgainstTheMock:
+    def test_remixes_a_catalog_playlist_by_url(self, api, profile):
+        r = api("strategy_engine.py", "--strategy", "remix", "--profile", profile, "--storefront", "us", "--size", "8",
+                "--playlist-url", "https://music.apple.com/us/playlist/alt-essentials/pl.demo-alt-essentials")
+        out = _json(r)
+        assert out["remix"]["playlist"] == "Alt Essentials" and out["remix"]["original_tracks"] == 12
+        assert out["remix"]["kept"] + out["remix"]["swapped"] == out["track_count"] > 0
+        assert {t["source"] for t in out["tracks"]} <= {"remix_keep", "remix_swap"}
+        assert api.mock.writes() == []
+        assert any(q["path"] == "/v1/catalog/us/playlists/pl.demo-alt-essentials" for q in api.mock.requests)
+
+    def test_a_bad_playlist_link_is_refused_before_any_request(self, api, profile):
+        r = api("strategy_engine.py", "--strategy", "remix", "--profile", profile, "--storefront", "us",
+                "--playlist-url", "https://evil.example/us/playlist/x/pl.abc", check=False)
+        assert r.returncode == 1 and "Apple Music playlist link" in r.stderr
+        assert not any("/playlists/" in q["path"] for q in api.mock.requests)
+
+
 class TestStalledRequest:
     def test_timeout_ends_script_with_sigterm_and_leaves_no_token_files(self, api, monkeypatch):
         import socket
@@ -95,7 +113,7 @@ COMMAND_ARGS = {
     "search": ["us", "radiohead"], "charts": ["us"], "artist-albums": ["us", "a1"],
     "artist-top": ["us", "a1"], "artist-detail": ["us", "a1"], "album-tracks": ["us", "alb1"],
     "song-detail": ["us", "s1"], "genres": ["us"], "similar-artists": ["us", "a1"],
-    "songs-by-isrc": ["us", "GBAYE9700001"],
+    "songs-by-isrc": ["us", "GBAYE9700001"], "catalog-playlist": ["us", "pl.demo-alt-essentials"],
     "create-playlist": ["{ids}", "--yes"], "add-to-playlist": ["p.1", "{ids}", "--yes"],
     "remove-from-playlist": ["p.1", "{ids}", "--yes"], "add-to-library": ["albums", "alb1", "--yes"],
     "favorite": ["songs", "s1", "--yes"], "rate": ["s1", "1", "--yes"], "unrate": ["s1", "--yes"],

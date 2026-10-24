@@ -14,6 +14,7 @@ Strategies:
   similar         Songs like an artist or song (requires --similar-to; `seed` still works as an alias)
   era             Throwback from one decade (--decade, default: your top era)
   blend           One playlist for two listeners (requires --profile-b)
+  remix           An Apple Music playlist made to fit your taste (requires --playlist-url)
 
 Usage:
   python3 strategy_engine.py --strategy deep-cuts --profile <path> --storefront <sf>
@@ -24,6 +25,7 @@ Usage:
   python3 strategy_engine.py --strategy similar --similar-to "Radiohead" --profile <path> --storefront <sf>
   python3 strategy_engine.py --strategy era --decade 90s --profile <path> --storefront <sf>
   python3 strategy_engine.py --strategy blend --profile <a.json> --profile-b <b.json> --storefront <sf>
+  python3 strategy_engine.py --strategy remix --playlist-url <link or pl.id> --profile <path> --storefront <sf>
 
 Common options:
   --name NAME         Custom playlist name (auto-generated if omitted)
@@ -82,6 +84,7 @@ from strategies.era import _release_decade  # noqa: F401  (re-exported for calle
 from strategies.mood import MOOD_MAP, strategy_mood
 from strategies.mood import MOOD_ENERGY  # noqa: F401  (re-exported for callers and tests)
 from strategies.refresh import strategy_refresh
+from strategies.remix import LAST_REMIX, strategy_remix
 from strategies.scoring import ARTIST_CAP  # noqa: F401  (re-exported for callers and tests)
 from strategies.scoring import BLEND_MAX_SHARE  # noqa: F401  (re-exported for callers and tests)
 from strategies.scoring import MIN_ENERGY_FIT  # noqa: F401  (re-exported for callers and tests)
@@ -120,6 +123,8 @@ def generate_name(strategy: str, mood: str | None = None,
         return f"Like {seed or 'Your Favorites'} · {date_str}"
     elif strategy == "blend":
         return f"Blend · {date_str}"
+    elif strategy == "remix":
+        return f"Remix: {seed} · {date_str}" if seed else f"Remix · {date_str}"
     elif strategy == "era":
         return f"{decade} Throwback · {date_str}" if decade else f"Throwback · {date_str}"
     return f"Apple Music DJ · {date_str}"
@@ -142,6 +147,8 @@ def generate_description(strategy: str, mood: str | None = None,
                    "weighted toward what you already like.",
         "blend": "One playlist for two listeners: the artists you share, plus each "
                  "other's favorites that fit both tastes.",
+        "remix": "An Apple Music playlist remixed for you: what fits your taste stays, "
+                 "the rest is swapped for closer matches.",
         "era": "A trip back to one decade, built from the artists and genres you play most.",
     }
     desc = descriptions.get(strategy, "Curated by Apple Music DJ.")
@@ -222,7 +229,7 @@ def main():
         description="Apple Music DJ — Playlist Strategy Engine"
     )
     parser.add_argument("--strategy", required=True,
-                        choices=["deep-cuts", "mood", "trend", "constellation", "refresh", "similar", "seed", "era", "blend"],
+                        choices=["deep-cuts", "mood", "trend", "constellation", "refresh", "similar", "seed", "era", "blend", "remix"],
                         help="Playlist strategy to use")
     parser.add_argument("--profile", required=True, help="Path to taste profile JSON")
     parser.add_argument("--storefront", default=None, help="Storefront code")
@@ -230,6 +237,8 @@ def main():
                         help=f"Mood for mood strategy ({', '.join(MOOD_MAP)})")
     parser.add_argument("--playlist-id", default=None,
                         help="Playlist ID for refresh strategy")
+    parser.add_argument("--playlist-url", default=None,
+                        help="Apple Music playlist link (or pl.… ID) to remix, for the remix strategy")
     parser.add_argument("--profile-b", default=None,
                         help="Second listener's taste profile JSON, or a taste code (amdj1:...) they sent you (blend strategy)")
     parser.add_argument("--similar-to", dest="similar_to", default=None,
@@ -321,6 +330,11 @@ def main():
                   "(a taste code has no song IDs, so their loved tracks and dislikes aren't used).", file=sys.stderr)
         USER_FILTERS.update(user_filters(config, recent_ids, profile, profile_b))  # both listeners' ratings
         tracks = strategy_blend(profile, profile_b, sf, target_size)
+    elif args.strategy == "remix":
+        if not args.playlist_url:
+            print("ERROR: --playlist-url required for the remix strategy.", file=sys.stderr)
+            sys.exit(1)
+        tracks = strategy_remix(profile, sf, args.playlist_url, target_size, args.include_library)
     elif args.strategy == "era":
         try:
             eras = profile.get("era_distribution", [])
@@ -341,7 +355,9 @@ def main():
         tracks = fit_to_duration(tracks, round(args.minutes * 60_000))
 
     # Generate name & description
-    name = args.name or generate_name(args.strategy, args.mood, profile, args.similar_to, args.decade)
+    name = args.name or generate_name(args.strategy, args.mood, profile,
+                                      LAST_REMIX.get("name") if args.strategy == "remix" else args.similar_to,
+                                      args.decade)
     description = generate_description(args.strategy, args.mood, len(tracks))
 
     result = {
@@ -354,6 +370,12 @@ def main():
     if args.minutes:
         result["target_minutes"] = args.minutes
         result["duration_minutes"] = round(total_ms(tracks) / 60_000, 1)
+    if args.strategy == "remix":
+        result["remix"] = {"playlist": LAST_REMIX.get("name", ""), "original_tracks": LAST_REMIX.get("original", 0),
+                           "kept": LAST_REMIX.get("kept", 0), "swapped": LAST_REMIX.get("swapped", 0)}
+        print(f"🔀 You'd keep {result['remix']['kept']} of {result['remix']['original_tracks']} tracks from "
+              f"'{result['remix']['playlist']}'; {result['remix']['swapped']} swapped for closer matches.",
+              file=sys.stderr)
     steered = rating_summary(*(p.get("rating_signals") or {} for p in (profile, profile_b) if p))
     if steered["boosted_artists"] or steered["demoted_artists"]:
         result["steered_by_ratings"] = steered

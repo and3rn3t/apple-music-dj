@@ -247,6 +247,33 @@ contributes only what plausibly fits the other's taste.
 
 ---
 
+## Strategy 9: Remix
+
+### Philosophy
+
+Every editorial and shared playlist on Apple Music is a starting point. Keep what you'd have
+picked yourself, swap what you wouldn't, and say which is which.
+
+### Algorithm
+
+1. `--playlist-url` takes a music.apple.com playlist link or a bare `pl.…` ID (anything else is refused before
+   any request); fetch the playlist with its tracks (`apple_music_api.sh catalog-playlist`)
+2. Score each track by `taste_affinity` against your genres, plus a small boost for artists you play;
+   library songs are skipped (unless `--include-library`), disliked ones are always dropped
+3. Keep tracks that fit (`REMIX_KEEP_MIN` in `strategies/scoring.py`, `source: remix_keep`)
+4. For each dropped track (up to 12), the first match of: the same artist's other top song that fits you;
+   a similar artist's top song that fits you; more from an artist whose tracks you are keeping
+   (`source: remix_swap`, with a `reason` naming the track it replaced)
+5. Rank (kept tracks above swaps), apply your `config.json` filters, cap per artist and album, sequence with the wave arc
+
+### Naming and output
+
+- "Remix: Party Starters · Oct 2026"; the JSON has `remix: {playlist, original_tracks, kept, swapped}`,
+  and the run prints "You'd keep 14 of 50 tracks".
+- Works with `--size` and `--minutes` like every strategy.
+
+---
+
 ## Sequencing Guide (All Strategies)
 
 ### The Arc

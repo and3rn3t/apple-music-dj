@@ -75,6 +75,9 @@ CHARTS = {"results": {"songs": [{"data": [
     _song(i, j, k) for k in (2, 3) for j in range(ALBUMS_PER_ARTIST) for i in range(len(ARTISTS))]}]}}
 
 
+REMIX_PLAYLIST_ID = "pl.testhits"
+
+
 def fake_api(cmd: str, *args, **kwargs):
     if cmd == "charts":
         return CHARTS
@@ -95,6 +98,14 @@ def fake_api(cmd: str, *args, **kwargs):
     if cmd == "song-detail":
         i, j, k = (int(x) for x in args[1].removeprefix("s").split("-"))
         return {"data": [_song(i, j, k)]}
+    if cmd == "catalog-playlist":
+        if args[1] != REMIX_PLAYLIST_ID:
+            return None
+        liked = [_song(i, j, k) for i in (6, 7, 12, 13, 0, 1) for j in range(2) for k in (1, 2, 3)]  # what ELECTRO_FAN keeps
+        unliked = [_song(i, 0, k) for i in (3, 4, 9, 10, 11, 14, 15, 16) for k in (1, 2)]  # what they wouldn't
+        owned_and_disliked = [_song(0, 0, 3), _song(1, 0, 4)]  # already in your library / thumbs-down
+        return {"data": [{"id": REMIX_PLAYLIST_ID, "type": "playlists", "attributes": {"name": "Big Hits"},
+                          "relationships": {"tracks": {"data": liked + unliked + owned_and_disliked}}}]}
     if cmd == "playlist-tracks":
         return {"data": [_song(0, 0, k) | {"id": f"pl{k}"} for k in range(1, 6)]
                 + [_song(1, 0, k) | {"id": f"pl1-{k}"} for k in range(1, 4)]}
@@ -157,6 +168,7 @@ STRATEGIES = {
     "constellation": lambda rng, size=SIZE: se.strategy_constellation(ROCK_FAN, "us", size, rng=rng),
     "similar": lambda rng, size=SIZE: se.strategy_seed(ROCK_FAN, "us", "Static Bloom", "artist", size, rng=rng),
     "era": lambda rng, size=SIZE: se.strategy_era(ROCK_FAN, "us", "1990s", size, rng=rng),
+    "remix": lambda rng, size=SIZE: se.strategy_remix(ELECTRO_FAN, "us", REMIX_PLAYLIST_ID, size, rng=rng),
     "blend": lambda rng, size=SIZE: se.strategy_blend(ROCK_FAN, ELECTRO_FAN, "us", size, rng=rng),
 }
 

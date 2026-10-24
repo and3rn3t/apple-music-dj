@@ -595,6 +595,21 @@ class TestDataFileErrors:
         assert "line 1" in err
         assert str(bad) in err
 
+    @pytest.mark.parametrize("content, kind", [("[1, 2]", "list"), ("null", "NoneType"), ('"text"', "str"),
+                                                ("3", "int")])
+    @pytest.mark.parametrize("mode", ["compatibility", "year-review", "drift"])
+    def test_valid_json_that_is_not_an_object_is_refused(self, tmp_path, monkeypatch, capsys, mode, content, kind):
+        data = tmp_path / "data.json"
+        data.write_text(content, encoding="utf-8")
+        err = self._run(tmp_path, monkeypatch, capsys, data, mode=mode)
+        assert "must hold a JSON object" in err and kind in err and str(data) in err
+        assert "Traceback" not in err
+
+    def test_an_empty_data_file_is_reported_as_invalid_json(self, tmp_path, monkeypatch, capsys):
+        empty = tmp_path / "empty.json"
+        empty.write_text("", encoding="utf-8")
+        assert "Invalid JSON" in self._run(tmp_path, monkeypatch, capsys, empty, mode="year-review")
+
     def test_unreadable_data_path_is_reported(self, tmp_path, monkeypatch, capsys):
         directory = tmp_path / "data-dir"
         directory.mkdir()

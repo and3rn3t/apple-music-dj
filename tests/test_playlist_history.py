@@ -187,6 +187,24 @@ class TestCmdLog:
         captured = capsys.readouterr()
         assert "t1" in captured.out
 
+    @pytest.mark.parametrize("kind", ["missing", "directory", "binary"])
+    def test_unreadable_ids_file_is_reported_not_raised(self, tmp_path, monkeypatch, capsys, kind):
+        monkeypatch.setattr(ph, "HISTORY_FILE", tmp_path / "history.json")
+        path = tmp_path / "ids.txt"
+        if kind == "directory":
+            path.mkdir()
+        elif kind == "binary":
+            path.write_bytes(b"\xff\xfe\x00bad")
+
+        args = MagicMock()
+        args.name, args.strategy, args.track_ids_file, args.track_ids = "Test", "mood", str(path), None
+
+        with pytest.raises(SystemExit) as exc:
+            ph.cmd_log(args)
+        err = capsys.readouterr().err
+        assert exc.value.code == 1 and err.startswith("ERROR:") and str(path) in err
+        assert not (tmp_path / "history.json").exists()  # nothing was logged
+
     def test_log_exits_with_no_ids(self, tmp_path, monkeypatch):
         monkeypatch.setattr(ph, "HISTORY_FILE", tmp_path / "history.json")
 

@@ -1,4 +1,19 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>and3rn3t/.github//renovate-config"]
+  "extends": ["github>and3rn3t/.github//renovate-config"],
+  "pre-commit": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "ruff is pinned in pyproject.toml's [dev] extra and .pre-commit-config.yaml; tests/test_ci_workflow.py fails unless both move together",
+      "matchPackageNames": ["ruff", "astral-sh/ruff-pre-commit"],
+      "groupName": "ruff"
+    },
+    {
+      "description": "ShellCheck is pinned as shellcheck-py (pyproject.toml) and shellcheck-precommit (.pre-commit-config.yaml); same guard",
+      "matchPackageNames": ["shellcheck-py", "koalaman/shellcheck-precommit"],
+      "groupName": "ShellCheck"
+    }
+  ]
 }

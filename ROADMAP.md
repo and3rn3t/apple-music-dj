@@ -11,14 +11,20 @@ Issues are scheduled in milestones: [Launch](https://github.com/and3rn3t/apple-m
 [Later](https://github.com/and3rn3t/apple-music-dj/milestone/1). Tech debt and trust items sit in whichever release needs them first.
 
 **Recently shipped:** demo mode and one-step token setup (3.3.0); taste codes, the animated README
-demo, the Spotify-switcher guide and the pre-publish self-audit (3.4.0); and, unreleased, likes and
+demo, the Spotify-switcher guide and the pre-publish self-audit (3.4.0); and, in 3.5.0, `--minutes`
+([#105](https://github.com/and3rn3t/apple-music-dj/issues/105)), remix any Apple Music playlist
+([#101](https://github.com/and3rn3t/apple-music-dj/issues/101)), clean mode
+([#109](https://github.com/and3rn3t/apple-music-dj/issues/109)), a bigger demo catalog
+([#46](https://github.com/and3rn3t/apple-music-dj/issues/46)), the token-on-disk fix
+([#60](https://github.com/and3rn3t/apple-music-dj/issues/60)), the `strategy_engine.py` split and the
+test and CI tech debt ([#111](https://github.com/and3rn3t/apple-music-dj/issues/111)–[#115](https://github.com/and3rn3t/apple-music-dj/issues/115)), plus likes and
 dislikes steering playlists ([#64](https://github.com/and3rn3t/apple-music-dj/issues/64)),
 `config.json` preferences, the token-renewal nudge in the daily drop
 ([#47](https://github.com/and3rn3t/apple-music-dj/issues/47)), a leaner SKILL.md
 ([#63](https://github.com/and3rn3t/apple-music-dj/issues/63)), weighted taste profiles and the
 curation-quality test.
 
-## Now: launch, plus quick wins (3.5)
+## Now: launch (3.5)
 
 - [ ] **Screen recording for the listing** ([#80](https://github.com/and3rn3t/apple-music-dj/issues/80)):
       20–30 s of "songs like Phoebe Bridgers" in OpenClaw turning into a playlist on an iPhone; the
@@ -32,21 +38,11 @@ curation-quality test.
 - [ ] **Launch posts** ([#83](https://github.com/and3rn3t/apple-music-dj/issues/83)) in the OpenClaw
       showcase, r/AppleMusic and r/selfhosted, pitched to listeners ("Spotify-grade discovery for
       Apple Music") rather than to developers. *S*
-- [ ] **Exact-length playlists: `--minutes`** ([#105](https://github.com/and3rn3t/apple-music-dj/issues/105)):
-      people ask for "45 minutes for my run", which a track count can't promise. Uses each song's
-      duration and keeps the energy arc. *S*
-- [ ] **Clean mode** ([#109](https://github.com/and3rn3t/apple-music-dj/issues/109)): keep explicit
-      tracks out of every playlist for family car rides and kids, using Apple's `contentRating`.
-      *S*
 
 ## Next: standout features (3.6 and 3.7)
 
 The ones that make people say "wait, it can do *that*?" and share the result.
 
-- [ ] **Remix any Apple Music playlist to your taste**
-      ([#101](https://github.com/and3rn3t/apple-music-dj/issues/101)): every editorial and shared
-      playlist becomes a seed. Keep the tracks you'd like, swap the rest for taste-matched ones, and
-      say "you'd keep 14 of 50". *M*
 - [ ] **World Tour** ([#103](https://github.com/and3rn3t/apple-music-dj/issues/103)): other
       countries' charts, filtered to your taste and to what plays in your storefront. Gives you new,
       already-proven music instead of the same local hits every week. *M*
@@ -78,9 +74,6 @@ The ones that make people say "wait, it can do *that*?" and share the result.
 - [ ] **Library doctor** ([#110](https://github.com/and3rn3t/apple-music-dj/issues/110)): a read-only
       report of duplicate editions (by ISRC), explicit/clean pairs and songs no longer playable. Big
       libraries pile these up and Apple Music never shows them. *M*
-- [ ] **Richer demo catalog** ([#46](https://github.com/and3rn3t/apple-music-dj/issues/46)): the
-      12-song test catalog makes demo playlists short. A separate ~150-song demo catalog would fill
-      them, while the tests stay on the small one. *M*
 - [ ] **Verify the mock against the live API** ([#87](https://github.com/and3rn3t/apple-music-dj/issues/87)),
       starting with Replay ([#66](https://github.com/and3rn3t/apple-music-dj/issues/66)), so the
       demo and the tests keep matching the real service. *M*
@@ -92,28 +85,6 @@ The ones that make people say "wait, it can do *that*?" and share the result.
       running a service, holding a signing key and checking Apple's MusicKit terms. Write an ADR
       before any code. *L*
 
-## Tech debt
-
-- [ ] **Split `strategy_engine.py` (1,440 lines) into one module per strategy**
-      ([#111](https://github.com/and3rn3t/apple-music-dj/issues/111)): it holds nine strategies,
-      sequencing, naming and the playlist writes, and each new strategy makes it bigger. Also shares
-      the scoring constants that `daily_pick.py` declares again. *L*
-- [ ] **One helper for calling sibling scripts** ([#112](https://github.com/and3rn3t/apple-music-dj/issues/112)):
-      `strategy_engine.py` and `playlist_health.py` each run `build_playlist.sh` /
-      `apple_music_api.sh` through their own `subprocess` calls, so timeouts and errors differ from
-      `call_api`. *S*
-- [ ] **Exercise every `apple_music_api.sh` command in a test**
-      ([#113](https://github.com/and3rn3t/apple-music-dj/issues/113)): ~1,360 lines of bash sit
-      outside the coverage report, so the 95% only describes the Python. *M*
-- [ ] **Raise the coverage floor from 80% to 90%** ([#114](https://github.com/and3rn3t/apple-music-dj/issues/114)):
-      coverage is at 95%, so a big drop would slip through. *XS*
-- [ ] **Type-check the scripts in CI** ([#115](https://github.com/and3rn3t/apple-music-dj/issues/115)):
-      everything is annotated, but nothing checks the annotations. *M*
-- [ ] **`playlist_history.py --track-ids-file` uses a bare `open()`**
-      ([#62](https://github.com/and3rn3t/apple-music-dj/issues/62)): a bad path crashes with a
-      traceback. The rest of #62 shipped in [#72](https://github.com/and3rn3t/apple-music-dj/pull/72).
-      *XS*
-
 ## Trust and reviews: keep the ClawHub verdict at Pass
 
 ClawHub's reviewer sees only the shipped package (not `tests/` or `CHANGELOG.md`), and its verdict
@@ -122,9 +93,6 @@ as a risk, rather than waiting to be flagged. Already in place: `tests/test_trus
 `tests/test_openclaw_metadata.py`, `make audit` before each publish, and private vulnerability
 reporting.
 
-- [ ] **No tokens left on disk after a stalled request** ([#60](https://github.com/and3rn3t/apple-music-dj/issues/60)):
-      `apple_music_api.sh` has no curl timeout, and `call_api` SIGKILLs the script, so its cleanup
-      never runs. *S*
 - [ ] **Log the verdict per version** ([#81](https://github.com/and3rn3t/apple-music-dj/issues/81))
       in the table below (`release_checks.check_verdict` prints it after each publish). *XS*
 - [ ] **Signed tags and build provenance for releases** ([#88](https://github.com/and3rn3t/apple-music-dj/issues/88)):

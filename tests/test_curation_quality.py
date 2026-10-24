@@ -15,7 +15,8 @@ from itertools import pairwise
 import pytest
 
 import strategy_engine as se
-from _common import taste_affinity, track_energy, user_filters
+from tests.strategy_helpers import patch_everywhere
+from _common import best_genre_match, taste_affinity, track_energy, user_filters
 
 # ── Synthetic catalog ────────────────────────────────────────────
 
@@ -136,9 +137,9 @@ ELECTRO_FAN = listener([6, 7, 13, 12, 0, 2, 8],
 
 @pytest.fixture(autouse=True)
 def catalog(monkeypatch):
-    monkeypatch.setattr(se, "call_api", fake_api)
-    monkeypatch.setattr(se, "get_album_tracks", fake_album_tracks)
-    monkeypatch.setattr(se, "search_artist", fake_search_artist)
+    patch_everywhere(monkeypatch, "call_api", fake_api)
+    patch_everywhere(monkeypatch, "get_album_tracks", fake_album_tracks)
+    patch_everywhere(monkeypatch, "search_artist", fake_search_artist)
     se.USER_FILTERS.clear()
     se.USER_FILTERS.update(user_filters({"excluded_artists": [EXCLUDED_ARTIST]}, HEARD_LAST_WEEK))
     yield
@@ -246,7 +247,7 @@ def test_constellation_fans_out_from_familiar_to_frontier():
 
 def test_similar_leans_on_the_seed_sound():
     tracks = run("similar")
-    close = [t for t in tracks if se.best_genre_match(t["genre"], ["Alternative"]) >= 0.5]
+    close = [t for t in tracks if best_genre_match(t["genre"], ["Alternative"]) >= 0.5]
     assert len(close) >= 0.6 * len(tracks)
 
 

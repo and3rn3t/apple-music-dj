@@ -28,6 +28,7 @@ scripts/
   build_playlist.sh, new_releases.sh, concert_prep.sh, verify_setup.sh
   _common.py          # shared helpers + Python-version guard
   taste_profiler.py, strategy_engine.py, …  # one Python script per feature
+  strategies/         # one module per playlist strategy + shared scoring/sequencing; strategy_engine.py is the CLI
   demo.py             # local stand-in for the Apple Music API (ships with the skill)
   generate_dev_token.py, setup_auth.py      # MusicKit token setup (PyJWT + cryptography)
 references/           # auth setup, API reference, playlist strategies, Spotify import, troubleshooting

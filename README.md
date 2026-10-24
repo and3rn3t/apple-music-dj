@@ -237,7 +237,8 @@ apple-music-dj/
     ├── apple_music_api.sh      # Bash API wrapper (25+ commands, retry logic)
     ├── taste_profiler.py       # Taste DNA profiler with caching & Replay
     ├── build_playlist.sh       # Playlist creation & refresh with dedup
-    ├── strategy_engine.py      # 8 playlist strategies + energy-arc sequencing
+    ├── strategy_engine.py      # Strategy CLI: naming, previews, playlist creation
+    ├── strategies/             # One module per playlist strategy + shared scoring and sequencing
     ├── taste_card.py           # Shareable Taste DNA Card (SVG/text)
     ├── compatibility.py        # Taste compatibility scoring
     ├── share_code.py           # Taste codes for blending with a friend

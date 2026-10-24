@@ -42,11 +42,13 @@ from _common import (
     user_filters,
 )
 
+from strategies.scoring import TASTE_WEIGHT
+
 SCRIPT_DIR = Path(__file__).parent
 
 # Scoring weights for one pick: taste and context outweigh chance
 BASE_SCORE = 0.5
-TASTE_WEIGHT = 0.3        # x taste_affinity
+# TASTE_WEIGHT (x taste_affinity) is shared with the strategies: strategies/scoring.py
 DEEP_CUT_BONUS = 0.2      # the interesting picks
 TIME_OF_DAY_BONUS = 0.3   # a genre that suits the hour
 JITTER = 0.15

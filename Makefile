@@ -1,6 +1,21 @@
 PYTHON ?= python3
 
-.PHONY: test test-fast coverage coverage-html lint ruff typecheck actionlint ci audit demo-svg social-preview
+.PHONY: setup test test-fast coverage coverage-html lint ruff typecheck actionlint ci audit demo-svg social-preview
+
+## Create .venv, install the dev tools, and check the system tools the scripts and CI need
+setup:
+	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else "ERROR: Python 3.11+ is required (this is $(PYTHON))")'
+	@# A venv copied or moved from another folder keeps scripts that point at the old path: rebuild it
+	@.venv/bin/pip --version >/dev/null 2>&1 || $(PYTHON) -m venv --clear .venv
+	@.venv/bin/python -m pip install --quiet --upgrade pip
+	@.venv/bin/python -m pip install --quiet -e ".[dev]"
+	@missing=0; \
+	for tool in bash curl jq; do \
+	  command -v $$tool >/dev/null || { echo "MISSING: $$tool (the scripts need it)"; missing=1; }; \
+	done; \
+	command -v actionlint >/dev/null || echo "NOTE: actionlint is not installed; 'make ci' needs it (brew install actionlint)"; \
+	[ $$missing -eq 0 ] || exit 1
+	@echo "Ready. Run:  . .venv/bin/activate && make ci"
 
 ## Run all tests
 test:

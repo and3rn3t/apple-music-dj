@@ -52,14 +52,22 @@ def load_history() -> list[dict]:
 
 
 def _set_aside_unreadable_history() -> list[dict]:
-    """Keep an unreadable history file as *.corrupt (the next save would overwrite it) and start fresh."""
+    """Keep an unreadable history file as *.corrupt[.N] (the next save would overwrite it) and start fresh.
+
+    If it cannot be kept, raise: returning an empty history would let the next save destroy the only copy.
+    """
     backup = HISTORY_FILE.with_suffix(".json.corrupt")
+    for n in range(1, 100):
+        if not backup.exists() and not backup.is_symlink():
+            break
+        backup = HISTORY_FILE.with_suffix(f".json.corrupt.{n}")
     try:
-        os.replace(HISTORY_FILE, backup)
-        print(f"WARN: {HISTORY_FILE} is not a valid history file; kept as {backup} and starting fresh.",
-              file=sys.stderr)
-    except OSError:
-        print(f"WARN: {HISTORY_FILE} is not a valid history file and could not be set aside.", file=sys.stderr)
+        os.link(HISTORY_FILE, backup)  # fails instead of replacing if the name was taken in the meantime
+        os.unlink(HISTORY_FILE)
+    except OSError as e:
+        raise OSError(f"{HISTORY_FILE} is not a valid history file and could not be set aside ({e}); "
+                      f"fix or remove it by hand.") from e
+    print(f"WARN: {HISTORY_FILE} is not a valid history file; kept as {backup} and starting fresh.", file=sys.stderr)
     return []
 
 

@@ -981,4 +981,4 @@ class TestFailedListingsAreNotSilent:
     def test_a_failing_first_page_is_an_error_not_an_empty_library(self, api, command):
         api.env["APPLE_MUSIC_API_BASE"] = "http://127.0.0.1:9"  # nothing listens: every request fails
         r = api("apple_music_api.sh", command, 25, check=False)
-        assert r.returncode != 0 and r.stderr.strip()
+        assert r.returncode != 0 and "request failed at item 0" in r.stderr

@@ -236,7 +236,8 @@ cmd_user_storefront() {
 
 _page_failed() {
   # A page failed mid-listing. Nothing fetched yet: fail. Otherwise keep what we have, but say it is partial.
-  local offset="$1"
+  local offset="$1" response="${2:-}"
+  echo "ERROR: request failed at item ${offset}: ${response:0:300}${response:-no response body}" >&2
   [[ "$offset" -eq 0 ]] && return 1
   echo "WARN: stopped at item ${offset} after a failed request; results are partial." >&2
 }
@@ -247,7 +248,7 @@ cmd_recent_tracks() {
   local all="[]"
   for offset in 0 10 20 30 40; do
     local page
-    page=$(_get "/v1/me/recent/played/tracks?types=songs&limit=10&offset=${offset}") || { _page_failed "$offset" || return 1; break; }
+    page=$(_get "/v1/me/recent/played/tracks?types=songs&limit=10&offset=${offset}") || { _page_failed "$offset" "${page:-}" || return 1; break; }
     local data
     data=$(echo "$page" | jq -c '.data // []')
     [[ "$data" == "[]" ]] && break
@@ -280,7 +281,7 @@ cmd_library_artists() {
   local offset=0
   while true; do
     local page
-    page=$(_get "/v1/me/library/artists?limit=${limit}&offset=${offset}") || { _page_failed "$offset" || return 1; break; }
+    page=$(_get "/v1/me/library/artists?limit=${limit}&offset=${offset}") || { _page_failed "$offset" "${page:-}" || return 1; break; }
     local data
     data=$(echo "$page" | jq -c '.data // []')
     [[ "$data" == "[]" ]] && break
@@ -304,7 +305,7 @@ cmd_library_songs() {
   local offset=0
   while true; do
     local page
-    page=$(_get "/v1/me/library/songs?limit=${limit}&offset=${offset}&include=catalog" ) || { _page_failed "$offset" || return 1; break; }
+    page=$(_get "/v1/me/library/songs?limit=${limit}&offset=${offset}&include=catalog" ) || { _page_failed "$offset" "${page:-}" || return 1; break; }
     local data
     data=$(echo "$page" | jq -c '.data // []')
     [[ "$data" == "[]" ]] && break

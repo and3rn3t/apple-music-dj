@@ -33,6 +33,34 @@ class TestLoadHistory:
         monkeypatch.setattr(ph, "HISTORY_FILE", f)
         assert ph.load_history() == []
 
+    def test_unreadable_history_is_kept_aside_not_overwritten(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / "history.json"
+        f.write_text("{bad json")
+        monkeypatch.setattr(ph, "HISTORY_FILE", f)
+        ph.log_playlist("Mix", "trend", ["t1"])
+        assert (tmp_path / "history.json.corrupt").read_text() == "{bad json"
+        assert [e["name"] for e in ph.load_history()] == ["Mix"]
+        assert "kept as" in capsys.readouterr().err
+
+    def test_a_second_corrupt_file_does_not_replace_the_first_backup(self, tmp_path, monkeypatch):
+        f = tmp_path / "history.json"
+        monkeypatch.setattr(ph, "HISTORY_FILE", f)
+        f.write_text("first bad")
+        ph.load_history()
+        f.write_text("second bad")
+        ph.load_history()
+        assert (tmp_path / "history.json.corrupt").read_text() == "first bad"
+        assert (tmp_path / "history.json.corrupt.1").read_text() == "second bad"
+
+    def test_logging_refuses_to_overwrite_history_it_could_not_keep(self, tmp_path, monkeypatch):
+        f = tmp_path / "history.json"
+        f.write_text("{bad json")
+        monkeypatch.setattr(ph, "HISTORY_FILE", f)
+        monkeypatch.setattr(ph.os, "link", lambda *a: (_ for _ in ()).throw(OSError("read-only")))
+        with pytest.raises(OSError, match="could not be set aside"):
+            ph.log_playlist("Mix", "trend", ["t1"])
+        assert f.read_text() == "{bad json"
+
     def test_returns_empty_on_non_list_json(self, tmp_path, monkeypatch):
         f = tmp_path / "history.json"
         f.write_text('{"not": "a list"}')

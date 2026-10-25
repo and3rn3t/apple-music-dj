@@ -822,6 +822,9 @@ class TestScheduledJobsActuallyRun:
             "top_artists": [{"name": "Miles Davis", "weight": 1}], "genre_distribution": [{"genre": "Jazz", "weight": 1}],
             "era_distribution": [{"decade": "1960s", "weight": 1}], "energy_profile": "chill",
             "variety_score": 0.5, "mainstream_score": 0.5, "generated_at": "2020-01-01T00:00:00+00:00"}))
+        for stale in snaps.glob("*.json"):  # the profile fixture's snapshot is dated by when it ran, which
+            if stale.name != "2020-01-01.json":  # differs from the job's day if CI crosses UTC midnight
+                stale.unlink()
         r = self._run(api, jobs["monthly-drift"]["command"])
         assert r.returncode == 0, r.stderr[-400:]
         assert "Taste drift: 2020-01-01" in r.stdout
@@ -971,3 +974,11 @@ class TestVerifySetupFailures:
         r = self._verify(api, APPLE_MUSIC_API_BASE=f"http://127.0.0.1:{port}")
         assert r.returncode != 0 and "Network error" in r.stdout
 
+
+
+class TestFailedListingsAreNotSilent:
+    @pytest.mark.parametrize("command", ["library-artists", "library-songs"])
+    def test_a_failing_first_page_is_an_error_not_an_empty_library(self, api, command):
+        api.env["APPLE_MUSIC_API_BASE"] = "http://127.0.0.1:9"  # nothing listens: every request fails
+        r = api("apple_music_api.sh", command, 25, check=False)
+        assert r.returncode != 0 and "request failed at item 0" in r.stderr

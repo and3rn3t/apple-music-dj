@@ -822,6 +822,9 @@ class TestScheduledJobsActuallyRun:
             "top_artists": [{"name": "Miles Davis", "weight": 1}], "genre_distribution": [{"genre": "Jazz", "weight": 1}],
             "era_distribution": [{"decade": "1960s", "weight": 1}], "energy_profile": "chill",
             "variety_score": 0.5, "mainstream_score": 0.5, "generated_at": "2020-01-01T00:00:00+00:00"}))
+        for stale in snaps.glob("*.json"):  # the profile fixture's snapshot is dated by when it ran, which
+            if stale.name != "2020-01-01.json":  # differs from the job's day if CI crosses UTC midnight
+                stale.unlink()
         r = self._run(api, jobs["monthly-drift"]["command"])
         assert r.returncode == 0, r.stderr[-400:]
         assert "Taste drift: 2020-01-01" in r.stdout

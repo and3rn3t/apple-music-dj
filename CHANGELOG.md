@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.1] — 2026-10-26
+
+### Fixed
+
+- Library and recent-track listings no longer hide request errors: a failure on the first page exits non-zero, a later one warns that the results are partial, and the failed response is printed instead of a generic error.
+- An unreadable or corrupt playlist history is set aside as `.corrupt` (or `.corrupt.1`, … if that name is taken) instead of being overwritten, and a save refuses to proceed if the file cannot be kept.
+- `build_playlist.sh` warns when the duplicate-name check or history logging fails.
+
 ## [3.5.0] — 2026-10-24
 
 ### Added

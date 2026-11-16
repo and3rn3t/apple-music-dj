@@ -39,6 +39,7 @@ if sys.version_info < (3, 9):
 
 import argparse
 import json
+import os
 import random
 import subprocess
 import tempfile
@@ -437,7 +438,7 @@ def strategy_trend(profile: dict, sf: str, target_size: int = 20) -> list[dict]:
 
 def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> list[dict]:
     """Gradual discovery: familiar → expansion → frontier."""
-    top_artists = profile.get("top_artists", [])[:5]
+    top_artists = profile.get("top_artists", [])[:8]
     user_genres = [g["genre"] for g in profile.get("genre_distribution", [])[:10]]
     library_ids = set(profile.get("library_song_ids", []))
     library_artists = {a["name"].lower() for a in profile.get("top_artists", [])}
@@ -473,7 +474,12 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
 
             c_genres = [g for g in c.get("attributes", {}).get("genreNames", [])
                         if g.lower() != "music"]
-            proximity = best_genre_match(c_genres, user_genres)
+            # Judge proximity against the *seed* artist's genres so "familiar"
+            # means "sounds like the artist we started from", not "matches any of
+            # the user's top-10 genres" (which let hip-hop/country through).
+            proximity = best_genre_match(c_genres, artist_genres or user_genres)
+            if proximity == 0.0 and best_genre_match(c_genres, user_genres) == 0.0:
+                continue  # unrelated to both the seed and the user's taste
 
             # Classify zone
             if proximity >= 0.9:
@@ -533,6 +539,20 @@ def strategy_constellation(profile: dict, sf: str, target_size: int = 25) -> lis
     rng.shuffle(frontier)
 
     selected = familiar[:fam_count] + expansion[:exp_count] + frontier[:fro_count]
+
+    # Backfill when a zone is short (previously produced 11/20 tracks):
+    # prefer expansion, then familiar, then frontier, keeping gradient order.
+    if len(selected) < target_size:
+        chosen = {t["id"] for t in selected}
+        for pool in (expansion, familiar, frontier):
+            for t in pool:
+                if len(selected) >= target_size:
+                    break
+                if t["id"] not in chosen:
+                    selected.append(t)
+                    chosen.add(t["id"])
+        order = {"familiar": 0, "expansion": 1, "frontier": 2}
+        selected.sort(key=lambda t: order.get(t.get("zone"), 1))
 
     # Clean internal fields
     for c in selected:
@@ -706,7 +726,7 @@ def check_playlist_exists(name: str) -> Optional[str]:
 
 
 def create_playlist_from_tracks(tracks: list[dict], name: str,
-                                description: str) -> bool:
+                                description: str, strategy: str = "manual") -> bool:
     """Create a playlist in Apple Music using build_playlist.sh."""
     if not tracks:
         print("ERROR: No tracks to create playlist from.", file=sys.stderr)
@@ -728,6 +748,7 @@ def create_playlist_from_tracks(tracks: list[dict], name: str,
         result = subprocess.run(
             [str(SCRIPT_DIR / "build_playlist.sh"), "create", name, description, ids_file],
             capture_output=True, text=True, timeout=60,
+            env={**os.environ, "AMDJ_STRATEGY": strategy},  # build_playlist.sh logs history
         )
         if result.returncode != 0:
             print(f"ERROR: Playlist creation failed: {result.stderr}", file=sys.stderr)
@@ -825,16 +846,9 @@ def main():
     # Optionally create in Apple Music
     if args.create:
         print("Creating playlist in Apple Music...", file=sys.stderr)
-        if create_playlist_from_tracks(tracks, name, description):
+        if create_playlist_from_tracks(tracks, name, description, args.strategy):
             print(f"✅ Playlist '{name}' created!", file=sys.stderr)
-            # Log to playlist history
-            try:
-                from playlist_history import log_playlist
-                track_ids = [t["id"] for t in tracks if t.get("id")]
-                log_playlist(name, args.strategy, track_ids)
-                print("📝 Logged to playlist history.", file=sys.stderr)
-            except Exception as e:
-                print(f"⚠️  Could not log to history: {e}", file=sys.stderr)
+            print("📝 Logged to playlist history (by build_playlist.sh).", file=sys.stderr)
         else:
             print("❌ Failed to create playlist.", file=sys.stderr)
             sys.exit(1)

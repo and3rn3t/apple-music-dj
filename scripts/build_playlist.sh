@@ -58,7 +58,7 @@ case "$MODE" in
 
     # Log to playlist history
     if command -v python3 &>/dev/null && [[ -f "$SCRIPT_DIR/playlist_history.py" ]]; then
-      (cd "$SCRIPT_DIR" && python3 playlist_history.py log "$NAME" "manual" "$IDS_FILE" 2>/dev/null) || true
+      (cd "$SCRIPT_DIR" && python3 playlist_history.py log "$NAME" "${AMDJ_STRATEGY:-manual}" "$IDS_FILE" 2>/dev/null) || true
     fi
     ;;
 
